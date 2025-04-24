@@ -17,8 +17,8 @@ public class TaskValidator {
         if (task.getSprintId() == null) {
             throw new BadRequestException("Sprint ID cannot be null");
         }
-        if (task.getStatus() == null || task.getStatus().trim().isEmpty()) {
-            throw new BadRequestException("Task status cannot be empty");
+        if (task.getStatus() == null) {
+            throw new BadRequestException("Task status cannot be null");
         }
     }
 

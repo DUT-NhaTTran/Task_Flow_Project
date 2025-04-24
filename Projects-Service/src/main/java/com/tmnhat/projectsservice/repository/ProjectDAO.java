@@ -161,4 +161,26 @@ public class ProjectDAO extends BaseDAO {
             stmt.setObject(3, userId);
         });
     }
+    public boolean isProjectLead(UUID projectId, UUID userId) throws SQLException {
+        String sql = "SELECT 1 FROM project_members WHERE project_id = ? AND user_id = ? AND role_in_project = 'PROJECT_LEAD'";
+        return executeQuery(sql, stmt -> {
+            stmt.setObject(1, projectId);
+            stmt.setObject(2, userId);
+            ResultSet rs = stmt.executeQuery();
+            return rs.next(); // Nếu có dòng nào => đúng là LEAD
+        });
+    }
+    public void updateMemberRole(UUID projectId, UUID userId, String newRole, UUID requesterId) throws SQLException {
+        if (!isProjectLead(projectId, requesterId)) {
+            throw new SecurityException("Only project leader can update roles");
+        }
+
+        String sql = "UPDATE project_members SET role_in_project = ? WHERE project_id = ? AND user_id = ?";
+        executeUpdate(sql, stmt -> {
+            stmt.setString(1, newRole);
+            stmt.setObject(2, projectId);
+            stmt.setObject(3, userId);
+        });
+    }
+
 }

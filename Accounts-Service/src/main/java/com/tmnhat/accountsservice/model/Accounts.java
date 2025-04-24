@@ -1,4 +1,5 @@
 package com.tmnhat.accountsservice.model;
+
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -9,6 +10,7 @@ public class Accounts {
     private UUID userId;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private Role role; // Thêm Role
 
     public Accounts() {
     }
@@ -20,6 +22,7 @@ public class Accounts {
         this.userId = builder.userId;
         this.createdAt = builder.createdAt;
         this.updatedAt = builder.updatedAt;
+        this.role = builder.role;
     }
 
     public static Builder builder() {
@@ -51,6 +54,10 @@ public class Accounts {
         return updatedAt;
     }
 
+    public Role getRole() {
+        return role;
+    }
+
     // Setters
     public void setId(UUID id) {
         this.id = id;
@@ -76,6 +83,10 @@ public class Accounts {
         this.updatedAt = updatedAt;
     }
 
+    public void setRole(Role role) {
+        this.role = role;
+    }
+
     // Builder
     public static class Builder {
         private UUID id;
@@ -84,6 +95,7 @@ public class Accounts {
         private UUID userId;
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
+        private Role role;
 
         public Builder id(UUID id) {
             this.id = id;
@@ -115,8 +127,15 @@ public class Accounts {
             return this;
         }
 
+        public Builder role(Role role) {
+            this.role = role;
+            return this;
+        }
+
         public Accounts build() {
             return new Accounts(this);
         }
     }
 }
+
+// Role Enum
