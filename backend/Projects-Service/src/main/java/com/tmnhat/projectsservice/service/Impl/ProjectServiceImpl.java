@@ -8,6 +8,7 @@ import com.tmnhat.projectsservice.repository.ProjectMemberDAO;
 import com.tmnhat.projectsservice.service.ProjectService;
 import com.tmnhat.projectsservice.validation.ProjectValidator;
 
+import java.sql.SQLException;
 import java.util.List;
 import java.util.UUID;
 
@@ -122,11 +123,11 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
-    public List<Projects> filterProjectsByStatus(String status) {
+    public List<Projects> filterProjectsByType(String projectType) {
         try {
-            return projectMemberDAO.filterProjectsByStatus(status);
+            return projectDAO.filterProjectsByType(projectType);
         } catch (Exception e) {
-            throw new DatabaseException("Error filtering projects: " + e.getMessage());
+            throw new DatabaseException("Error filtering projects by type: " + e.getMessage());
         }
     }
 
@@ -151,5 +152,25 @@ public class ProjectServiceImpl implements ProjectService {
             throw new DatabaseException("Error paginating projects: " + e.getMessage());
         }
     }
-    
+
+    @Override
+    public UUID getLastInsertedProjectId() {
+        try {
+            return projectDAO.getLastInsertedProjectId();
+        } catch (SQLException e) {
+            System.err.println("Error getting last inserted project ID: " + e.getMessage());
+            throw new RuntimeException("Could not fetch last inserted project ID", e);
+        }
+    }
+    @Override
+    public UUID addProjectReturnId(Projects project) {
+        try {
+            ProjectValidator.validateProject(project);
+            return projectDAO.addProjectReturnId(project);
+        } catch (Exception e) {
+            throw new DatabaseException("Error adding project with return ID: " + e.getMessage());
+        }
+    }
+
+
 }

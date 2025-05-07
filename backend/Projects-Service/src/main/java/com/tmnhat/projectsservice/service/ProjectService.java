@@ -25,10 +25,15 @@ public interface ProjectService {
 
     List<Projects> searchProjects(String keyword);
 
-    List<Projects> filterProjectsByStatus(String status);
+    List<Projects> filterProjectsByType(String projectType);
 
     void archiveProject(UUID projectId);
 
     List<Projects> paginateProjects(int page, int size);
-    
+
+    UUID getLastInsertedProjectId();
+
+    UUID addProjectReturnId(Projects project);
+
+
 }

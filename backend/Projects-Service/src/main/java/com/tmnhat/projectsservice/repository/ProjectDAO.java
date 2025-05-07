@@ -9,33 +9,41 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.time.LocalDateTime;
-import java.time.LocalDate;
-
 
 public class ProjectDAO extends BaseDAO {
 
     public void addProject(Projects project) throws SQLException {
-        String sql = "INSERT INTO projects (id, name, description, owner_id, deadline, created_at) VALUES (?, ?, ?, ?, ?, ?)";
-        executeUpdate(sql, stmt -> {
-            stmt.setObject(1, project.getId());
-            stmt.setString(2, project.getName());
-            stmt.setString(3, project.getDescription());
-            stmt.setObject(4, project.getOwnerId());
-            LocalDateTime now = LocalDateTime.now();
-            stmt.setTimestamp(5, project.getDeadline() != null ? Timestamp.valueOf(project.getDeadline().atStartOfDay()) : Timestamp.valueOf(now));
-            stmt.setTimestamp(6, project.getCreatedAt() != null ? Timestamp.valueOf(project.getCreatedAt()) :Timestamp.valueOf(now));
-        });
-    }
-
-    public void updateProject(UUID id, Projects project) throws SQLException {
-        String sql = "UPDATE projects SET name = ?, description = ?, owner_id = ?, deadline = ? WHERE id = ?";
+        String sql = "INSERT INTO projects (name, description, owner_id, deadline, created_at, key, project_type, access) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
         executeUpdate(sql, stmt -> {
             stmt.setString(1, project.getName());
             stmt.setString(2, project.getDescription());
             stmt.setObject(3, project.getOwnerId());
+
             LocalDateTime now = LocalDateTime.now();
             stmt.setTimestamp(4, project.getDeadline() != null ? Timestamp.valueOf(project.getDeadline().atStartOfDay()) : Timestamp.valueOf(now));
-            stmt.setObject(5, id);
+            stmt.setTimestamp(5, project.getCreatedAt() != null ? Timestamp.valueOf(project.getCreatedAt()) : Timestamp.valueOf(now));
+
+            stmt.setString(6, project.getKey());
+            stmt.setString(7, project.getProjectType());
+            stmt.setString(8, project.getAccess());
+        });
+    }
+
+    public void updateProject(UUID id, Projects project) throws SQLException {
+        String sql = "UPDATE projects SET name = ?, description = ?, owner_id = ?, deadline = ?, key = ?, project_type = ?, access = ? WHERE id = ?";
+        executeUpdate(sql, stmt -> {
+            stmt.setString(1, project.getName());
+            stmt.setString(2, project.getDescription());
+            stmt.setObject(3, project.getOwnerId());
+
+            LocalDateTime now = LocalDateTime.now();
+            stmt.setTimestamp(4, project.getDeadline() != null ? Timestamp.valueOf(project.getDeadline().atStartOfDay()) : Timestamp.valueOf(now));
+
+            stmt.setString(5, project.getKey());
+            stmt.setString(6, project.getProjectType());
+            stmt.setString(7, project.getAccess());
+            stmt.setObject(8, id);
         });
     }
 
@@ -68,16 +76,6 @@ public class ProjectDAO extends BaseDAO {
         });
     }
 
-    private Projects mapResultSetToProject(ResultSet rs) throws SQLException {
-        return new Projects.Builder()
-                .id(rs.getObject("id", UUID.class))
-                .name(rs.getString("name"))
-                .description(rs.getString("description"))
-                .ownerId(rs.getObject("owner_id", UUID.class))
-                .deadline(rs.getTimestamp("deadline") != null ? rs.getTimestamp("deadline").toLocalDateTime().toLocalDate() : null) // ✅ FIX
-                .createdAt(rs.getTimestamp("created_at") != null ? rs.getTimestamp("created_at").toLocalDateTime() : null)
-                .build();
-    }
     public List<Projects> searchProjects(String keyword) throws SQLException {
         String sql = "SELECT * FROM projects WHERE name ILIKE ?";
         return executeQuery(sql, stmt -> {
@@ -90,12 +88,12 @@ public class ProjectDAO extends BaseDAO {
             return projects;
         });
     }
+
     public void archiveProject(UUID projectId) throws SQLException {
         String sql = "UPDATE projects SET is_archived = TRUE WHERE id = ?";
-        executeUpdate(sql, stmt -> {
-            stmt.setObject(1, projectId);
-        });
+        executeUpdate(sql, stmt -> stmt.setObject(1, projectId));
     }
+
     public List<Projects> paginateProjects(int page, int size) throws SQLException {
         int offset = (page - 1) * size;
         String sql = "SELECT * FROM projects ORDER BY created_at DESC LIMIT ? OFFSET ?";
@@ -110,4 +108,66 @@ public class ProjectDAO extends BaseDAO {
             return projects;
         });
     }
+    public List<Projects> filterProjectsByType(String projectType) throws SQLException {
+        String sql = "SELECT * FROM projects WHERE LOWER(project_type) = LOWER(?)";
+        return executeQuery(sql, stmt -> {
+            stmt.setString(1, projectType);
+            List<Projects> projects = new ArrayList<>();
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                projects.add(mapResultSetToProject(rs));
+            }
+            return projects;
+        });
+    }
+
+
+    private Projects mapResultSetToProject(ResultSet rs) throws SQLException {
+        return new Projects.Builder()
+                .id(rs.getObject("id", UUID.class))
+                .name(rs.getString("name"))
+                .description(rs.getString("description"))
+                .ownerId(rs.getObject("owner_id", UUID.class))
+                .deadline(rs.getTimestamp("deadline") != null ? rs.getTimestamp("deadline").toLocalDateTime().toLocalDate() : null)
+                .createdAt(rs.getTimestamp("created_at") != null ? rs.getTimestamp("created_at").toLocalDateTime() : null)
+                .key(rs.getString("key"))
+                .projectType(rs.getString("project_type"))
+                .access(rs.getString("access"))
+                .build();
+    }
+    public UUID getLastInsertedProjectId() throws SQLException {
+        String sql = "SELECT id FROM projects ORDER BY created_at DESC LIMIT 1";
+        return executeQuery(sql, stmt -> {
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                return rs.getObject("id", UUID.class);
+            } else {
+                throw new SQLException("No project found.");
+            }
+        });
+    }
+    public UUID addProjectReturnId(Projects project) throws SQLException {
+        String sql = "INSERT INTO projects (name, description, owner_id, deadline, created_at, key, project_type, access) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id";
+        return executeQuery(sql, stmt -> {
+            stmt.setString(1, project.getName());
+            stmt.setString(2, project.getDescription());
+            stmt.setObject(3, project.getOwnerId());
+            stmt.setTimestamp(4, Timestamp.valueOf(project.getDeadline().atStartOfDay()));
+            stmt.setTimestamp(5, Timestamp.valueOf(project.getCreatedAt()));
+            stmt.setString(6, project.getKey());
+            stmt.setString(7, project.getProjectType());
+            stmt.setString(8, project.getAccess());
+
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                return rs.getObject("id", UUID.class);
+            } else {
+                throw new SQLException("No ID returned from insert.");
+            }
+        });
+    }
+
+
+
 }

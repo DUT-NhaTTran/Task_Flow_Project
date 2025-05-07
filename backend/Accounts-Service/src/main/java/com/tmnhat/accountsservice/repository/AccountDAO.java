@@ -1,6 +1,7 @@
 package com.tmnhat.accountsservice.repository;
 
 import com.tmnhat.accountsservice.model.Accounts;
+import com.tmnhat.common.exception.ResourceNotFoundException;
 import org.springframework.stereotype.Repository;
 
 import java.sql.ResultSet;
@@ -112,6 +113,17 @@ public class AccountDAO extends BaseDAO {
                 .updatedAt(rs.getTimestamp("updated_at") != null ? rs.getTimestamp("updated_at").toLocalDateTime() : null)
                 .build();
     }
+    public UUID getUserIdByEmail(String email) throws SQLException {
+        String sql = "SELECT id FROM accounts WHERE email = ?";
+        return executeQuery(sql, stmt -> {
+            stmt.setString(1, email);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                return UUID.fromString(rs.getString("id"));
+            }
+            throw new ResourceNotFoundException("No account found for email: " + email);
+        });
+    }
 
     public void linkUserIdToAccount(UUID accountId, UUID userId) throws SQLException {
         String sql = "UPDATE accounts SET user_id = ? WHERE id = ?";
@@ -120,5 +132,6 @@ public class AccountDAO extends BaseDAO {
             stmt.setObject(2, accountId);
         });
     }
+
 
 }

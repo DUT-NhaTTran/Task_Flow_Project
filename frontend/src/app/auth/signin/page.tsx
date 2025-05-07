@@ -14,25 +14,37 @@ export default function SignInPage() {
     const [password, setPassword] = useState("")
     const [error, setError] = useState("")
 
-    // Hàm xử lý login
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-        e.preventDefault()
-        setError("")
+        e.preventDefault();
+        setError("");
 
         try {
             const res = await axios.post("http://localhost:8080/api/auth/login", {
                 email,
                 password,
-            })
+            });
 
-            const { token } = res.data
-            localStorage.setItem("token", token)
+            //Nhận token và userId từ response
+            const { token, userId } = res.data;
 
-            router.push("/homepage/mainpage")
-        } catch (err: any) {
-            setError(err.response?.data?.message || "Login failed. Please try again.")
+            //Lưu vào localStorage
+            localStorage.setItem("token", token);
+            localStorage.setItem("ownerId", userId); // Dùng cho tạo project
+
+            router.push("/board");
+        } catch (err: unknown) {
+            if (axios.isAxiosError(err)) {
+                const errorMessage = err.response?.data?.error || "Login failed. Please try again.";
+                setError(errorMessage);
+            } else if (err instanceof Error) {
+                setError(err.message);
+            } else {
+                setError("An unknown error occurred.");
+            }
         }
-    }
+    };
+
+
 
     return (
         <main className="min-h-screen bg-gray-100 flex items-center justify-center px-4">

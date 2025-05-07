@@ -9,22 +9,27 @@
     <groupId>com.tmnhat</groupId>
     <artifactId>TaskFlowProj</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <packaging>pom</packaging> <!-- Đặt packaging là pom -->
+    <packaging>pom</packaging>
 
     <name>TaskFlowProj</name>
-    <description>TaskFlowProj - Maven Multi-module</description>
+    <description>TaskFlowProj - Maven Multi-module Project</description>
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-autoconfigure</artifactId>
+        </dependency>
+    </dependencies>
 
-    <!-- Spring Boot Parent -->
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
         <version>3.4.4</version>
-        <relativePath/> <!-- lookup parent from repository -->
+        <relativePath/>
     </parent>
 
     <modules>
-        <module>Accounts-Service</module>
         <module>common</module>
+        <module>Accounts-Service</module>
         <module>Notifications-Service</module>
         <module>Projects-Service</module>
         <module>Sprints-Service</module>
@@ -32,10 +37,21 @@
         <module>User-Service</module>
     </modules>
 
-
-
     <properties>
         <java.version>17</java.version>
+        <maven.compiler.source>${java.version}</maven.compiler.source>
+        <maven.compiler.target>${java.version}</maven.compiler.target>
     </properties>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
 
 </project>

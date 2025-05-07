@@ -12,6 +12,35 @@ public class Projects {
     private UUID ownerId;
     private LocalDate deadline;
     private LocalDateTime createdAt;
+    private String key;
+    private String projectType;
+
+    public String getKey() {
+        return key;
+    }
+
+    public void setKey(String key) {
+        this.key = key;
+    }
+
+    public String getProjectType() {
+        return projectType;
+    }
+
+    public void setProjectType(String projectType) {
+        this.projectType = projectType;
+    }
+
+    public String getAccess() {
+        return access;
+    }
+
+    public void setAccess(String access) {
+        this.access = access;
+    }
+
+    private String access;
+
 
     public Projects() {
     }
@@ -23,6 +52,9 @@ public class Projects {
         this.ownerId = builder.ownerId;
         this.deadline = builder.deadline;
         this.createdAt = builder.createdAt;
+        this.key=builder.key;
+        this.projectType=builder.projectType;
+        this.access=builder.access;
     }
 
     // Getters & Setters
@@ -75,7 +107,7 @@ public class Projects {
         this.createdAt = createdAt;
     }
 
-    // ✅ Builder class
+    // Builder class
     public static class Builder {
         private UUID id;
         private String name;
@@ -83,6 +115,10 @@ public class Projects {
         private UUID ownerId;
         private LocalDate deadline;
         private LocalDateTime createdAt;
+        private String key;
+        private String projectType;
+        private String access;
+
 
         public Builder() {}
 
@@ -115,7 +151,20 @@ public class Projects {
             this.createdAt = createdAt;
             return this;
         }
+        public Builder key(String key) {
+            this.key = key;
+            return this;
+        }
+        public Builder projectType(String projectType) {
+            this.projectType = projectType;
+            return this;
 
+        }
+        public Builder access(String access) {
+            this.access = access;
+            return this;
+
+        }
         public Projects build() {
             return new Projects(this);
         }

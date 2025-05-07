@@ -61,4 +61,10 @@ public class AuthServiceImpl implements AuthService {
 
         return jwtUtil.generateToken(account.getId(), String.valueOf(Role.USER));
     }
+    @Override
+    public UUID getUserIdByEmail(String email) throws SQLException {
+        return accountDAO.getUserIdByEmail(email);
+    }
+
+
 }
