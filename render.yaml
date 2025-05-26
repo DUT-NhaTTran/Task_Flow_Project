@@ -8,12 +8,12 @@ services:
       - name: taskflow
         user: taskflow
 
-  # AI Service (Python FastAPI)
+  # AI Service (Python FastAPI) - Nằm trong backend/AI-Service
   - type: web
     name: taskflow-ai-service
     env: python3
-    buildCommand: "cd backend/AI-Service && pip install -r requirements.txt"
-    startCommand: "cd backend/AI-Service && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    buildCommand: "cd backend/AI-Service && pip install -r requirements.txt && chmod +x start-render.sh"
+    startCommand: "backend/AI-Service/start-render.sh"
     plan: free
     envVars:
       - key: DATABASE_URL
@@ -24,13 +24,14 @@ services:
         sync: false
       - key: PYTHON_VERSION
         value: "3.11.0"
+      - key: ENVIRONMENT
+        value: "production"
 
-  # User Service (Java Spring Boot)
+  # User Service (Java Spring Boot) - Using Docker
   - type: web
     name: taskflow-user-service
-    env: java
-    buildCommand: "cd backend/User-Service && ./mvnw clean install -DskipTests"
-    startCommand: "cd backend/User-Service && java -jar target/*.jar"
+    env: docker
+    dockerfilePath: backend/User-Service/Dockerfile
     plan: free
     envVars:
       - key: DATABASE_URL
@@ -40,12 +41,11 @@ services:
       - key: SPRING_PROFILES_ACTIVE
         value: "render"
 
-  # Tasks Service (Java Spring Boot)
+  # Accounts Service (Java Spring Boot) - Using Docker
   - type: web
-    name: taskflow-tasks-service
-    env: java
-    buildCommand: "cd backend/Tasks-Service && ./mvnw clean install -DskipTests"
-    startCommand: "cd backend/Tasks-Service && java -jar target/*.jar"
+    name: taskflow-accounts-service
+    env: docker
+    dockerfilePath: backend/Accounts-Service/Dockerfile
     plan: free
     envVars:
       - key: DATABASE_URL
@@ -55,12 +55,67 @@ services:
       - key: SPRING_PROFILES_ACTIVE
         value: "render"
 
-  # Projects Service (Java Spring Boot)
+  # Projects Service (Java Spring Boot) - Using Docker
   - type: web
     name: taskflow-projects-service
-    env: java
-    buildCommand: "cd backend/Projects-Service && ./mvnw clean install -DskipTests"
-    startCommand: "cd backend/Projects-Service && java -jar target/*.jar"
+    env: docker
+    dockerfilePath: backend/Projects-Service/Dockerfile
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: taskflow-database
+          property: connectionString
+      - key: SPRING_PROFILES_ACTIVE
+        value: "render"
+
+  # Tasks Service (Java Spring Boot) - Using Docker
+  - type: web
+    name: taskflow-tasks-service
+    env: docker
+    dockerfilePath: backend/Tasks-Service/Dockerfile
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: taskflow-database
+          property: connectionString
+      - key: SPRING_PROFILES_ACTIVE
+        value: "render"
+
+  # File Service (Java Spring Boot) - Using Docker
+  - type: web
+    name: taskflow-file-service
+    env: docker
+    dockerfilePath: backend/File-Service/Dockerfile
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: taskflow-database
+          property: connectionString
+      - key: SPRING_PROFILES_ACTIVE
+        value: "render"
+
+  # Sprints Service (Java Spring Boot) - Using Docker
+  - type: web
+    name: taskflow-sprints-service
+    env: docker
+    dockerfilePath: backend/Sprints-Service/Dockerfile
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: taskflow-database
+          property: connectionString
+      - key: SPRING_PROFILES_ACTIVE
+        value: "render"
+
+  # Notifications Service (Java Spring Boot) - Using Docker
+  - type: web
+    name: taskflow-notifications-service
+    env: docker
+    dockerfilePath: backend/Notifications-Service/Dockerfile
     plan: free
     envVars:
       - key: DATABASE_URL
@@ -88,13 +143,33 @@ services:
           type: web
           name: taskflow-user-service
           property: host
-      - key: REACT_APP_TASKS_SERVICE_URL
+      - key: REACT_APP_ACCOUNTS_SERVICE_URL
         fromService:
           type: web
-          name: taskflow-tasks-service
+          name: taskflow-accounts-service
           property: host
       - key: REACT_APP_PROJECTS_SERVICE_URL
         fromService:
           type: web
           name: taskflow-projects-service
+          property: host
+      - key: REACT_APP_TASKS_SERVICE_URL
+        fromService:
+          type: web
+          name: taskflow-tasks-service
+          property: host
+      - key: REACT_APP_FILE_SERVICE_URL
+        fromService:
+          type: web
+          name: taskflow-file-service
+          property: host
+      - key: REACT_APP_SPRINTS_SERVICE_URL
+        fromService:
+          type: web
+          name: taskflow-sprints-service
+          property: host
+      - key: REACT_APP_NOTIFICATIONS_SERVICE_URL
+        fromService:
+          type: web
+          name: taskflow-notifications-service
           property: host 

@@ -2,6 +2,20 @@
 
 ## 🚀 Hướng dẫn Deploy lên Render
 
+### Cấu trúc Repository
+```
+TaskFlow/
+├── backend/
+│   ├── AI-Service/          # Python FastAPI
+│   ├── User-Service/        # Java Spring Boot
+│   ├── Tasks-Service/       # Java Spring Boot
+│   ├── Projects-Service/    # Java Spring Boot
+│   ├── [Other-Services]/    # Các service khác
+│   ├── pom.xml             # Parent POM
+│   └── mvnw                # Maven wrapper
+└── frontend/               # React application
+```
+
 ### Bước 1: Chuẩn bị Repository
 1. **Push code lên GitHub:**
 ```bash
@@ -31,31 +45,59 @@ git push origin main
    - Name: `taskflow-ai-service`
    - Environment: `Python 3`
    - Build Command: `cd backend/AI-Service && pip install -r requirements.txt`
-   - Start Command: `cd backend/AI-Service && uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+   - Start Command: `cd backend/AI-Service && uvicorn main:app --host 0.0.0.0 --port $PORT`
 
 2. **Environment Variables:**
    ```
-   DATABASE_URL=<your-postgres-connection-string>
+   DATABASE_URL=<Copy "External Database URL" từ Render Dashboard>
    OPENAI_API_KEY=<your-openai-key>
    PYTHON_VERSION=3.11.0
+   ENVIRONMENT=production
    ```
 
-### Bước 5: Deploy Java Services
+   **Lưu ý:** Sử dụng **External Database URL** từ database dashboard, có dạng:
+   ```
+   postgresql://taskflow_user:password@hostname:5432/database_name
+   ```
+
+### Bước 5: Deploy Java Services (Sử dụng Docker)
+**Vì Render không có Java environment, chúng ta sử dụng Docker cho Java services:**
+
 **Cho mỗi service (User, Tasks, Projects):**
 
 1. **Tạo Web Service mới**
 2. **Cấu hình:**
    - Name: `taskflow-[service-name]-service`
-   - Environment: `Java`
-   - Build Command: `cd backend/[Service-Name] && ./mvnw clean install -DskipTests`
-   - Start Command: `cd backend/[Service-Name] && java -jar target/*.jar`
+   - Environment: `Docker`
+   - Dockerfile Path: `backend/[Service-Name]/Dockerfile`
+   - Auto-Deploy: `Yes`
+
+**Ví dụ cho User Service:**
+   - Environment: `Docker`
+   - Dockerfile Path: `backend/User-Service/Dockerfile`
+
+**Ví dụ cho Tasks Service:**
+   - Environment: `Docker`
+   - Dockerfile Path: `backend/Tasks-Service/Dockerfile`
+
+**Ví dụ cho Projects Service:**
+   - Environment: `Docker`
+   - Dockerfile Path: `backend/Projects-Service/Dockerfile`
 
 3. **Environment Variables:**
    ```
-   DATABASE_URL=<your-postgres-connection-string>
+   DATABASE_URL=<Copy "External Database URL" từ Render Dashboard>
    SPRING_PROFILES_ACTIVE=render
-   SERVER_PORT=$PORT
    ```
+
+   **Quan trọng:** Luôn sử dụng **External Database URL** cho tất cả services!
+
+### Docker Build Process
+Mỗi Java service sẽ được build với:
+- **Stage 1:** Maven build với OpenJDK 17
+- **Stage 2:** Runtime với OpenJDK 17 JRE (optimized)
+- **Health checks:** Tự động kiểm tra service health
+- **Security:** Non-root user execution
 
 ### Bước 6: Deploy Frontend (React)
 1. **Tạo Web Service:**
@@ -74,8 +116,22 @@ git push origin main
 
 ## 🔧 Cấu hình Database
 
+### Cấu trúc Backend Multi-Module
+Cấu trúc backend sử dụng Maven multi-module với parent POM trong thư mục `backend/`:
+
+```xml
+<!-- backend/pom.xml -->
+<packaging>pom</packaging>
+<modules>
+    <module>User-Service</module>
+    <module>Tasks-Service</module>
+    <module>Projects-Service</module>
+    <!-- Các module khác -->
+</modules>
+```
+
 ### Cập nhật Spring Boot Configuration
-Tạo file `application-render.yml` trong mỗi Java service:
+Tạo file `application-render.yml` trong mỗi Java service (`backend/[Service]/src/main/resources/`):
 
 ```yaml
 spring:
@@ -92,7 +148,7 @@ server:
 ```
 
 ### Cập nhật AI Service Configuration
-Cập nhật `backend/AI-Service/app/core/config.py`:
+AI Service đã được cấu hình trong `backend/AI-Service/app/core/config.py`:
 
 ```python
 import os
@@ -100,8 +156,8 @@ import os
 class Settings:
     DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://localhost/taskflow")
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
-    MODEL_CACHE_DIR: str = "/tmp/models"
     PORT: int = int(os.getenv("PORT", 8088))
+    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
 
 settings = Settings()
 ```
