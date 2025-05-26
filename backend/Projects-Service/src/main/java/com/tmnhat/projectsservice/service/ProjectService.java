@@ -1,7 +1,8 @@
 package com.tmnhat.projectsservice.service;
 
 import com.tmnhat.projectsservice.model.Projects;
-
+import com.tmnhat.projectsservice.model.Users;
+import com.tmnhat.projectsservice.model.ProjectMembers;
 import java.util.List;
 import java.util.UUID;
 
@@ -18,6 +19,8 @@ public interface ProjectService {
     List<Projects> getAllProjects();
 
     void assignMember(UUID projectId, UUID userId, String roleInProject);
+    
+    void assignMember(ProjectMembers memberDTO);
 
     void removeMember(UUID projectId, UUID userId);
 
@@ -35,5 +38,12 @@ public interface ProjectService {
 
     UUID addProjectReturnId(Projects project);
 
+    Projects getLatestProjectByOwnerId(UUID ownerId);
+    
+    List<Users> getProjectUsers(UUID projectId);
+    
+    void updateMemberRole(ProjectMembers memberDTO);
+    
+    String getRoleInProject(UUID projectId, UUID userId);
 
 }

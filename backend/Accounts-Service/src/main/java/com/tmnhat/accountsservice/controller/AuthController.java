@@ -1,6 +1,4 @@
 package com.tmnhat.accountsservice.controller;
-
-import com.tmnhat.accountsservice.model.Accounts;
 import com.tmnhat.accountsservice.model.LoginRequest;
 import com.tmnhat.accountsservice.service.AuthService;
 import com.tmnhat.accountsservice.validation.AccountValidator;
@@ -48,18 +46,31 @@ public class AuthController {
             throw new RuntimeException(e);
         }
     }
-
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest loginRequest) {
         try {
             AccountValidator.validateLoginRequest(loginRequest);
-
+    
             String token = authService.login(loginRequest.getEmail(), loginRequest.getPassword());
-            UUID userId = authService.getUserIdByEmail(loginRequest.getEmail()); // Thêm dòng này
-
+            UUID userId = authService.getUserIdByEmail(loginRequest.getEmail());
+    
+            if (userId == null) {
+                return ResponseEntity.status(400).body(Map.of("error", "User ID not found"));
+            }
+    
             return ResponseEntity.ok(Map.of("token", token, "userId", userId.toString()));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+    
+    @GetMapping("/{accountId}/user-id")
+    public ResponseEntity<Map<String, Object>> getUserIdByAccountId(@PathVariable UUID accountId) {
+        try {
+            UUID userId = authService.getUserIdByAccountId(accountId);
+            return ResponseEntity.ok(Map.of("userId", userId.toString()));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
         }
     }
 

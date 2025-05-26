@@ -68,6 +68,15 @@ public class TaskServiceImpl implements TaskService {
             throw new DatabaseException("Error retrieving task: " + e.getMessage());
         }
     }
+    @Override
+    public List<Tasks> getTasksByStatusAndProjectAndSprint(String status, UUID projectId, UUID sprintId) {
+        try {
+            return tasksDAO.getTasksByStatusAndProjectAndSprint(status, projectId, sprintId);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to filter tasks", e);
+        }
+    }
+
 
     @Override
     public List<Tasks> getAllTasks() {
@@ -221,6 +230,14 @@ public class TaskServiceImpl implements TaskService {
             return tasksDAO.getTaskMembers(taskId);
         } catch (Exception e) {
             throw new DatabaseException("Error retrieving task members: " + e.getMessage());
+        }
+    }
+    @Override
+    public List<Tasks> getTasksByProjectId(UUID projectId) {
+        try {
+            return tasksDAO.getTasksByProjectId(projectId);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to get tasks by projectId", e);
         }
     }
 }

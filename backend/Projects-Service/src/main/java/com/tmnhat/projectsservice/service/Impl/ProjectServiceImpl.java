@@ -2,7 +2,9 @@ package com.tmnhat.projectsservice.service.Impl;
 
 import com.tmnhat.common.exception.DatabaseException;
 import com.tmnhat.common.exception.ResourceNotFoundException;
+import com.tmnhat.projectsservice.model.ProjectMembers;
 import com.tmnhat.projectsservice.model.Projects;
+import com.tmnhat.projectsservice.model.Users;
 import com.tmnhat.projectsservice.repository.ProjectDAO;
 import com.tmnhat.projectsservice.repository.ProjectMemberDAO;
 import com.tmnhat.projectsservice.service.ProjectService;
@@ -78,6 +80,7 @@ public class ProjectServiceImpl implements ProjectService {
             throw new DatabaseException("Error retrieving projects: " + e.getMessage());
         }
     }
+    
     @Override
     public void assignMember(UUID projectId, UUID userId, String roleInProject) {
         try {
@@ -86,6 +89,24 @@ public class ProjectServiceImpl implements ProjectService {
                 throw new ResourceNotFoundException("Project not found with ID " + projectId);
             }
             projectMemberDAO.assignMember(projectId, userId, roleInProject);
+        } catch (Exception e) {
+            throw new DatabaseException("Error assigning member: " + e.getMessage());
+        }
+    }
+    
+    @Override
+    public void assignMember(ProjectMembers member) {
+        try {
+            if (member.getProjectId() == null || member.getUserId() == null) {
+                throw new IllegalArgumentException("Project ID and User ID must not be null");
+            }
+            
+            Projects project = projectDAO.getProjectById(member.getProjectId());
+            if (project == null) {
+                throw new ResourceNotFoundException("Project not found with ID " + member.getProjectId());
+            }
+            
+            projectMemberDAO.assignMember(member.getProjectId(), member.getUserId(), member.getRoleInProject());
         } catch (Exception e) {
             throw new DatabaseException("Error assigning member: " + e.getMessage());
         }
@@ -171,6 +192,72 @@ public class ProjectServiceImpl implements ProjectService {
             throw new DatabaseException("Error adding project with return ID: " + e.getMessage());
         }
     }
+    @Override
+    public Projects getLatestProjectByOwnerId(UUID ownerId) {
+        try {
+            return projectDAO.findLatestByOwnerId(ownerId);
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to fetch latest project", e);
+        }
+    }
 
-
+    @Override
+    public List<Users> getProjectUsers(UUID projectId) {
+        try {
+            // Validate the project ID
+            ProjectValidator.validateProjectId(projectId);
+            
+            // Check if the project exists
+            Projects project = projectDAO.getProjectById(projectId);
+            if (project == null) {
+                throw new ResourceNotFoundException("Project not found with ID " + projectId);
+            }
+            
+            // Get users associated with the project
+            return projectMemberDAO.getProjectUsers(projectId);
+        } catch (SQLException e) {
+            throw new DatabaseException("Error retrieving project users: " + e.getMessage());
+        }
+    }
+    
+    @Override
+    public void updateMemberRole(ProjectMembers member) {
+        try {
+            if (member.getProjectId() == null || member.getUserId() == null || member.getRoleInProject() == null) {
+                throw new IllegalArgumentException("Project ID, User ID and Role must not be null");
+            }
+            
+            Projects project = projectDAO.getProjectById(member.getProjectId());
+            if (project == null) {
+                throw new ResourceNotFoundException("Project not found with ID " + member.getProjectId());
+            }
+            
+            // Trong trường hợp thực tế, thường sẽ có một requesterId, nhưng vì không có trong DTO
+            // nên tạm thời bỏ qua việc kiểm tra quyền
+            projectMemberDAO.updateMemberRole(member.getProjectId(), 
+                                             member.getUserId(), 
+                                             member.getRoleInProject(), 
+                                             member.getProjectId()); // Sử dụng projectId tạm thời
+        } catch (Exception e) {
+            throw new DatabaseException("Error updating member role: " + e.getMessage());
+        }
+    }
+    
+    @Override
+    public String getRoleInProject(UUID projectId, UUID userId) {
+        try {
+            if (projectId == null || userId == null) {
+                throw new IllegalArgumentException("Project ID and User ID must not be null");
+            }
+            
+            Projects project = projectDAO.getProjectById(projectId);
+            if (project == null) {
+                throw new ResourceNotFoundException("Project not found with ID " + projectId);
+            }
+            
+            return projectMemberDAO.getRoleInProject(projectId, userId);
+        } catch (Exception e) {
+            throw new DatabaseException("Error retrieving role in project: " + e.getMessage());
+        }
+    }
 }

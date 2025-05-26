@@ -1,0 +1,100 @@
+services:
+  # PostgreSQL Database
+  - type: pserv
+    name: taskflow-database
+    env: docker
+    plan: free
+    databases:
+      - name: taskflow
+        user: taskflow
+
+  # AI Service (Python FastAPI)
+  - type: web
+    name: taskflow-ai-service
+    env: python3
+    buildCommand: "cd backend/AI-Service && pip install -r requirements.txt"
+    startCommand: "cd backend/AI-Service && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: taskflow-database
+          property: connectionString
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: PYTHON_VERSION
+        value: "3.11.0"
+
+  # User Service (Java Spring Boot)
+  - type: web
+    name: taskflow-user-service
+    env: java
+    buildCommand: "cd backend/User-Service && ./mvnw clean install -DskipTests"
+    startCommand: "cd backend/User-Service && java -jar target/*.jar"
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: taskflow-database
+          property: connectionString
+      - key: SPRING_PROFILES_ACTIVE
+        value: "render"
+
+  # Tasks Service (Java Spring Boot)
+  - type: web
+    name: taskflow-tasks-service
+    env: java
+    buildCommand: "cd backend/Tasks-Service && ./mvnw clean install -DskipTests"
+    startCommand: "cd backend/Tasks-Service && java -jar target/*.jar"
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: taskflow-database
+          property: connectionString
+      - key: SPRING_PROFILES_ACTIVE
+        value: "render"
+
+  # Projects Service (Java Spring Boot)
+  - type: web
+    name: taskflow-projects-service
+    env: java
+    buildCommand: "cd backend/Projects-Service && ./mvnw clean install -DskipTests"
+    startCommand: "cd backend/Projects-Service && java -jar target/*.jar"
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: taskflow-database
+          property: connectionString
+      - key: SPRING_PROFILES_ACTIVE
+        value: "render"
+
+  # Frontend (React)
+  - type: web
+    name: taskflow-frontend
+    env: node
+    buildCommand: "cd frontend && npm install && npm run build"
+    startCommand: "cd frontend && npm start"
+    plan: free
+    envVars:
+      - key: REACT_APP_AI_SERVICE_URL
+        fromService:
+          type: web
+          name: taskflow-ai-service
+          property: host
+      - key: REACT_APP_USER_SERVICE_URL
+        fromService:
+          type: web
+          name: taskflow-user-service
+          property: host
+      - key: REACT_APP_TASKS_SERVICE_URL
+        fromService:
+          type: web
+          name: taskflow-tasks-service
+          property: host
+      - key: REACT_APP_PROJECTS_SERVICE_URL
+        fromService:
+          type: web
+          name: taskflow-projects-service
+          property: host 

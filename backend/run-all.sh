@@ -1,4 +1,3 @@
-
 set -e
 
 echo "Starting all TaskFlow services..."
@@ -10,15 +9,14 @@ SERVICES=(
   "Sprints-Service"
   "Tasks-Service"
   "Notifications-Service"
+  "File-Service"
   "common"
+  "AI-Service"
 )
 
 for SERVICE in "${SERVICES[@]}"
 do
-  echo "🚀 Starting $SERVICE..."
+  echo "Starting $SERVICE..."
   mvn -pl "$SERVICE" spring-boot:run &
 done
 
-# Optional: Start Launcher-Service last
-echo "🚀 Starting Launcher-Service..."
-mvn -pl Launcher-Service spring-boot:run

@@ -1,6 +1,9 @@
 package com.tmnhat.sprintsservice.model;
 
 import com.tmnhat.sprintsservice.payload.enums.SprintStatus;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.relational.core.mapping.Table;
+import org.springframework.data.relational.core.mapping.Column;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -9,13 +12,21 @@ import java.util.UUID;
 public class Sprints {
 
     private UUID id;
+
     private UUID projectId;
+
     private String name;
+
     private LocalDate startDate;
+
     private LocalDate endDate;
+
     private String goal;
+
     private SprintStatus status;
+
     private LocalDateTime createdAt;
+
     private LocalDateTime updatedAt;
 
     public Sprints() {}
@@ -106,7 +117,7 @@ public class Sprints {
         this.updatedAt = updatedAt;
     }
 
-    // Builder Class
+    // Builder pattern
 
     public static class Builder {
         private UUID id;

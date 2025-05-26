@@ -37,6 +37,7 @@ export default function CreateProjectPage() {
         }
 
         try {
+            // Gửi yêu cầu tạo Project
             const payload = {
                 name,
                 key,
@@ -56,7 +57,21 @@ export default function CreateProjectPage() {
                 return;
             }
 
-            toast.success("Project created successfully!");
+            // Gửi yêu cầu tạo Sprint mặc định
+            const sprintPayload = {
+                name: "Sprint 1",
+                projectId: newProjectId,
+                startDate: new Date().toISOString().split("T")[0],
+                endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+                goal: null,
+                status: null,
+                createdAt: null,
+                updatedAt: null
+            };
+
+            await axios.post("http://localhost:8084/api/sprints", sprintPayload);
+
+            toast.success("Project and default sprint created successfully!");
             router.push(`/project/project_homescreen?projectId=${newProjectId}`);
         } catch (err: unknown) {
             if (axios.isAxiosError(err)) {
@@ -72,7 +87,6 @@ export default function CreateProjectPage() {
             }
         }
     };
-
 
     return (
         <div className="flex flex-col h-screen bg-white">

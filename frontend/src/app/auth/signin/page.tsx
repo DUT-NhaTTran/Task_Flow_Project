@@ -24,14 +24,30 @@ export default function SignInPage() {
                 password,
             });
 
-            //Nhận token và userId từ response
             const { token, userId } = res.data;
+            
+            console.log("Login successful, received userId:", userId);
 
-            //Lưu vào localStorage
+            // Lưu vào localStorage
             localStorage.setItem("token", token);
-            localStorage.setItem("ownerId", userId); // Dùng cho tạo project
+            localStorage.setItem("ownerId", userId);
+            
+            console.log("Saved to localStorage:", {
+                token: localStorage.getItem("token"),
+                ownerId: localStorage.getItem("ownerId")
+            });
 
-            router.push("/board");
+            // Gọi API lấy project mới nhất
+            const latestProjectRes = await axios.get(`http://localhost:8083/api/projects/latest?ownerId=${userId}`, {
+                headers: {
+                    Authorization: `Bearer ${token}`, // nếu API yêu cầu xác thực
+                },
+            });
+
+            const latestProjectId = latestProjectRes.data.projectId;
+
+            // Điều hướng tới trang project_homescreen
+            router.push(`/project/project_homescreen?projectId=${latestProjectId}`);
         } catch (err: unknown) {
             if (axios.isAxiosError(err)) {
                 const errorMessage = err.response?.data?.error || "Login failed. Please try again.";
@@ -42,6 +58,7 @@ export default function SignInPage() {
                 setError("An unknown error occurred.");
             }
         }
+
     };
 
 

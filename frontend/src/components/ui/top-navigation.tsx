@@ -168,7 +168,7 @@ export function TopNavigation() {
                     ))}
                 </div>
 
-                <Button className="bg-[#4C9AFF] hover:bg-[#2684FF] text-xs py-2 px-4">
+                <Button className="bg-blue-600 hover:bg-blue-700 text-xs py-2 px-4">
                     Create
                 </Button>
             </div>
@@ -192,7 +192,7 @@ export function TopNavigation() {
                     <Settings className="h-4 w-4" />
                 </button>
 
-                <Avatar className="h-7 w-7 bg-[#FF8B00] text-white">
+                <Avatar className="h-7 w-7 bg-blue-600 text-white">
                     <span className="text-xs font-medium">TN</span>
                 </Avatar>
             </div>

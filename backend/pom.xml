@@ -35,6 +35,7 @@
         <module>Sprints-Service</module>
         <module>Tasks-Service</module>
         <module>User-Service</module>
+        <module>File-Service</module>
     </modules>
 
     <properties>

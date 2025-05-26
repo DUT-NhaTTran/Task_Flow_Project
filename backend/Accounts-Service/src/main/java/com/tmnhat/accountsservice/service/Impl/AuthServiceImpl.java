@@ -9,7 +9,7 @@ import com.tmnhat.common.exception.DatabaseException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
-
+import com.tmnhat.common.exception.ResourceNotFoundException;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -64,6 +64,14 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public UUID getUserIdByEmail(String email) throws SQLException {
         return accountDAO.getUserIdByEmail(email);
+    }
+    @Override
+    public UUID getUserIdByAccountId(UUID accountId) {
+        try {
+            return accountDAO.getUserIdById(accountId);
+        } catch (SQLException e) {
+            throw new DatabaseException("Error retrieving user ID for account ID");
+        }
     }
 
 

@@ -24,6 +24,9 @@ public interface TaskService {
     void commentOnTask(UUID taskId, String comment);
     void attachFileToTask(UUID taskId, MultipartFile file);
     List<Tasks> getTasksBySprintId(UUID sprintId);
+    List<Tasks> getTasksByProjectId(UUID projectId);
+    List<Tasks> getTasksByStatusAndProjectAndSprint(String status, UUID projectId, UUID sprintId);
+
     //Members
     void addMemberToTask(UUID taskId, UUID userId);
     void removeMemberFromTask(UUID taskId, UUID userId);

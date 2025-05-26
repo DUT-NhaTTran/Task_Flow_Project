@@ -132,6 +132,18 @@ public class AccountDAO extends BaseDAO {
             stmt.setObject(2, accountId);
         });
     }
+    public UUID getUserIdById(UUID accountId) throws SQLException {
+        String sql = "SELECT user_id FROM accounts WHERE id = ?";
+        return executeQuery(sql, stmt -> {
+            stmt.setObject(1, accountId);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                return (UUID) rs.getObject("user_id");
+            }
+            throw new ResourceNotFoundException("No user found for account ID: " + accountId);
+        });
+    }
+    
 
 
 }

@@ -14,17 +14,16 @@ import java.util.UUID;
 public class SprintDAO extends BaseDAO {
 
     public void addSprint(Sprints sprint) throws SQLException {
-        String sql = "INSERT INTO sprints (id, project_id, name, start_date, end_date, goal, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO sprints (project_id, name, start_date, end_date, goal, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
         executeUpdate(sql, stmt -> {
-            stmt.setObject(1, sprint.getId());
-            stmt.setObject(2, sprint.getProjectId());
-            stmt.setString(3, sprint.getName());
-            stmt.setTimestamp(4, sprint.getStartDate() != null ? Timestamp.valueOf(sprint.getStartDate().atStartOfDay()) : null);
-            stmt.setTimestamp(5, sprint.getEndDate() != null ? Timestamp.valueOf(sprint.getEndDate().atStartOfDay()) : null);
-            stmt.setString(6, sprint.getGoal());
-            stmt.setString(7, sprint.getStatus() != null ? sprint.getStatus().name() : SprintStatus.NOT_STARTED.name());
-            stmt.setTimestamp(8, sprint.getCreatedAt() != null ? Timestamp.valueOf(sprint.getCreatedAt()) : Timestamp.valueOf(java.time.LocalDateTime.now()));
-            stmt.setTimestamp(9, sprint.getUpdatedAt() != null ? Timestamp.valueOf(sprint.getUpdatedAt()) : Timestamp.valueOf(java.time.LocalDateTime.now()));
+            stmt.setObject(1, sprint.getProjectId());
+            stmt.setString(2, sprint.getName());
+            stmt.setTimestamp(3, sprint.getStartDate() != null ? Timestamp.valueOf(sprint.getStartDate().atStartOfDay()) : null);
+            stmt.setTimestamp(4, sprint.getEndDate() != null ? Timestamp.valueOf(sprint.getEndDate().atStartOfDay()) : null);
+            stmt.setString(5, sprint.getGoal());
+            stmt.setString(6, sprint.getStatus() != null ? sprint.getStatus().name() : SprintStatus.NOT_STARTED.name());
+            stmt.setTimestamp(7, sprint.getCreatedAt() != null ? Timestamp.valueOf(sprint.getCreatedAt()) : Timestamp.valueOf(java.time.LocalDateTime.now()));
+            stmt.setTimestamp(8, sprint.getUpdatedAt() != null ? Timestamp.valueOf(sprint.getUpdatedAt()) : Timestamp.valueOf(java.time.LocalDateTime.now()));
         });
     }
 
@@ -91,20 +90,6 @@ public class SprintDAO extends BaseDAO {
         });
     }
 
-    // Bổ sung: Lấy tất cả Sprint theo Project ID
-    public List<Sprints> getSprintsByProject(UUID projectId) throws SQLException {
-        String sql = "SELECT * FROM sprints WHERE project_id = ?";
-        return executeQuery(sql, stmt -> {
-            stmt.setObject(1, projectId);
-            List<Sprints> sprints = new ArrayList<>();
-            ResultSet rs = stmt.executeQuery();
-            while (rs.next()) {
-                sprints.add(mapResultSetToSprint(rs));
-            }
-            return sprints;
-        });
-    }
-
     //Bổ sung: Lấy Sprint đang active của Project
     public Sprints getActiveSprintByProject(UUID projectId) throws SQLException {
         String sql = "SELECT * FROM sprints WHERE project_id = ? AND status = ?";
@@ -142,4 +127,30 @@ public class SprintDAO extends BaseDAO {
                 .updatedAt(rs.getTimestamp("updated_at") != null ? rs.getTimestamp("updated_at").toLocalDateTime() : null)
                 .build();
     }
+    public Sprints getLastSprintByProject(UUID projectId) throws SQLException {
+        String sql = "SELECT * FROM sprints WHERE project_id = ? ORDER BY end_date DESC LIMIT 1";
+        return executeQuery(sql, stmt -> {
+            stmt.setObject(1, projectId);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                return mapResultSetToSprint(rs);
+            }
+            return null;
+        });
+    }
+
+
+    public List<Sprints> getSprintsByProject(UUID projectId) throws SQLException {
+        String sql = "SELECT * FROM sprints WHERE project_id = ?";
+        return executeQuery(sql, stmt -> {
+            stmt.setObject(1, projectId);
+            List<Sprints> list = new ArrayList<>();
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                list.add(mapResultSetToSprint(rs));
+            }
+            return list;
+        });
+    }
+
 }

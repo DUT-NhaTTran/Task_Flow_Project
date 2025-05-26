@@ -1,20 +1,23 @@
 package com.tmnhat.tasksservice.controller;
 
+import com.tmnhat.common.config.WebConfig;
 import com.tmnhat.common.payload.ResponseDataAPI;
 import com.tmnhat.tasksservice.model.Tasks;
 import com.tmnhat.tasksservice.service.TaskService;
 import com.tmnhat.tasksservice.service.Impl.TaskServiceImpl;
 import com.tmnhat.tasksservice.validation.TaskValidator;
 import com.tmnhat.common.exception.BadRequestException;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.UUID;
+@Import(WebConfig.class)
 
 @RestController
-@RequestMapping("/tasks")
+@RequestMapping("api/tasks")
 public class TasksController {
 
     private final TaskService taskService;
@@ -32,7 +35,7 @@ public class TasksController {
     }
 
     // Update task
-    @PatchMapping("/{id}")
+    @PutMapping("/{id}")
     public ResponseEntity<ResponseDataAPI> updateTask(@PathVariable UUID id, @RequestBody Tasks task) {
         TaskValidator.validateTaskId(id);
         TaskValidator.validateTask(task);
@@ -48,14 +51,20 @@ public class TasksController {
         return ResponseEntity.ok(ResponseDataAPI.successWithoutMetaAndData());
     }
 
-    // Get task by ID
-    @GetMapping("/{id}")
+    @GetMapping("/get-by-id/{id}")
     public ResponseEntity<ResponseDataAPI> getTaskById(@PathVariable UUID id) {
         TaskValidator.validateTaskId(id);
         Tasks task = taskService.getTaskById(id);
         return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(task));
     }
-
+    @GetMapping("/filter_details")
+    public ResponseEntity<ResponseDataAPI> getTasksByStatusProjectSprint(
+            @RequestParam String status,
+            @RequestParam UUID projectId,
+            @RequestParam UUID sprintId) {
+            List<Tasks> tasks = taskService.getTasksByStatusAndProjectAndSprint(status, projectId, sprintId);
+            return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(tasks));
+    }
     // Get all tasks
     @GetMapping
     public ResponseEntity<ResponseDataAPI> getAllTasks() {
@@ -197,5 +206,9 @@ public class TasksController {
         TaskValidator.validateTaskId(taskId);
         List<UUID> members = taskService.getTaskMembers(taskId);
         return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(members));
+    }
+    @GetMapping("/project/{projectId}")
+    public List<Tasks> getTasksByProjectId(@PathVariable UUID projectId) {
+        return taskService.getTasksByProjectId(projectId);
     }
 }

@@ -55,6 +55,18 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+         <dependency>
+            <groupId>com.tmnhat</groupId>
+            <artifactId>common</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+            <scope>compile</scope>
+        </dependency>
+        <dependency>
+  <groupId>com.cloudinary</groupId>
+  <artifactId>cloudinary-http44</artifactId>
+  <version>1.37.0</version>
+</dependency>
+
     </dependencies>
 
     <build>

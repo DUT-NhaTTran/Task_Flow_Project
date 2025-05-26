@@ -167,7 +167,34 @@ public class ProjectDAO extends BaseDAO {
             }
         });
     }
+    public Projects findLatestByOwnerId(UUID ownerId) throws SQLException {
+        String sql = "SELECT * FROM projects WHERE owner_id = ? ORDER BY created_at DESC LIMIT 1";
 
-
-
+        return executeQuery(sql, stmt -> {
+            stmt.setObject(1, ownerId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    Projects project = new Projects();
+                    project.setId((UUID) rs.getObject("id"));
+                    project.setName(rs.getString("name"));
+                    project.setDescription(rs.getString("description"));
+                    project.setOwnerId((UUID) rs.getObject("owner_id"));
+                    Timestamp deadlineTs = rs.getTimestamp("deadline");
+                    if (deadlineTs != null) {
+                        project.setDeadline(deadlineTs.toLocalDateTime().toLocalDate());
+                    }
+                    Timestamp createdAtTs = rs.getTimestamp("created_at");
+                    if (createdAtTs != null) {
+                        project.setCreatedAt(createdAtTs.toLocalDateTime());
+                    }
+                    project.setKey(rs.getString("key"));
+                    project.setProjectType(rs.getString("project_type"));
+                    project.setAccess(rs.getString("access"));
+                    return project;
+                } else {
+                    return null;
+                }
+            }
+        });
+    }
 }

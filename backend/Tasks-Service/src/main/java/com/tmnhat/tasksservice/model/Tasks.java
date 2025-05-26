@@ -22,7 +22,8 @@ public class Tasks {
     private LocalDateTime createdAt;
     private LocalDateTime completedAt;
     private UUID parentTaskId;
-    private List<TaskTag> tags;     // ✅ Thêm tags
+    private List<TaskTag> tags;
+    private String label;
 
     public Tasks() {
     }
@@ -41,6 +42,7 @@ public class Tasks {
         this.completedAt = builder.completedAt;
         this.parentTaskId = builder.parentTaskId;
         this.tags = builder.tags;
+        this.label = builder.label;
     }
 
     // ✅ Getters & Setters
@@ -149,6 +151,14 @@ public class Tasks {
         this.tags = tags;
     }
 
+    public String getLabel() {
+        return label;
+    }
+
+    public void setLabel(String label) {
+        this.label = label;
+    }
+
     // Builder class
 
     public static class Builder {
@@ -165,6 +175,7 @@ public class Tasks {
         private LocalDateTime completedAt;
         private UUID parentTaskId;
         private List<TaskTag> tags;
+        private String label;
 
         public Builder() {}
 
@@ -230,6 +241,11 @@ public class Tasks {
 
         public Builder tags(List<TaskTag> tags) {
             this.tags = tags;
+            return this;
+        }
+
+        public Builder label(String label) {
+            this.label = label;
             return this;
         }
 

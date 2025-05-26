@@ -142,4 +142,22 @@ public class SprintServiceImpl implements SprintService {
         }
     }
 
+    @Override
+    public Sprints getLastSprintOfProject(UUID projectId) {
+        try {
+            return sprintsDAO.getLastSprintByProject(projectId);
+        } catch (Exception e) {
+            throw new DatabaseException("Error retrieving last sprint: " + e.getMessage());
+        }
+    }
+    @Override
+    public List<Sprints> getAllSprintsByProject(UUID projectId){
+        try {
+            return sprintsDAO.getSprintsByProject(projectId);
+        } catch (Exception e) {
+            throw new DatabaseException("Error getting sprints for project " + projectId + ": " + e.getMessage());
+        }
+    }
+
+
 }
