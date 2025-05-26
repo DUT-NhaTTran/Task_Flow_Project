@@ -61,6 +61,60 @@ class MLService:
             )
             await self._train_story_point_model()
             
+    async def _train_story_point_model(self):
+        """Train story point model with synthetic data"""
+        try:
+            # Generate synthetic training data
+            X_train, y_train = self._generate_synthetic_story_point_data()
+            
+            # Train the model
+            self.models['story_points'].fit(X_train, y_train)
+            
+            # Save the trained model
+            model_file = os.path.join(self.model_path, "story_point_model.pkl")
+            joblib.dump(self.models['story_points'], model_file)
+            
+            logger.info("✅ Story point model trained and saved")
+        except Exception as e:
+            logger.error(f"❌ Error training story point model: {e}")
+            
+    def _generate_synthetic_story_point_data(self):
+        """Generate synthetic training data for story point prediction"""
+        # Generate 1000 synthetic examples
+        n_samples = 1000
+        
+        # Features: [title_length, desc_length, complexity_keywords, assignee_avg, completion_rate, workload]
+        X = []
+        y = []
+        
+        for _ in range(n_samples):
+            # Random features
+            title_length = np.random.randint(5, 50)
+            desc_length = np.random.randint(0, 200)
+            complexity_keywords = np.random.randint(0, 5)
+            assignee_avg = np.random.uniform(2, 8)
+            completion_rate = np.random.uniform(0.5, 1.0)
+            workload = np.random.randint(0, 20)
+            
+            # Calculate story points based on rules
+            base_points = 1
+            if title_length > 30: base_points += 1
+            if desc_length > 100: base_points += 2
+            if complexity_keywords > 2: base_points += complexity_keywords
+            
+            # Adjust for assignee
+            if assignee_avg > 5: base_points += 1
+            if completion_rate < 0.7: base_points += 1
+            if workload > 15: base_points += 1
+            
+            # Add some randomness
+            story_points = max(1, min(13, base_points + np.random.randint(-1, 2)))
+            
+            X.append([title_length, desc_length, complexity_keywords, assignee_avg, completion_rate, workload])
+            y.append(story_points)
+            
+        return np.array(X), np.array(y)
+            
     async def _load_or_create_completion_model(self):
         """Load or create task completion probability model"""
         model_file = os.path.join(self.model_path, "completion_model.pkl")
@@ -74,6 +128,58 @@ class MLService:
                 random_state=42
             )
             await self._train_completion_model()
+            
+    async def _train_completion_model(self):
+        """Train completion probability model with synthetic data"""
+        try:
+            # Generate synthetic training data
+            X_train, y_train = self._generate_synthetic_completion_data()
+            
+            # Train the model
+            self.models['completion'].fit(X_train, y_train)
+            
+            # Save the trained model
+            model_file = os.path.join(self.model_path, "completion_model.pkl")
+            joblib.dump(self.models['completion'], model_file)
+            
+            logger.info("✅ Completion model trained and saved")
+        except Exception as e:
+            logger.error(f"❌ Error training completion model: {e}")
+            
+    def _generate_synthetic_completion_data(self):
+        """Generate synthetic training data for completion prediction"""
+        # Generate 1000 synthetic examples
+        n_samples = 1000
+        
+        # Features: [story_points, days_remaining, assignee_workload, priority]
+        X = []
+        y = []
+        
+        for _ in range(n_samples):
+            story_points = np.random.randint(1, 14)
+            days_remaining = np.random.randint(1, 30)
+            assignee_workload = np.random.randint(0, 25)
+            priority = np.random.randint(1, 5)  # 1=low, 5=high
+            
+            # Calculate completion probability based on rules
+            prob = 0.8  # Base probability
+            
+            if story_points > 8: prob -= 0.2
+            if days_remaining < 3: prob -= 0.3
+            if assignee_workload > 15: prob -= 0.2
+            if priority > 3: prob += 0.1
+            
+            # Add randomness
+            prob += np.random.uniform(-0.1, 0.1)
+            prob = max(0.1, min(0.9, prob))
+            
+            # Binary classification: 1 if prob > 0.6, else 0
+            completion = 1 if prob > 0.6 else 0
+            
+            X.append([story_points, days_remaining, assignee_workload, priority])
+            y.append(completion)
+            
+        return np.array(X), np.array(y)
             
     async def _initialize_text_classifier(self):
         """Initialize HuggingFace text classifier"""
