@@ -99,22 +99,29 @@ Mỗi Java service sẽ được build với:
 - **Health checks:** Tự động kiểm tra service health
 - **Security:** Non-root user execution
 
-### Bước 6: Deploy Frontend (React)
+### Bước 6: Deploy Frontend (Next.js)
 1. **Tạo Web Service:**
    - Name: `taskflow-frontend`
    - Environment: `Node`
    - Build Command: `cd frontend && npm install && npm run build`
-   - Start Command: `cd frontend && npm start`
+   - Start Command: `cd frontend && npm run start`
 
 2. **Environment Variables:**
    ```
+   NODE_ENV=production
    REACT_APP_AI_SERVICE_URL=https://taskflow-ai-service.onrender.com
    REACT_APP_USER_SERVICE_URL=https://taskflow-user-service.onrender.com
-   REACT_APP_TASKS_SERVICE_URL=https://taskflow-tasks-service.onrender.com
+   REACT_APP_ACCOUNTS_SERVICE_URL=https://taskflow-accounts-service.onrender.com
    REACT_APP_PROJECTS_SERVICE_URL=https://taskflow-projects-service.onrender.com
+   REACT_APP_TASKS_SERVICE_URL=https://taskflow-tasks-service.onrender.com
+   REACT_APP_FILE_SERVICE_URL=https://taskflow-file-service.onrender.com
+   REACT_APP_SPRINTS_SERVICE_URL=https://taskflow-sprints-service.onrender.com
+   REACT_APP_NOTIFICATIONS_SERVICE_URL=https://taskflow-notifications-service.onrender.com
    ```
 
-## 🔧 Cấu hình Database
+   **Lưu ý:** Next.js sẽ tự động sử dụng các environment variables này trong production.
+
+## �� Cấu hình Database
 
 ### Cấu trúc Backend Multi-Module
 Cấu trúc backend sử dụng Maven multi-module với parent POM trong thư mục `backend/`:

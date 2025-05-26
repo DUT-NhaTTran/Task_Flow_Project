@@ -125,14 +125,16 @@ services:
       - key: SPRING_PROFILES_ACTIVE
         value: "render"
 
-  # Frontend (React)
+  # Frontend (Next.js)
   - type: web
     name: taskflow-frontend
     env: node
     buildCommand: "cd frontend && npm install && npm run build"
-    startCommand: "cd frontend && npm start"
+    startCommand: "cd frontend && npm run start"
     plan: free
     envVars:
+      - key: NODE_ENV
+        value: "production"
       - key: REACT_APP_AI_SERVICE_URL
         fromService:
           type: web
