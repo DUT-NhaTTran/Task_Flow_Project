@@ -9,8 +9,22 @@ import { TopNavigation } from "@/components/ui/top-navigation";
 import { Sidebar } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Dropdown } from "@/components/ui/drop-down";
 import { toast } from "sonner";
-import { ChevronLeft, ChevronRight, Search, Calendar as CalendarIcon, Filter, ChevronDown, X, RotateCcw, User } from "lucide-react";
+import { NavigationProgress } from "@/components/ui/LoadingScreen";
+import { useNavigation } from "@/contexts/NavigationContext";
+import { ChevronLeft, ChevronRight, Search, Calendar as CalendarIcon, Filter, ChevronDown, X, RotateCcw, Edit } from "lucide-react";
+
+// Custom debounce function
+const debounce = (func: (...args: any[]) => void, delay: number) => {
+  let timeoutId: NodeJS.Timeout;
+  const debouncedFunc = (...args: any[]) => {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => func(...args), delay);
+  };
+  debouncedFunc.cancel = () => clearTimeout(timeoutId);
+  return debouncedFunc;
+};
 
 // Type definitions
 interface Task {
@@ -30,8 +44,8 @@ interface Sprint {
   startDate?: string;
   endDate?: string;
   status?: string;
-  assigneeId?: string | null;
-  assigneeName?: string | null;
+  goal?: string;
+  projectId?: string;
 }
 
 interface CalendarWeek {
@@ -47,29 +61,42 @@ interface SprintBar {
   row: number;
   isFirst: boolean;
   isLast: boolean;
-  assigneeId?: string | null;
-  assigneeName?: string | null;
-}
-
-interface User {
-  id: string;
-  name: string;
-  email?: string;
-  avatar?: string;
 }
 
 // Extract SprintModal component to make code clearer
 const SprintDetailPopup = ({ 
   sprint, 
   position, 
-  onClose 
+  onClose,
+  onEdit
 }: { 
   sprint: Sprint, 
   position: { x: number, y: number }, 
-  onClose: () => void 
+  onClose: () => void,
+  onEdit: (sprint: Sprint) => void
 }) => {
+  const [showMenu, setShowMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  
   const startDate = sprint.startDate ? format(parseISO(sprint.startDate), 'MMM d, yyyy') : 'Not set';
   const endDate = sprint.endDate ? format(parseISO(sprint.endDate), 'MMM d, yyyy') : 'Not set';
+  
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setShowMenu(false);
+      }
+    };
+    
+    if (showMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showMenu]);
   
   // Get color scheme for the sprint - using simplified JIRA-like colors
   const getSprintColor = (name: string, id: string) => {
@@ -165,14 +192,31 @@ const SprintDetailPopup = ({
             <h2 className={`font-medium ${colors.text} uppercase text-sm`}>SPRINT</h2>
           </div>
           <div className="flex items-center gap-2">
-            <button className={`${colors.accent} hover:opacity-80`}>
-              <span className="sr-only">Options</span>
-              <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                <circle cx="4" cy="10" r="2" />
-                <circle cx="10" cy="10" r="2" />
-                <circle cx="16" cy="10" r="2" />
-              </svg>
-            </button>
+            <div className="relative" ref={menuRef}>
+              <button 
+                className={`${colors.accent} hover:opacity-80 p-1 rounded hover:bg-gray-100`}
+                onClick={() => setShowMenu(!showMenu)}
+              >
+                <span className="sr-only">Options</span>
+                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <circle cx="4" cy="10" r="2" />
+                  <circle cx="10" cy="10" r="2" />
+                  <circle cx="16" cy="10" r="2" />
+                </svg>
+              </button>
+              
+              {showMenu && (
+                <div className="absolute right-0 top-full mt-1 w-32 bg-white border border-gray-200 rounded-md shadow-lg z-10">
+                  <button
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center gap-2"
+                    onClick={() => onEdit(sprint)}
+                  >
+                    <Edit className="h-3 w-3" />
+                    Edit sprint
+                  </button>
+                </div>
+              )}
+            </div>
             <button 
               className={`${colors.accent} hover:opacity-80`}
               onClick={onClose}
@@ -201,6 +245,13 @@ const SprintDetailPopup = ({
               <p className="text-base text-gray-700">{endDate}</p>
             </div>
           </div>
+          
+          {sprint.goal && (
+            <div className="mt-3">
+              <h3 className={`${colors.text} font-medium mb-1 text-sm`}>Sprint goal</h3>
+              <p className="text-sm text-gray-700">{sprint.goal}</p>
+            </div>
+          )}
         </div>
       </div>
     </>
@@ -244,368 +295,128 @@ const CalendarToolbar = ({
   currentDate,
   goToToday,
   previousMonth,
-  nextMonth
+  nextMonth,
+  searchTerm,
+  onSearchChange,
+  onMonthSelect,
+  sprintsCount,
+  totalSprintsCount
 }: {
   currentDate: Date,
   goToToday: () => void,
   previousMonth: () => void,
-  nextMonth: () => void
-}) => (
-  <div className="p-4 flex flex-wrap items-center gap-2 border-b">
-    <div className="relative w-56">
-      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-      <Input 
-        className="pl-10 h-9" 
-        placeholder="Search calendar" 
-      />
-    </div>
-    
-    <div className="flex items-center ml-2 gap-2">
-      <Button variant="outline" className="flex items-center gap-1 h-9">
-        Assignee <ChevronDown className="h-4 w-4" />
-      </Button>
-      
-      <Button variant="outline" className="flex items-center gap-1 h-9">
-        Type <ChevronDown className="h-4 w-4" />
-      </Button>
-      
-      <Button variant="outline" className="flex items-center gap-1 h-9">
-        Status <ChevronDown className="h-4 w-4" />
-      </Button>
-      
-      <Button variant="outline" className="flex items-center gap-1 h-9">
-        More filters <ChevronDown className="h-4 w-4" />
-      </Button>
-    </div>
-    
-    <div className="ml-auto flex items-center gap-2">
-      <Button 
-        variant="outline" 
-        size="sm"
-        onClick={goToToday}
-        className="h-9"
-      >
-        Today
-      </Button>
-      
-      <Button
-        variant="outline"
-        size="icon"
-        onClick={previousMonth}
-        className="h-9 w-9"
-      >
-        <ChevronLeft className="h-4 w-4" />
-      </Button>
-      
-      <span className="font-medium px-2">
-        {format(currentDate, "MMMM yyyy")}
-      </span>
-      
-      <Button
-        variant="outline"
-        size="icon"
-        onClick={nextMonth}
-        className="h-9 w-9"
-      >
-        <ChevronRight className="h-4 w-4" />
-      </Button>
-      
-      <div className="flex border rounded overflow-hidden">
-        <Button 
-          variant="ghost" 
-          size="sm"
-          className="h-9 px-3"
-        >
-          <CalendarIcon className="h-4 w-4 mr-1" /> Month
-        </Button>
-        <Button 
-          variant="ghost" 
-          size="sm"
-          className="h-9 px-3"
-        >
-          <span className="sr-only">List</span>
-          List
-        </Button>
-      </div>
-    </div>
-  </div>
-);
-
-// Component for the AssigneeDropdown
-const AssigneeDropdown = ({ 
-  sprint, 
-  users, 
-  onAssign, 
-  position,
-  onClose 
-}: { 
-  sprint: Sprint, 
-  users: User[], 
-  onAssign: (sprintId: string, userId: string | null, userName: string | null) => void,
-  position: { x: number, y: number },
-  onClose: () => void
+  nextMonth: () => void,
+  searchTerm: string,
+  onSearchChange: (term: string) => void,
+  onMonthSelect: (month: number) => void,
+  sprintsCount: number,
+  totalSprintsCount: number
 }) => {
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = currentDate.getMonth();
   
-  const handleClickOutside = (event: MouseEvent) => {
-    if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-      onClose();
+  const months = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+
+  // Tạo options cho dropdown với tất cả 12 tháng
+  const monthOptions = months.map((month, index) => {
+    return month; // Đơn giản chỉ trả về tên tháng
+  });
+
+  const handleMonthDropdownSelect = (selectedOption: string) => {
+    console.log('Month selected:', selectedOption); // Debug log
+    const monthIndex = months.indexOf(selectedOption);
+    console.log('Month index:', monthIndex); // Debug log
+    
+    if (monthIndex !== -1) {
+      onMonthSelect(monthIndex);
     }
   };
-  
-  useEffect(() => {
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
-  
-  // Calculate safe positioning to keep dropdown within viewport
-  const adjustPositionForViewport = () => {
-    const dropdownWidth = 250; // Width of dropdown in pixels
-    const dropdownHeight = Math.min(300, users.length * 50 + 100); // Approx height based on users
-    const padding = 16; // Padding from window edges
-    
-    let left = position.x;
-    const viewportWidth = window.innerWidth;
-    if (left + dropdownWidth > viewportWidth - padding) {
-      left = viewportWidth - dropdownWidth - padding;
-    }
-    
-    let top = position.y;
-    const viewportHeight = window.innerHeight;
-    if (top + dropdownHeight > viewportHeight - padding) {
-      top = viewportHeight - dropdownHeight - padding;
-    }
-    
-    return { left, top };
+
+  // Get current month display value for the dropdown
+  const getCurrentMonthValue = () => {
+    return months[currentMonth];
   };
-  
-  const { left, top } = adjustPositionForViewport();
-  
-  const assignToMe = () => {
-    // Assumes there's a current user - in real app, get from context/auth
-    const currentUser = {
-      id: "current-user-id",
-      name: "Nhật Trần",
-      email: "102210072@sv1.dut.udn.vn"
-    };
-    
-    onAssign(sprint.id, currentUser.id, currentUser.name);
-  };
-  
-  const getInitials = (name: string) => {
-    if (!name) return "?";
-    const names = name.split(' ');
-    if (names.length >= 2) {
-      return `${names[0][0]}${names[names.length - 1][0]}`.toUpperCase();
-    }
-    return name.substring(0, 2).toUpperCase();
-  };
-  
+
+  console.log('Current month options:', monthOptions); // Debug log
+  console.log('Current month value:', getCurrentMonthValue()); // Debug log
+
   return (
-    <div 
-      ref={dropdownRef}
-      className="fixed z-50 bg-white rounded-md shadow-lg w-64 border border-gray-200"
-      style={{
-        top: `${top}px`,
-        left: `${left}px`,
-      }}
-    >
-      <div className="py-1 border-b border-gray-200">
-        <div 
-          className="px-3 py-2 flex items-center gap-2 hover:bg-blue-50 cursor-pointer"
-          onClick={() => onAssign(sprint.id, null, null)}
-        >
-          <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600">
-            <User className="h-4 w-4" />
-          </div>
-          <div className="font-medium text-sm">Unassigned</div>
-          {!sprint.assigneeId && (
-            <div className="ml-auto bg-blue-100 rounded px-2 py-0.5 text-xs text-blue-700">Current</div>
+    <div className="p-4 flex flex-wrap items-center gap-3 border-b bg-white">
+      {/* Search Section */}
+      <div className="flex items-center gap-3">
+        <div className="relative w-56">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Input 
+            className="pl-10 h-9 border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" 
+            placeholder="Search sprints..." 
+            value={searchTerm}
+            onChange={(e) => onSearchChange(e.target.value)}
+          />
+          {searchTerm && (
+            <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+              <div className="animate-spin h-3 w-3 border border-gray-300 rounded-full border-t-blue-500"></div>
+            </div>
           )}
         </div>
         
-        <div 
-          className="px-3 py-2 flex items-center gap-2 hover:bg-gray-100 cursor-pointer"
-        >
-          <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600">
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
+        {/* Search Results Indicator */}
+        {searchTerm && (
+          <div className="text-sm text-gray-600 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-md">
+            <span className="font-medium text-blue-700">{sprintsCount}</span> of {totalSprintsCount} sprints found
           </div>
-          <div className="font-medium text-sm">Automatic</div>
-        </div>
-      </div>
-      
-      <div className="py-1 border-b border-gray-200">
-        <div 
-          className="px-3 py-2 flex items-center gap-2 hover:bg-blue-50 cursor-pointer"
-          onClick={assignToMe}
-        >
-          <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center text-white font-medium">
-            NT
-          </div>
-          <div>
-            <div className="font-medium text-sm">Nhật Trần <span className="text-gray-500 font-normal">(Assign to me)</span></div>
-            <div className="text-xs text-gray-500">102210072@sv1.dut.udn.vn</div>
-          </div>
-        </div>
-      </div>
-      
-      <div className="py-1 max-h-60 overflow-y-auto">
-        {users.map(user => (
-          <div 
-            key={user.id}
-            className="px-3 py-2 flex items-center gap-2 hover:bg-blue-50 cursor-pointer"
-            onClick={() => onAssign(sprint.id, user.id, user.name)}
-          >
-            <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center text-gray-700 font-medium">
-              {getInitials(user.name)}
-            </div>
-            <div>
-              <div className="font-medium text-sm">{user.name}</div>
-              {user.email && <div className="text-xs text-gray-500">{user.email}</div>}
-            </div>
-            {sprint.assigneeId === user.id && (
-              <div className="ml-auto bg-blue-100 rounded px-2 py-0.5 text-xs text-blue-700">Current</div>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-// Hiển thị thanh sprint trong một tuần
-const SprintBar = ({ 
-  sprint, 
-  weekIndex, 
-  sprints, 
-  onSprintClick,
-  onAssigneeClick
-}: { 
-  sprint: SprintBar, 
-  weekIndex: number, 
-  sprints: Sprint[], 
-  onSprintClick: (sprint: Sprint, event: React.MouseEvent) => void,
-  onAssigneeClick: (sprint: Sprint, event: React.MouseEvent) => void
-}) => {
-  const width = sprint.endDay - sprint.startDay + 1;
-  
-  // Find the actual sprint object from the sprints array
-  const actualSprint = sprints.find(s => s.id === sprint.id);
-  
-  // Simplified JIRA-like color scheme
-  const getSprintColor = (name: string, id: string) => {
-    // Create a deterministic color based on the sprint ID
-    const hashCode = (str: string) => {
-      let hash = 0;
-      for (let i = 0; i < str.length; i++) {
-        hash = str.charCodeAt(i) + ((hash << 5) - hash);
-      }
-      return hash;
-    };
-    
-    // Simple, clean color scheme like in the image with distinct background colors
-    const colorSets = [
-      { bg: 'bg-blue-50', border: 'border-blue-300', dot: 'bg-blue-600', text: 'text-gray-700', labelBg: 'bg-blue-50' },
-      { bg: 'bg-green-50', border: 'border-green-300', dot: 'bg-green-600', text: 'text-gray-700', labelBg: 'bg-green-50' },
-      { bg: 'bg-purple-50', border: 'border-purple-300', dot: 'bg-purple-600', text: 'text-gray-700', labelBg: 'bg-purple-50' },
-      { bg: 'bg-amber-50', border: 'border-amber-300', dot: 'bg-amber-600', text: 'text-gray-700', labelBg: 'bg-amber-50' },
-      { bg: 'bg-red-50', border: 'border-red-300', dot: 'bg-red-600', text: 'text-gray-700', labelBg: 'bg-red-50' },
-      { bg: 'bg-cyan-50', border: 'border-cyan-300', dot: 'bg-cyan-600', text: 'text-gray-700', labelBg: 'bg-cyan-50' },
-      { bg: 'bg-indigo-50', border: 'border-indigo-300', dot: 'bg-indigo-600', text: 'text-gray-700', labelBg: 'bg-indigo-50' },
-      { bg: 'bg-orange-50', border: 'border-orange-300', dot: 'bg-orange-600', text: 'text-gray-700', labelBg: 'bg-orange-50' },
-    ];
-    
-    // Special named sprints get consistent colors
-    if (name.toLowerCase().includes('sprint 1') || name.toLowerCase().includes('scrum-1')) {
-      return colorSets[0]; // Blue
-    } else if (name.toLowerCase().includes('sprint 2') || name.toLowerCase().includes('scrum-2')) {
-      return colorSets[1]; // Green
-    } else if (name.toLowerCase().includes('sprint 3') || name.toLowerCase().includes('scrum-3')) {
-      return colorSets[2]; // Purple
-    } else if (name.toLowerCase().includes('sprint 4') || name.toLowerCase().includes('scrum-4')) {
-      return colorSets[3]; // Amber
-    } else if (name.toLowerCase().includes('new sprint')) {
-      return colorSets[4]; // Red
-    } else {
-      // For other sprints, use the ID to create a deterministic color
-      const hash = Math.abs(hashCode(id));
-      return colorSets[hash % colorSets.length];
-    }
-  };
-  
-  const colors = getSprintColor(sprint.name, sprint.id);
-  
-  const handleClick = (e: React.MouseEvent) => {
-    if (actualSprint) {
-      onSprintClick(actualSprint, e);
-    }
-  };
-  
-  const handleAssigneeClick = (e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent sprint click
-    if (actualSprint) {
-      onAssigneeClick(actualSprint, e);
-    }
-  };
-  
-  // Get initials for assignee avatar
-  const getInitials = (name?: string | null) => {
-    if (!name) return "";
-    const names = name.split(' ');
-    if (names.length >= 2) {
-      return `${names[0][0]}${names[names.length - 1][0]}`.toUpperCase();
-    }
-    return name.substring(0, 2).toUpperCase();
-  };
-  
-  return (
-    <div 
-      key={`${sprint.id}-${weekIndex}-${sprint.row}`}
-      className="sprint-bar absolute h-6 z-10 cursor-pointer"
-      onClick={handleClick}
-      style={{
-        gridRow: `row-sprint-${sprint.row}`,
-        gridColumn: `${sprint.startDay + 1} / ${sprint.endDay + 2}`,
-        top: `${24 + sprint.row * 24}px`,
-        left: `${sprint.startDay * (100/7) + 1}%`,
-        width: `${width * (100/7) - 2}%` // Giảm một chút để tạo khoảng cách
-      }}
-    >
-      <div 
-        className={`
-          h-full flex items-center justify-between px-1.5 ${colors.bg} border ${colors.border} text-xs
-          ${sprint.isFirst ? 'rounded-l' : 'border-l-0 rounded-l-none'} 
-          ${sprint.isLast ? 'rounded-r' : 'border-r-0 rounded-r-none'}
-          shadow-sm hover:shadow-md transition-shadow
-        `}
-      >
-        {sprint.isFirst && (
-          <>
-            <div className="flex items-center">
-              <input type="checkbox" className="w-3 h-3 mr-1.5 rounded text-blue-500" checked disabled />
-              <span className={`truncate font-medium text-xs ${colors.text}`}>{sprint.name}</span>
-            </div>
-            
-            <div 
-              className="ml-auto cursor-pointer" 
-              onClick={handleAssigneeClick}
-            >
-              {sprint.assigneeName ? (
-                <div className="w-5 h-5 rounded-full bg-green-600 text-white text-[9px] font-medium flex items-center justify-center">
-                  {getInitials(sprint.assigneeName)}
-                </div>
-              ) : (
-                <div className="w-5 h-5 rounded-full bg-gray-200 text-gray-500 flex items-center justify-center">
-                  <User className="h-3 w-3" />
-                </div>
-              )}
-            </div>
-          </>
         )}
+      </div>
+      
+      {/* Navigation Section */}
+      <div className="ml-auto flex items-center gap-2">
+        <Button 
+          variant="outline" 
+          size="sm"
+          onClick={goToToday}
+          className="h-9 border-gray-300 hover:border-gray-400 hover:bg-gray-50"
+        >
+          Today
+        </Button>
+        
+        <div className="flex items-center gap-1">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={previousMonth}
+            className="h-9 w-9 border-gray-300 hover:border-gray-400 hover:bg-gray-50"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          
+          <div className="min-w-[140px] text-center px-3">
+            <span className="font-semibold text-gray-900 text-base">
+              {format(currentDate, "MMMM yyyy")}
+            </span>
+          </div>
+          
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={nextMonth}
+            className="h-9 w-9 border-gray-300 hover:border-gray-400 hover:bg-gray-50"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+        
+        {/* Month Dropdown - Standalone */}
+        <div className="relative">
+          <Dropdown
+            options={monthOptions}
+            onSelect={handleMonthDropdownSelect}
+            defaultValue={getCurrentMonthValue()}
+            placeholder="Select Month"
+          />
+        </div>
+      
       </div>
     </div>
   );
@@ -618,14 +429,14 @@ const WeekRow = ({
   currentDate, 
   sprints, 
   onSprintClick,
-  onAssigneeClick
+  highlightedSprintId
 }: { 
   week: CalendarWeek, 
   weekIndex: number, 
   currentDate: Date, 
   sprints: Sprint[], 
   onSprintClick: (sprint: Sprint, e: React.MouseEvent) => void,
-  onAssigneeClick: (sprint: Sprint, e: React.MouseEvent) => void
+  highlightedSprintId?: string | null
 }) => (
   <div key={`week-${weekIndex}`} className="relative">
     {/* Ngày trong tuần */}
@@ -638,16 +449,82 @@ const WeekRow = ({
     </div>
     
     {/* Sprint bars cho tuần này */}
-    {week.sprints.map(sprint => (
-      <SprintBar 
-        key={`sprint-${sprint.id}-${weekIndex}-${sprint.row}`}
-        sprint={sprint} 
-        weekIndex={weekIndex} 
-        sprints={sprints} 
-        onSprintClick={onSprintClick}
-        onAssigneeClick={onAssigneeClick}
-      />
-    ))}
+    {week.sprints.map(sprint => {
+      // Get color scheme for the sprint
+      const getSprintColor = (name: string, id: string) => {
+        const hashCode = (str: string) => {
+          let hash = 0;
+          for (let i = 0; i < str.length; i++) {
+            hash = str.charCodeAt(i) + ((hash << 5) - hash);
+          }
+          return hash;
+        };
+        
+        const colorSets = [
+          { bg: 'bg-blue-50', border: 'border-blue-300', text: 'text-gray-700' },
+          { bg: 'bg-green-50', border: 'border-green-300', text: 'text-gray-700' },
+          { bg: 'bg-purple-50', border: 'border-purple-300', text: 'text-gray-700' },
+          { bg: 'bg-amber-50', border: 'border-amber-300', text: 'text-gray-700' },
+          { bg: 'bg-red-50', border: 'border-red-300', text: 'text-gray-700' },
+          { bg: 'bg-cyan-50', border: 'border-cyan-300', text: 'text-gray-700' },
+          { bg: 'bg-indigo-50', border: 'border-indigo-300', text: 'text-gray-700' },
+          { bg: 'bg-orange-50', border: 'border-orange-300', text: 'text-gray-700' },
+        ];
+        
+        if (name.toLowerCase().includes('sprint 1') || name.toLowerCase().includes('scrum-1')) {
+          return colorSets[0];
+        } else if (name.toLowerCase().includes('sprint 2') || name.toLowerCase().includes('scrum-2')) {
+          return colorSets[1];
+        } else if (name.toLowerCase().includes('sprint 3') || name.toLowerCase().includes('scrum-3')) {
+          return colorSets[2];
+        } else if (name.toLowerCase().includes('sprint 4') || name.toLowerCase().includes('scrum-4')) {
+          return colorSets[3];
+        } else if (name.toLowerCase().includes('new sprint')) {
+          return colorSets[4];
+        } else {
+          const hash = Math.abs(hashCode(id));
+          return colorSets[hash % colorSets.length];
+        }
+      };
+      
+      const colors = getSprintColor(sprint.name, sprint.id);
+      const actualSprint = sprints.find(s => s.id === sprint.id);
+      
+      return (
+        <div 
+          key={`sprint-${sprint.id}-${weekIndex}-${sprint.row}`}
+          className={`
+            sprint-bar absolute h-6 z-10 cursor-pointer ${
+              highlightedSprintId === sprint.id ? 'bg-blue-100' : ''
+            }`}
+          onClick={(e) => actualSprint && onSprintClick(actualSprint, e)}
+          style={{
+            gridRow: `row-sprint-${sprint.row}`,
+            gridColumn: `${sprint.startDay + 1} / ${sprint.endDay + 2}`,
+            top: `${24 + sprint.row * 24}px`,
+            left: `${sprint.startDay * (100/7) + 1}%`,
+            width: `${(sprint.endDay - sprint.startDay + 1) * (100/7) - 2}%`
+          }}
+        >
+          <div 
+            className={`
+              h-full flex items-center justify-between px-1.5 ${colors.bg} border ${colors.border} text-xs
+              ${sprint.isFirst ? 'rounded-l' : 'border-l-0 rounded-l-none'} 
+              ${sprint.isLast ? 'rounded-r' : 'border-r-0 rounded-r-none'}
+              shadow-sm hover:shadow-md transition-shadow
+              ${highlightedSprintId === sprint.id ? 'ring-2 ring-blue-400 ring-offset-1 shadow-lg' : ''}
+            `}
+          >
+            {sprint.isFirst && (
+              <div className="flex items-center">
+                <input type="checkbox" className="w-3 h-3 mr-1.5 rounded text-blue-500" checked disabled />
+                <span className={`truncate font-medium text-xs ${colors.text}`}>{sprint.name}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    })}
     
     {/* Khoảng trống dành cho các sprint (nếu có) */}
     <div 
@@ -673,13 +550,13 @@ const CalendarView = ({
   currentDate, 
   sprints, 
   onSprintClick,
-  onAssigneeClick
+  highlightedSprintId
 }: { 
   calendarData: CalendarWeek[], 
   currentDate: Date, 
   sprints: Sprint[], 
   onSprintClick: (sprint: Sprint, e: React.MouseEvent) => void,
-  onAssigneeClick: (sprint: Sprint, e: React.MouseEvent) => void
+  highlightedSprintId?: string | null
 }) => (
   <div className="calendar-view p-4 pb-16">
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
@@ -699,67 +576,272 @@ const CalendarView = ({
           currentDate={currentDate}
           sprints={sprints}
           onSprintClick={onSprintClick}
-          onAssigneeClick={onAssigneeClick}
+          highlightedSprintId={highlightedSprintId}
         />
       ))}
     </div>
   </div>
 );
 
+// EditSprintModal component
+const EditSprintModal = ({
+  sprint,
+  isOpen,
+  onClose,
+  onSave,
+  projectId
+}: {
+  sprint: Sprint | null,
+  isOpen: boolean,
+  onClose: () => void,
+  onSave: (updatedSprint: Sprint) => void,
+  projectId: string | null
+}) => {
+  const [formData, setFormData] = useState({
+    name: '',
+    goal: '',
+    startDate: '',
+    endDate: ''
+  });
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Initialize form data when sprint changes
+  useEffect(() => {
+    if (sprint) {
+      setFormData({
+        name: sprint.name || '',
+        goal: sprint.goal || '',
+        startDate: sprint.startDate ? sprint.startDate.split('T')[0] : '',
+        endDate: sprint.endDate ? sprint.endDate.split('T')[0] : ''
+      });
+    }
+  }, [sprint]);
+
+  const handleSave = async () => {
+    if (!sprint || !formData.name.trim()) {
+      toast.error("Sprint name is required");
+      return;
+    }
+
+    if (!projectId) {
+      toast.error("Project ID is required");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const updatedSprint: Sprint = {
+        ...sprint,
+        name: formData.name.trim(),
+        goal: formData.goal.trim(),
+        startDate: formData.startDate ? new Date(formData.startDate).toISOString() : undefined,
+        endDate: formData.endDate ? new Date(formData.endDate).toISOString() : undefined,
+        projectId: projectId // Đảm bảo projectId được bao gồm
+      };
+
+      await onSave(updatedSprint);
+    } catch (error) {
+      console.error('Error saving sprint:', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (!isOpen || !sprint) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl w-[500px] max-h-[80vh] overflow-y-auto">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-semibold">Edit sprint: {sprint.name}</h2>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <X className="h-6 w-6" />
+            </button>
+          </div>
+          
+          <p className="text-sm text-gray-600 mb-6">
+            Required fields are marked with an asterisk <span className="text-red-500">*</span>
+          </p>
+          
+          {/* Sprint Name */}
+          <div className="mb-4">
+            <label className="block text-gray-700 text-sm font-medium mb-2">
+              Sprint name <span className="text-red-500">*</span>
+            </label>
+            <Input 
+              value={formData.name} 
+              onChange={(e) => setFormData({...formData, name: e.target.value})}
+              className="w-full"
+              placeholder="Enter sprint name"
+            />
+          </div>
+          
+          {/* Start Date */}
+          <div className="mb-4">
+            <label className="block text-gray-700 text-sm font-medium mb-2">
+              Start date <span className="text-red-500">*</span>
+            </label>
+            <Input 
+              type="date"
+              value={formData.startDate}
+              onChange={(e) => setFormData({...formData, startDate: e.target.value})}
+              className="w-full"
+            />
+          </div>
+          
+          {/* End Date */}
+          <div className="mb-4">
+            <label className="block text-gray-700 text-sm font-medium mb-2">
+              End date <span className="text-red-500">*</span>
+            </label>
+            <Input 
+              type="date"
+              value={formData.endDate}
+              onChange={(e) => setFormData({...formData, endDate: e.target.value})}
+              className="w-full"
+            />
+          </div>
+          
+          {/* Sprint Goal */}
+          <div className="mb-6">
+            <label className="block text-gray-700 text-sm font-medium mb-2">
+              Sprint goal
+            </label>
+            <textarea 
+              value={formData.goal}
+              onChange={(e) => setFormData({...formData, goal: e.target.value})}
+              className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+              rows={4}
+              placeholder="Describe the sprint goal..."
+            />
+          </div>
+          
+          {/* Action Buttons */}
+          <div className="flex justify-end gap-3">
+            <Button 
+              variant="outline"
+              onClick={onClose}
+              disabled={isSaving}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleSave}
+              disabled={isSaving || !formData.name.trim()}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {isSaving ? (
+                <>
+                  <div className="animate-spin h-4 w-4 border-2 border-white rounded-full border-t-transparent mr-2"></div>
+                  Updating...
+                </>
+              ) : (
+                'Update'
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Main component
 export default function CalendarPage() {
   const searchParams = useSearchParams();
-  const projectId = searchParams?.get("projectId") || null;
+  const { currentProjectId, setCurrentProjectId } = useNavigation();
+  
+  // Ưu tiên projectId từ context (từ board), sau đó mới lấy từ URL
+  const urlProjectId = searchParams?.get("projectId");
+  const projectId = currentProjectId || urlProjectId;
+  
+  // Chỉ cập nhật context nếu có URL projectId nhưng context chưa có (backward compatibility)
+  useEffect(() => {
+    if (urlProjectId && !currentProjectId) {
+      setCurrentProjectId(urlProjectId);
+    }
+  }, [urlProjectId, currentProjectId, setCurrentProjectId]);
   
   // State variables
-  const [tasks, setTasks] = useState<Task[]>([]);
   const [sprints, setSprints] = useState<Sprint[]>([]);
+  const [allSprints, setAllSprints] = useState<Sprint[]>([]); // Store all sprints for local filtering
   const [loading, setLoading] = useState(true);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [currentMonth, setCurrentMonth] = useState(format(new Date(), "MMMM yyyy"));
   const [calendarData, setCalendarData] = useState<CalendarWeek[]>([]);
   const [selectedSprint, setSelectedSprint] = useState<Sprint | null>(null);
   const [showSprintModal, setShowSprintModal] = useState(false);
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 });
-  const [showAssigneeDropdown, setShowAssigneeDropdown] = useState(false);
-  const [assignSprint, setAssignSprint] = useState<Sprint | null>(null);
-  const [projectUsers, setProjectUsers] = useState<User[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [highlightedSprintId, setHighlightedSprintId] = useState<string | null>(null);
   
-  // Fetch project users
-  useEffect(() => {
-    if (!projectId) return;
-    
-    const fetchProjectUsers = async () => {
+  // New states for sprint editing
+  const [showSprintMenu, setShowSprintMenu] = useState(false);
+  const [showEditSprintModal, setShowEditSprintModal] = useState(false);
+  const [editingSprint, setEditingSprint] = useState<Sprint | null>(null);
+  
+  // Debounced search function với cải thiện logic
+  const debouncedSearch = useCallback(
+    debounce(async (searchValue: string) => {
+      if (!projectId) return;
+      
       try {
-        // Gọi API từ Projects-Service
-        const response = await axios.get(`http://localhost:8083/api/projects/${projectId}/users`);
-        const userData = response.data?.data || [];
-        
-        // Map backend data structure (username) to frontend structure (name)
-        const mappedUsers = userData.map((user: { id: string; username: string; email?: string; avatar?: string; roleInProject?: string }) => ({
-          id: user.id,
-          name: user.username,
-          email: user.email,
-          avatar: user.avatar,
-          roleInProject: user.roleInProject
-        }));
-        
-        setProjectUsers(mappedUsers);
+        if (searchValue.trim() === '') {
+          // If search is empty, show all sprints
+          setSprints(allSprints);
+          setHighlightedSprintId(null); // Clear highlight
+        } else {
+          // Call filter API for sprints
+          const sprintsResponse = await axios.get(
+            `http://localhost:8084/api/sprints/project/${projectId}/calendar/filter`,
+            {
+              params: { search: searchValue }
+            }
+          );
+          const filteredSprints = sprintsResponse.data?.data || [];
+          setSprints(filteredSprints);
+          
+          // Auto-navigate to the month of the first found sprint
+          if (filteredSprints.length > 0 && filteredSprints[0].startDate) {
+            const sprintDate = parseISO(filteredSprints[0].startDate);
+            const sprintMonth = format(sprintDate, "MMMM yyyy");
+            
+            // Animate to the sprint's month
+            setCurrentDate(sprintDate);
+            setHighlightedSprintId(filteredSprints[0].id); // Highlight the found sprint
+            
+            // Show success notification with sprint info
+            toast.success(
+              `Found "${filteredSprints[0].name}" - Navigated to ${sprintMonth}`,
+              {
+                description: `${filteredSprints.length} sprint${filteredSprints.length > 1 ? 's' : ''} found`,
+                duration: 3000,
+              }
+            );
+          } else if (filteredSprints.length === 0) {
+            setHighlightedSprintId(null);
+            toast.info(`No sprints found matching "${searchValue}"`);
+          }
+        }
       } catch (error) {
-        console.error("Error fetching project users:", error);
-        // Demo users
-        setProjectUsers([
-          { id: "user1", name: "John Doe", email: "john@example.com" },
-          { id: "user2", name: "Jane Smith", email: "jane@example.com" },
-          { id: "user3", name: "Robert Johnson", email: "robert@example.com" },
-          { id: "user4", name: "Sarah Williams", email: "sarah@example.com" },
-          { id: "user5", name: "Michael Brown", email: "michael@example.com" }
-        ]);
+        console.error("Error searching sprints:", error);
+        toast.error("Error searching calendar");
       }
-    };
+    }, 500),
+    [projectId, allSprints]
+  );
+
+  // Handle search term changes
+  useEffect(() => {
+    debouncedSearch(searchTerm);
     
-    fetchProjectUsers();
-  }, [projectId]);
+    return () => {
+      debouncedSearch.cancel?.();
+    };
+  }, [searchTerm, debouncedSearch]);
   
   // Tính toán và chuẩn bị dữ liệu cho lịch
   useEffect(() => {
@@ -796,7 +878,7 @@ export default function CalendarPage() {
       const endDate = parseISO(sprint.endDate);
       
       // Duyệt qua từng tuần
-      weeks.forEach((week, weekIndex) => {
+      weeks.forEach((week) => {
         // Kiểm tra xem sprint có giao với tuần hiện tại không
         const firstDayOfWeek = week.days[0];
         const lastDayOfWeek = week.days[6];
@@ -862,8 +944,6 @@ export default function CalendarPage() {
           row,
           isFirst,
           isLast,
-          assigneeId: sprint.assigneeId,
-          assigneeName: sprint.assigneeName
         });
       });
     });
@@ -882,14 +962,8 @@ export default function CalendarPage() {
           `http://localhost:8084/api/sprints/project/${projectId}`
         );
         const sprintsData = sprintsResponse.data?.data || [];
-        setSprints(sprintsData);
-        
-        // Fetch all tasks
-        const tasksResponse = await axios.get(
-          `http://localhost:8085/api/tasks/project/${projectId}`
-        );
-        const tasksData = tasksResponse.data || [];
-        setTasks(tasksData);
+        setAllSprints(sprintsData); // Store all sprints
+        setSprints(sprintsData); // Initially show all sprints
       } catch (error) {
         console.error("Error fetching data:", error);
         toast.error("Lỗi khi tải dữ liệu");
@@ -906,66 +980,40 @@ export default function CalendarPage() {
     const newDate = new Date(currentDate);
     newDate.setMonth(newDate.getMonth() - 1);
     setCurrentDate(newDate);
-    setCurrentMonth(format(newDate, "MMMM yyyy"));
+    
+    // Clear search when manually navigating
+    if (searchTerm) {
+      setSearchTerm('');
+      setSprints(allSprints);
+      setHighlightedSprintId(null);
+    }
   };
   
   const nextMonth = () => {
     const newDate = new Date(currentDate);
     newDate.setMonth(newDate.getMonth() + 1);
     setCurrentDate(newDate);
-    setCurrentMonth(format(newDate, "MMMM yyyy"));
+    
+    // Clear search when manually navigating
+    if (searchTerm) {
+      setSearchTerm('');
+      setSprints(allSprints);
+      setHighlightedSprintId(null);
+    }
   };
   
   const goToToday = () => {
     const today = new Date();
     setCurrentDate(today);
-    setCurrentMonth(format(today, "MMMM yyyy"));
-  };
-  
-  // Update sprint with new assignee
-  const handleAssignSprint = async (sprintId: string, userId: string | null, userName: string | null) => {
-    if (!sprintId) return;
     
-    try {
-      // API call to update sprint
-      await axios.put(`http://localhost:8084/api/sprints/${sprintId}`, {
-        assigneeId: userId,
-        assigneeName: userName
-      });
-      
-      // Update local state
-      setSprints(prevSprints => 
-        prevSprints.map(sprint => 
-          sprint.id === sprintId 
-            ? { ...sprint, assigneeId: userId, assigneeName: userName } 
-            : sprint
-        )
-      );
-      
-      // Update calendar data to reflect the change
-      setCalendarData(prevData => {
-        const newData = [...prevData];
-        
-        // Update each week's sprints
-        newData.forEach(week => {
-          week.sprints.forEach(sprint => {
-            if (sprint.id === sprintId) {
-              sprint.assigneeId = userId;
-              sprint.assigneeName = userName;
-            }
-          });
-        });
-        
-        return newData;
-      });
-      
-      toast.success("Sprint assignee updated");
-    } catch (error) {
-      console.error("Error updating sprint assignee:", error);
-      toast.error("Failed to update assignee");
-    } finally {
-      setShowAssigneeDropdown(false);
+    // Clear search when going to today
+    if (searchTerm) {
+      setSearchTerm('');
+      setSprints(allSprints);
+      setHighlightedSprintId(null);
     }
+    
+    toast.success("Navigated to today's date");
   };
   
   // Handle clicks
@@ -979,19 +1027,65 @@ export default function CalendarPage() {
     });
     setShowSprintModal(true);
   };
-  
-  const handleAssigneeClick = (sprint: Sprint, e: React.MouseEvent) => {
-    setAssignSprint(sprint);
-    const rect = e.currentTarget.getBoundingClientRect();
-    setModalPosition({
-      x: rect.left,
-      y: rect.bottom
-    });
-    setShowAssigneeDropdown(true);
+
+  // Handle edit sprint
+  const handleEditSprint = (sprint: Sprint) => {
+    setEditingSprint(sprint);
+    setShowEditSprintModal(true);
+    setShowSprintModal(false);
+    setShowSprintMenu(false);
+  };
+
+  // Handle update sprint
+  const handleUpdateSprint = async (updatedSprint: Sprint) => {
+    if (!updatedSprint.id) {
+      toast.error("Sprint ID is required");
+      return;
+    }
+
+    if (!projectId) {
+      toast.error("Project ID is required");
+      return;
+    }
+
+    try {
+      const response = await axios.put(`http://localhost:8084/api/sprints/${updatedSprint.id}`, {
+        name: updatedSprint.name,
+        goal: updatedSprint.goal,
+        startDate: updatedSprint.startDate,
+        endDate: updatedSprint.endDate,
+        status: updatedSprint.status,
+        projectId: projectId // Thêm projectId vào request body
+      });
+
+      if (response.data && response.data.status === "SUCCESS") {
+        toast.success("Sprint updated successfully");
+        
+        // Update local state
+        const updatedSprints = sprints.map(sprint => 
+          sprint.id === updatedSprint.id ? updatedSprint : sprint
+        );
+        setSprints(updatedSprints);
+        
+        const updatedAllSprints = allSprints.map(sprint => 
+          sprint.id === updatedSprint.id ? updatedSprint : sprint
+        );
+        setAllSprints(updatedAllSprints);
+        
+        setShowEditSprintModal(false);
+        setEditingSprint(null);
+      } else {
+        toast.error("Failed to update sprint");
+      }
+    } catch (error) {
+      console.error("Error updating sprint:", error);
+      toast.error("Failed to update sprint");
+    }
   };
 
   return (
     <div className="flex h-screen bg-gray-50">
+      <NavigationProgress />
       <Sidebar projectId={projectId || undefined} />
       <div className="flex-1 flex flex-col">
         <TopNavigation />
@@ -1002,18 +1096,51 @@ export default function CalendarPage() {
             goToToday={goToToday}
             previousMonth={previousMonth}
             nextMonth={nextMonth}
+            searchTerm={searchTerm}
+            onSearchChange={(term) => setSearchTerm(term)}
+            onMonthSelect={(month) => {
+              const newDate = new Date(currentDate);
+              newDate.setMonth(month);
+              newDate.setDate(1); // Set to first day of month to avoid date overflow issues
+              setCurrentDate(newDate);
+              
+              // Show notification about month navigation
+              const monthName = format(newDate, "MMMM yyyy");
+              toast.success(`Navigated to ${monthName}`, {
+                description: "Month changed via dropdown selection",
+                duration: 2000,
+              });
+              
+              // Clear search and highlighted sprint when manually navigating
+              if (searchTerm) {
+                setSearchTerm('');
+                setSprints(allSprints);
+                setHighlightedSprintId(null);
+              }
+            }}
+            sprintsCount={sprints.length}
+            totalSprintsCount={allSprints.length}
           />
           
           {loading ? (
             <Loading />
           ) : (
-            <CalendarView 
-              calendarData={calendarData} 
-              currentDate={currentDate} 
-              sprints={sprints} 
-              onSprintClick={handleSprintClick}
-              onAssigneeClick={handleAssigneeClick}
-            />
+            <>
+              {searchTerm && sprints.length === 0 && (
+                <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+                  <Search className="h-12 w-12 mb-4 text-gray-300" />
+                  <p className="text-lg font-medium">No sprints found</p>
+                  <p className="text-sm">Try adjusting your search terms</p>
+                </div>
+              )}
+              <CalendarView 
+                calendarData={calendarData} 
+                currentDate={currentDate} 
+                sprints={sprints} 
+                onSprintClick={handleSprintClick}
+                highlightedSprintId={highlightedSprintId}
+              />
+            </>
           )}
           
           {/* Sprint detail popup */}
@@ -1021,18 +1148,22 @@ export default function CalendarPage() {
             <SprintDetailPopup 
               sprint={selectedSprint} 
               position={modalPosition} 
-              onClose={() => setShowSprintModal(false)} 
+              onClose={() => setShowSprintModal(false)}
+              onEdit={handleEditSprint}
             />
           )}
           
-          {/* Assignee dropdown */}
-          {showAssigneeDropdown && assignSprint && (
-            <AssigneeDropdown 
-              sprint={assignSprint}
-              users={projectUsers}
-              position={modalPosition}
-              onAssign={handleAssignSprint}
-              onClose={() => setShowAssigneeDropdown(false)}
+          {/* Edit Sprint Modal */}
+          {showEditSprintModal && editingSprint && (
+            <EditSprintModal
+              sprint={editingSprint}
+              isOpen={showEditSprintModal}
+              onClose={() => {
+                setShowEditSprintModal(false);
+                setEditingSprint(null);
+              }}
+              onSave={handleUpdateSprint}
+              projectId={projectId || null}
             />
           )}
         </div>

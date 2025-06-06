@@ -1,4 +1,4 @@
-package com.tmnhat.fileservice.entity;
+package com.tmnhat.fileservice.model;
 
 import jakarta.persistence.*;
 import java.time.LocalDateTime;

@@ -30,23 +30,41 @@ export default function ProjectsPage() {
 
     const fetchAllProjects = async () => {
         try {
-            const res = await axios.get("http://localhost:8083/api/projects");
+            // Lấy userId từ localStorage
+            const ownerId = localStorage.getItem("ownerId");
+            if (!ownerId) {
+                console.error("No user ID found in localStorage");
+                return;
+            }
+
+            // Sử dụng API mới để lấy projects mà user là member
+            const res = await axios.get(`http://localhost:8083/api/projects/member/${ownerId}`);
             const data = Array.isArray(res.data.data) ? res.data.data : [];
             setProjects(data);
+            console.log(`Loaded ${data.length} projects where user is member`);
         } catch (err) {
-            console.error("Error fetching all projects:", err);
+            console.error("Error fetching user projects:", err);
         }
     };
 
     const fetchSearchResults = async (term: string) => {
         try {
-            const res = await axios.get("http://localhost:8083/api/projects/search", {
-                params: { keyword: term },
+            // Lấy userId từ localStorage
+            const ownerId = localStorage.getItem("ownerId");
+            if (!ownerId) {
+                console.error("No user ID found in localStorage");
+                return;
+            }
+
+            // Sử dụng API search với user membership
+            const res = await axios.get("http://localhost:8083/api/projects/search/member", {
+                params: { keyword: term, userId: ownerId },
             });
             const data = Array.isArray(res.data.data) ? res.data.data : [];
             setProjects(data);
+            console.log(`Found ${data.length} projects matching "${term}" where user is member`);
         } catch (err) {
-            console.error("Error searching projects:", err);
+            console.error("Error searching user projects:", err);
         }
     };
 
@@ -57,13 +75,26 @@ export default function ProjectsPage() {
                 return;
             }
 
-            const res = await axios.get("http://localhost:8083/api/projects/filter", {
-                params: { projectType: type },
-            });
-            const data = Array.isArray(res.data.data) ? res.data.data : [];
-            setProjects(data);
+            // Lấy userId từ localStorage
+            const ownerId = localStorage.getItem("ownerId");
+            if (!ownerId) {
+                console.error("No user ID found in localStorage");
+                return;
+            }
+
+            // Lấy tất cả projects mà user là member, sau đó filter theo type ở frontend
+            const res = await axios.get(`http://localhost:8083/api/projects/member/${ownerId}`);
+            const allUserProjects = Array.isArray(res.data.data) ? res.data.data : [];
+            
+            // Filter theo project type
+            const filteredProjects = allUserProjects.filter((project: Project) => 
+                project.projectType?.toLowerCase() === type.toLowerCase()
+            );
+            
+            setProjects(filteredProjects);
+            console.log(`Found ${filteredProjects.length} ${type} projects where user is member`);
         } catch (err) {
-            console.error("Error filtering projects:", err);
+            console.error("Error filtering user projects:", err);
         }
     };
 
@@ -78,7 +109,7 @@ export default function ProjectsPage() {
         }, 400);
 
         return () => clearTimeout(delayDebounce);
-    }, [searchTerm]);
+    }, [searchTerm, selectedType]);
 
     return (
         <div className="min-h-screen bg-gray-100">
@@ -87,7 +118,7 @@ export default function ProjectsPage() {
             <div className="max-w-7xl mx-auto p-6">
                 {/* Page Header */}
                 <div className="flex justify-between items-center mb-6">
-                    <h1 className="text-3xl font-semibold text-gray-800">All Projects</h1>
+                    <h1 className="text-3xl font-semibold text-gray-800">My Projects</h1>
                     <Button
                         className="bg-[#0052CC] hover:bg-[#0747A6] text-white text-sm"
                         onClick={() => router.push("/project/create_project")}

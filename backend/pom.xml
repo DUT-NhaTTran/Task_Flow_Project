@@ -30,10 +30,11 @@
     <modules>
         <module>common</module>
         <module>Accounts-Service</module>
-        <module>Notifications-Service</module>
+        <module>Notification-Service</module>
         <module>Projects-Service</module>
         <module>Sprints-Service</module>
         <module>Tasks-Service</module>
+        <!-- <module>AI-Service</module> -->
         <module>User-Service</module>
         <module>File-Service</module>
     </modules>

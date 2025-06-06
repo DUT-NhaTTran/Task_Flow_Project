@@ -8,13 +8,33 @@ import { Sidebar } from "@/components/ui/sidebar";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { NavigationProgress } from "@/components/ui/LoadingScreen";
+import { useNavigation } from "@/contexts/NavigationContext";
 import TaskDetailModal, { TaskData, SprintOption } from "@/components/tasks/TaskDetailModal";
-import { FaUserCircle, FaUserAlt, FaSearch, FaBold, FaItalic, FaLink, FaImage, FaTable, FaListUl, FaListOl, FaCode, FaSmile } from "react-icons/fa";
-import { MdFormatColorText, MdFormatSize } from "react-icons/md";
-import dynamic from "next/dynamic";
-import "react-quill/dist/quill.snow.css";
+import { FaSearch } from "react-icons/fa";
+import { 
+  DndContext, 
+  DragOverlay, 
+  type DragStartEvent, 
+  type DragEndEvent 
+} from '@dnd-kit/core';
+import { DraggableProjectTaskCard } from "@/components/ui/draggable-project-task-card";
+import { DroppableProjectColumn } from "@/components/ui/droppable-project-column";
+import { useProjectTasks } from "@/hooks/useProjectTasks";
 
-const ReactQuill = dynamic(() => import("react-quill"), { ssr: false });
+// Interface definitions
+interface Project {
+  id: string;
+  name: string;
+  key: string;
+  description?: string;
+  avatarUrl?: string;
+  projectType?: string;
+  access?: string;
+  createdAt?: string;
+  ownerId?: string;
+  deadline?: string;
+}
 
 interface Task {
   id: string;
@@ -34,16 +54,10 @@ interface Task {
   tags?: string[] | null;
 }
 
-interface Project {
+interface User {
   id: string;
-  name: string;
-  projectType?: string;
-  access?: string;
-  description?: string;
-  key?: string;
-  createdAt?: string;
-  ownerId?: string;
-  deadline?: string;
+  fullname: string;
+  email: string;
 }
 
 interface Sprint {
@@ -69,7 +83,19 @@ interface ProjectUser {
 export default function ProjectBoardPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const projectId = searchParams?.get("projectId") || null;
+  const { currentProjectId, setCurrentProjectId } = useNavigation();
+  
+  // Get projectId from URL or context
+  const urlProjectId = searchParams?.get("projectId")
+  const projectId = urlProjectId || currentProjectId
+  
+  // Update context if projectId from URL
+  useEffect(() => {
+    if (urlProjectId && urlProjectId !== currentProjectId) {
+      setCurrentProjectId(urlProjectId)
+    }
+  }, [urlProjectId, currentProjectId, setCurrentProjectId])
+  
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [latestSprintId, setLatestSprintId] = useState<string | null>(null);
@@ -82,16 +108,92 @@ export default function ProjectBoardPage() {
     DONE: "",
   });
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [comment, setComment] = useState("");
-  const [comments, setComments] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchProject, setSearchProject] = useState("");
   const [searchResults, setSearchResults] = useState<Project[]>([]);
   const [showSearchResults, setShowSearchResults] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const userAvatarFetchErrors = useRef<Set<string>>(new Set());
   // Cache cho avatar đã tải để tránh tải lại nhiều lần
   const avatarCache = useRef<Record<string, string>>({});
+  // Drag and drop state and handlers
+  const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const { updateTaskStatus, loading: apiLoading } = useProjectTasks();
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const task = event.active.data.current?.task as Task;
+    setActiveTask(task);
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveTask(null);
+
+    if (!over) return;
+
+    const task = active.data.current?.task as Task;
+    const newStatus = over.id as Task["status"];
+
+    // If dropping in same column and same position, do nothing
+    if (task.status === newStatus && active.id === over.id) return;
+
+    // Get current tasks in the target column - chỉ xử lý parent tasks
+    const tasksInColumn = tasks.filter(t => t.status === newStatus && (t.parentTaskId === null || t.parentTaskId === undefined));
+    
+    // Find the index where the task was dropped
+    const overTaskIndex = tasksInColumn.findIndex(t => t.id === over.id);
+    
+    // Create new tasks array with updated order
+    const updatedTasks = [...tasks];
+    const taskIndex = updatedTasks.findIndex(t => t.id === task.id);
+    const taskToMove = updatedTasks[taskIndex];
+    
+    // Remove task from its current position
+    updatedTasks.splice(taskIndex, 1);
+    
+    // If dropping on another task in same column, insert at that position
+    if (task.status === newStatus && overTaskIndex !== -1) {
+      const insertIndex = updatedTasks.findIndex(t => t.id === over.id);
+      updatedTasks.splice(insertIndex, 0, { ...taskToMove, status: newStatus });
+    } else {
+      // If dropping in a different column, add to end of that column
+      const insertIndex = updatedTasks.findIndex(t => t.status === newStatus);
+      updatedTasks.splice(insertIndex === -1 ? updatedTasks.length : insertIndex, 0, { ...taskToMove, status: newStatus });
+    }
+
+    // Optimistically update UI
+    setTasks(updatedTasks);
+
+    // Update via API
+    const success = await updateTaskStatus(task, newStatus);
+    
+    if (success) {
+      toast.success(`Task moved to ${newStatus.replace('_', ' ')}`);
+    } else {
+      // Revert optimistic update on failure
+      setTasks(prev => prev.map(t => 
+        t.id === task.id ? { ...t, status: task.status } : t
+      ));
+      toast.error('Failed to update task status');
+    }
+  };
+
+  // Debug searchResults khi nó thay đổi
+  useEffect(() => {
+    console.log("🔄 searchResults state changed:", searchResults);
+    console.log("🔄 searchResults length:", searchResults.length);
+    console.log("🔄 showSearchResults state:", showSearchResults);
+  }, [searchResults, showSearchResults]);
+
+  // Debug state changes
+  useEffect(() => {
+    console.log("🔄 ===== STATE CHANGE DETECTED =====");
+    console.log("🔄 searchResults:", searchResults);
+    console.log("🔄 showSearchResults:", showSearchResults);
+    console.log("🔄 isSearching:", isSearching);
+    console.log("🔄 searchProject:", searchProject);
+  }, [searchResults, showSearchResults, isSearching, searchProject]);
 
   // Ensure tasks is always initialized
   useEffect(() => {
@@ -121,51 +223,116 @@ export default function ProjectBoardPage() {
     router.push(`/project/project_homescreen?projectId=${projectId}`);
   };
 
-  // Tìm kiếm project theo tên
+  // Tìm kiếm project theo tên - chỉ hiển thị projects mà user hiện tại là member
   const searchBoardsByName = async (term: string) => {
     try {
-      console.log("Searching all boards for:", term);
-      const res = await axios.get("http://localhost:8083/api/projects");
+      console.log("🔍 ===== STARTING SEARCH =====");
+      console.log("🔍 searchBoardsByName called with term:", term);
+      
+      // Lấy userId từ localStorage với nhiều cách khác nhau
+      let currentUserId = localStorage.getItem("userId") || 
+                         localStorage.getItem("currentUserId") || 
+                         localStorage.getItem("user_id") ||
+                         localStorage.getItem("ownerId");
+      
+      // Debug all localStorage keys to see what's available
+      console.log("🔍 All localStorage keys:", Object.keys(localStorage));
+      
+      if (!currentUserId) {
+        console.error("❌ No userId found in localStorage. Please ensure user is logged in.");
+        // TEMPORARY: Use hardcoded userId for testing
+        currentUserId = "d90e8bd8-72e2-47cc-b9f0-edb92fe60c5a";
+        console.log("🔧 TESTING: Using hardcoded userId:", currentUserId);
+      }
+
+      // Sử dụng API search/member với userId của người dùng hiện tại
+      const apiUrl = `http://localhost:8083/api/projects/search/member?keyword=${encodeURIComponent(term)}&userId=${currentUserId}`;
+      console.log("🔍 Making API call to:", apiUrl);
+      
+      const res = await axios.get(apiUrl);
+      
+      console.log("🔍 ===== API RESPONSE =====");
+      console.log("🔍 API response:", res.data);
       
       if (res.data?.data) {
-        const allProjects = res.data.data;
-        console.log(`Found ${allProjects.length} boards to search in`);
+        const matchedProjects = res.data.data.map((project: any) => ({
+          id: project.id,
+          name: project.name,
+          description: project.description,
+          key: project.key,
+          projectType: project.projectType,
+          access: project.access,
+          createdAt: project.createdAt,
+          ownerId: project.ownerId,
+          deadline: project.deadline
+        }));
         
-        // Lọc các project phù hợp với từ khóa (không phân biệt hoa thường)
-        const matchedProjects = allProjects.filter(
-          (p: any) => p.name.toLowerCase().includes(term.toLowerCase().trim())
-        );
-        
-        console.log(`Found ${matchedProjects.length} matching boards`);
+        console.log("🔍 Processed projects:", matchedProjects);
         return matchedProjects;
       }
+      
+      console.log("⚠️ No data in API response - returning empty array");
       return [];
     } catch (err) {
-      console.error("Error getting all boards:", err);
+      console.error("❌ Error searching projects:", err);
+      if (axios.isAxiosError(err)) {
+        console.error("❌ Axios error details:", {
+          status: err.response?.status,
+          data: err.response?.data
+        });
+      }
       return [];
     }
   };
 
   const handleSearchProject = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const term = e.target.value;
+    console.log("🔍 ===== HANDLE SEARCH PROJECT =====");
+    console.log("🔍 Search term:", term);
     setSearchProject(term);
     
     if (term.trim().length > 0) {
       try {
-        console.log("Searching for boards with keyword:", term);
+        console.log("🔍 Starting search with term:", term);
         
-        // Tìm project theo tên
-        const results = await searchBoardsByName(term);
-        setSearchResults(results);
-        setShowSearchResults(true);
-      } catch (err) {
-        console.error("Error searching boards:", err);
+        // Show loading state
+        setIsSearching(true);
         setSearchResults([]);
         setShowSearchResults(true);
+        
+        // Tìm project theo tên - chỉ hiển thị projects mà user là member
+        console.log("🔍 Calling searchBoardsByName...");
+        const results = await searchBoardsByName(term);
+        console.log("🔍 ===== SEARCH RESULTS =====");
+        console.log("🔍 Raw results:", results);
+        console.log("🔍 Results length:", results.length);
+        console.log("🔍 First result sample:", results[0]);
+        
+        // Update state with results
+        setSearchResults(results);
+        setShowSearchResults(true);
+        setIsSearching(false);
+        
+        // Debug state updates
+        console.log("🔍 State updates:", {
+          searchResults: results,
+          showSearchResults: true,
+          isSearching: false,
+          searchTerm: term
+        });
+        
+      } catch (err) {
+        console.error("❌ Error in handleSearchProject:", err);
+        setSearchResults([]);
+        setShowSearchResults(true);
+        setIsSearching(false);
+        toast.error("Failed to search boards. Please try again.");
       }
     } else {
+      console.log("🔍 Empty search term, clearing results");
       setSearchResults([]);
       setShowSearchResults(false);
+      setIsSearching(false);
     }
   };
 
@@ -310,7 +477,7 @@ export default function ProjectBoardPage() {
         const sprintsData = res.data?.data || [];
         console.log("Sprints data:", sprintsData);
         
-        const formattedSprints = sprintsData.map((sprint: any) => ({
+        const formattedSprints = sprintsData.map((sprint: {id: string, name?: string, number?: number}) => ({
           id: sprint.id,
           name: sprint.name || `Sprint ${sprint.number || ''}`,
         }));
@@ -523,25 +690,25 @@ export default function ProjectBoardPage() {
   };
 
   // Hàm để kiểm tra xem một URL có phải là URL Cloudinary không
-  const isCloudinaryUrl = (url: string): boolean => {
-    if (!url || typeof url !== 'string') return false;
-    return url.includes('cloudinary.com') && 
-           (url.includes('/image/upload/') || url.includes('/image/upload'));
-  };
+  // const isCloudinaryUrl = (url: string): boolean => {
+  //   if (!url || typeof url !== 'string') return false;
+  //   return url.includes('cloudinary.com') && 
+  //          (url.includes('/image/upload/') || url.includes('/image/upload'));
+  // };
 
   // Hàm để lấy public_id từ URL Cloudinary
-  const getPublicIdFromCloudinaryUrl = (url: string): string | null => {
-    try {
-      // URL mẫu: https://res.cloudinary.com/dwmospuhh/image/upload/v1747715204/avatars/b76b87ab-4bc4-4bec-ab37-d410487927ab.jpg
-      const match = url.match(/\/image\/upload\/(?:v\d+\/)?(.+?)(?:\.\w+)?$/);
-      if (match && match[1]) {
-        return match[1]; // Trả về phần "avatars/b76b87ab-4bc4-4bec-ab37-d410487927ab"
-      }
-    } catch (error) {
-      console.error("Error parsing Cloudinary URL:", error);
-    }
-    return null;
-  };
+  // const getPublicIdFromCloudinaryUrl = (url: string): string | null => {
+  //   try {
+  //     // URL mẫu: https://res.cloudinary.com/dwmospuhh/image/upload/v1747715204/avatars/b76b87ab-4bc4-4bec-ab37-d410487927ab.jpg
+  //     const match = url.match(/\/image\/upload\/(?:v\d+\/)?(.+?)(?:\.\w+)?$/);
+  //     if (match && match[1]) {
+  //       return match[1]; // Trả về phần "avatars/b76b87ab-4bc4-4bec-ab37-d410487927ab"
+  //     }
+  //   } catch (error) {
+  //     console.error("Error parsing Cloudinary URL:", error);
+  //   }
+  //   return null;
+  // };
 
   const fetchUserAvatar = async (userId: string): Promise<string | undefined> => {
     if (!userId || userId.trim() === '') {
@@ -815,7 +982,7 @@ export default function ProjectBoardPage() {
     }
     
     // The URL is handled by the effect that tries different formats, we don't need to modify it here
-    let finalUrl = avatarUrl;
+    const finalUrl = avatarUrl;
     
     // Nếu có URL, hiển thị ảnh với xử lý lỗi
     return (
@@ -830,7 +997,7 @@ export default function ProjectBoardPage() {
             src={getImageSource(isCheckingImage ? currentUrlToTry : finalUrl)} 
             alt={displayName} 
             className="w-full h-full object-cover" 
-            onError={(e) => {
+            onError={() => {
               console.error("Avatar load error in render:", isCheckingImage ? currentUrlToTry : finalUrl);
               
               // If we're already in the process of checking different URLs, don't interfere
@@ -982,6 +1149,10 @@ export default function ProjectBoardPage() {
         const isValid = !!userId && userId.trim().length > 0;
         setValidAssignee(isValid);
         
+        // Store previous assignee info for notification purposes
+        const previousAssigneeId = task.assigneeId;
+        const isReassignment = previousAssigneeId && previousAssigneeId !== userId;
+        
         await axios.put(`http://localhost:8085/api/tasks/${task.id}`, {
           ...task,
           assigneeId: userId || null,
@@ -1008,6 +1179,102 @@ export default function ProjectBoardPage() {
         if (!isValid) {
           setAssigneeAvatarUrl(DEFAULT_AVATAR_URL);
         }
+        
+        // Send notification when assigning to a user (not when unassigning)
+        if (isValid && userId) {
+          try {
+            // Get current user info from localStorage with detailed logging
+            const currentUserId = localStorage.getItem("ownerId") || localStorage.getItem("userId");
+            const currentUserName = localStorage.getItem("username") || localStorage.getItem("fullname") || "Unknown User";
+            
+            console.log("🔍 Current user info:", {
+              currentUserId,
+              currentUserName,
+              localStorage: {
+                ownerId: localStorage.getItem("ownerId"),
+                userId: localStorage.getItem("userId"),
+                username: localStorage.getItem("username"),
+                fullname: localStorage.getItem("fullname")
+              }
+            });
+            
+            // Don't send notification if user assigns task to themselves
+            if (currentUserId && currentUserId !== userId) {
+              console.log("🔔 Sending notification for task assignment:", {
+                fromUser: currentUserId,
+                fromName: currentUserName,
+                toUser: userId,
+                toName: userName,
+                isReassignment,
+                previousAssignee: previousAssigneeId
+              });
+              
+              const notificationData = {
+                type: isReassignment ? "TASK_REASSIGNED" : "TASK_ASSIGNED",
+                title: isReassignment ? "Task reassigned" : "Task assigned",
+                message: `You have been ${isReassignment ? 'reassigned to' : 'assigned to'} task "${task.title}"`,
+                recipientUserId: userId,
+                actorUserId: currentUserId,
+                actorUserName: currentUserName,
+                projectId: task.projectId || projectId,
+                taskId: task.id,
+                actionUrl: `/project/board?projectId=${task.projectId || projectId}&taskId=${task.id}`
+              };
+              
+              console.log("📤 Notification data to be sent:", notificationData);
+              
+              try {
+                const notificationResponse = await axios.post(
+                  "http://localhost:8089/api/notifications/create", 
+                  notificationData,
+                  {
+                    headers: {
+                      'Content-Type': 'application/json'
+                    }
+                  }
+                );
+                
+                if (notificationResponse.data) {
+                  console.log("✅ Notification created successfully:", notificationResponse.data);
+                  toast.success(`${isReassignment ? 'Reassignment' : 'Assignment'} notification sent to ${userName}`);
+                } else {
+                  console.error("❌ Empty response from notification service");
+                  throw new Error("No data in notification response");
+                }
+              } catch (apiError) {
+                console.error("❌ Notification API error:", {
+                  error: apiError,
+                  request: notificationData,
+                  response: (apiError as any).response?.data
+                });
+                throw apiError; // Re-throw to be caught by outer catch
+              }
+              
+            } else if (currentUserId === userId) {
+              console.log("⏭️ Not sending notification - user assigned task to themselves:", {
+                currentUserId,
+                assignedUserId: userId
+              });
+            } else {
+              console.log("⚠️ Could not send notification - missing current user ID:", {
+                currentUserId,
+                localStorage: Object.keys(localStorage)
+              });
+            }
+            
+          } catch (notificationError) {
+            console.error("❌ Error in notification process:", notificationError);
+            // Don't show error toast to user as assignment still succeeded
+          }
+        } else {
+          console.log("ℹ️ No notification needed:", {
+            isValid,
+            userId,
+            reason: !isValid ? "Invalid assignment" : "No user ID"
+          });
+        }
+        
+        console.log(`✅ Task assignment updated: ${isReassignment ? 'Reassigned' : 'Assigned'} task "${task.title}" to ${userName} (${userId})`);
         
         await fetchProjectUsers();
       } catch (err) {
@@ -1189,11 +1456,17 @@ export default function ProjectBoardPage() {
   }
 
   const renderColumn = (title: string, status: Task["status"]) => {
-    const tasksInColumn = (tasks || []).filter((t) => t.status === status);
+    // Filter tasks: chỉ hiển thị parent tasks (không có parentTaskId) và có status tương ứng
+    const tasksInColumn = (tasks || []).filter((t) => 
+      t.status === status && (t.parentTaskId === null || t.parentTaskId === undefined)
+    );
     const hasTasksInColumn = tasksInColumn.length > 0;
     
     return (
-      <div className="flex-1 bg-gray-50 rounded p-4 min-h-[300px] border border-gray-200">
+      <DroppableProjectColumn 
+        status={status}
+        className="flex-1 bg-gray-50 rounded p-4 min-h-[300px] border border-gray-200"
+      >
         <div className="flex justify-between items-center mb-2">
           <h2 className="font-semibold text-sm uppercase text-gray-700">{title}</h2>
           <div className="text-xs font-semibold bg-gray-200 text-gray-600 rounded-full px-2 py-0.5">
@@ -1207,11 +1480,12 @@ export default function ProjectBoardPage() {
           </div>
         ) : hasTasksInColumn ? (
           tasksInColumn.map((task) => (
+            <DraggableProjectTaskCard key={task.id} task={task}>
             <TaskCard
-              key={task.id}
               task={task}
               onClick={() => setSelectedTask(task)}
             />
+            </DraggableProjectTaskCard>
           ))
         ) : (
           <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -1234,6 +1508,12 @@ export default function ProjectBoardPage() {
             onChange={(e) =>
               setNewTasks((prev) => ({ ...prev, [status]: e.target.value }))
             }
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && newTasks[status].trim() && latestSprintId) {
+                e.preventDefault();
+                handleCreateTaskByStatus(status);
+              }
+            }}
           />
           <Button
             size="sm"
@@ -1244,12 +1524,60 @@ export default function ProjectBoardPage() {
             + Add
           </Button>
         </div>
-      </div>
+      </DroppableProjectColumn>
     );
   };
 
+  // Debug localStorage khi component mount
+  useEffect(() => {
+    console.log("🔍 === DEBUGGING LOCALSTORAGE FOR USER ID ===");
+    
+    // Kiểm tra các keys có thể chứa userId
+    const possibleUserKeys = ["userId", "currentUserId", "user_id", "ownerId", "userInfo", "currentUser"];
+    
+    possibleUserKeys.forEach(key => {
+      const value = localStorage.getItem(key);
+      console.log(`🔍 localStorage[${key}]:`, value);
+    });
+    
+    // Kiểm tra tất cả keys trong localStorage
+    console.log("🔍 All localStorage keys:", Object.keys(localStorage));
+    
+    // Thử parse userInfo nếu có
+    const userInfo = localStorage.getItem("userInfo");
+    if (userInfo) {
+      try {
+        const parsed = JSON.parse(userInfo);
+        console.log("🔍 Parsed userInfo:", parsed);
+        if (parsed.id) {
+          console.log("🔍 Found user ID in userInfo:", parsed.id);
+        }
+      } catch (e) {
+        console.log("🔍 userInfo is not JSON:", userInfo);
+      }
+    }
+    
+    console.log("🔍 === END DEBUGGING LOCALSTORAGE ===");
+  }, []);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setShowSearchResults(false);
+      }
+    }
+    
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  
+
   return (
     <div className="flex h-screen bg-gray-50">
+      <NavigationProgress />
       <Sidebar projectId={projectId || undefined} />
       <div className="flex-1 flex flex-col">
         <TopNavigation />
@@ -1289,8 +1617,16 @@ export default function ProjectBoardPage() {
                 </form>
                 {showSearchResults && (
                   <div className="absolute left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-white border rounded-md shadow-lg z-50">
-                    {searchResults.length > 0 ? (
+                    {isSearching ? (
+                      <div className="p-4 text-center text-gray-500">
+                        <div className="flex items-center justify-center space-x-2">
+                          <div className="animate-spin h-4 w-4 border-2 border-blue-500 rounded-full border-t-transparent"></div>
+                          <span className="text-sm">Searching boards...</span>
+                        </div>
+                      </div>
+                    ) : searchResults && searchResults.length > 0 ? (
                       searchResults.map(project => {
+                        console.log("🔍 Rendering project:", project);
                         const projectType = project.projectType || "Team-managed";
                         const projectAccess = project.access || "Private";
                         
@@ -1298,12 +1634,15 @@ export default function ProjectBoardPage() {
                           <div 
                             key={project.id}
                             className="p-3 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
-                            onClick={() => handleSearchSubmit({ preventDefault: () => {} } as React.FormEvent)}
+                            onClick={() => {
+                              console.log("🔍 Project clicked:", project);
+                              handleSelectProject(project.id);
+                            }}
                           >
                             <div className="flex items-center">
-                                                              <div className="w-8 h-8 bg-blue-100 rounded flex items-center justify-center text-blue-600 font-semibold mr-3">
-                                  {(project.name || "PR").substring(0, 2).toUpperCase()}
-                                </div>
+                              <div className="w-8 h-8 bg-blue-100 rounded flex items-center justify-center text-blue-600 font-semibold mr-3">
+                                {(project.name || "PR").substring(0, 2).toUpperCase()}
+                              </div>
                               <div>
                                 <div className="font-medium">{project.name}</div>
                                 <div className="text-xs text-gray-500 mt-0.5 flex items-center">
@@ -1329,7 +1668,7 @@ export default function ProjectBoardPage() {
                             <path d="M5 11C5 14.3137 7.68629 17 11 17C12.6597 17 14.1621 16.3261 15.2483 15.2483C16.3261 14.1621 17 12.6597 17 11C17 7.68629 14.3137 5 11 5C7.68629 5 5 7.68629 5 11Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                           </svg>
                         </div>
-                        No boards found matching "<strong>{searchProject}</strong>"
+                        No projects found matching &quot;<strong>{searchProject}</strong>&quot; where you are a member
                       </div>
                     )}
                   </div>
@@ -1407,12 +1746,41 @@ export default function ProjectBoardPage() {
               </div>
             </div>
           ) : (
+            <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
             <div className="flex flex-wrap gap-4">
               {renderColumn("To Do", "TODO")}
               {renderColumn("In Progress", "IN_PROGRESS")}
               {renderColumn("Review", "REVIEW")}
               {renderColumn("Done", "DONE")}
+              </div>
+
+              {/* Drag Overlay */}
+              <DragOverlay>
+                {activeTask && (
+                  <div className="bg-white rounded-sm p-3 shadow-lg border border-gray-200 opacity-90">
+                    <div className="text-sm font-medium mb-4">{activeTask.title}</div>
+                    <div className="flex justify-between items-center text-xs text-gray-700">
+                      <div className="flex items-center gap-1">
+                        <span className="w-4 h-4 border border-blue-600 bg-white rounded-sm flex items-center justify-center text-blue-600 text-[10px]">
+                          ✔
+                        </span>
+                        <span className="font-semibold">{activeTask.shortKey || "T-000"}</span>
+                      </div>
+                    </div>
             </div>
+                )}
+              </DragOverlay>
+
+              {/* API Loading indicator */}
+              {apiLoading && (
+                <div className="fixed top-4 right-4 bg-blue-500 text-white px-4 py-2 rounded-md shadow-lg z-50">
+                  <div className="flex items-center space-x-2">
+                    <div className="animate-spin h-4 w-4 border-2 border-white rounded-full border-t-transparent"></div>
+                    <span>Updating task...</span>
+                  </div>
+                </div>
+              )}
+            </DndContext>
           )}
         </div>
       </div>
@@ -1423,6 +1791,36 @@ export default function ProjectBoardPage() {
           onClose={() => setSelectedTask(null)}
           onUpdate={handleUpdateTask}
           sprints={sprints}
+          onOpenSubtask={(subtask) => {
+            // Close current modal and open subtask detail
+            setSelectedTask(subtask as Task);
+          }}
+          onBackToParent={async (parentTaskId) => {
+            // Fetch parent task and open its detail modal
+            try {
+              console.log("Navigating back to parent task:", parentTaskId);
+              
+              // Find parent task from existing tasks first
+              const parentTask = tasks.find(task => task.id === parentTaskId);
+              
+              if (parentTask) {
+                // If found in current tasks, just open it
+                setSelectedTask(parentTask);
+              } else {
+                // If not found, fetch from API
+                const response = await axios.get(`http://localhost:8085/api/tasks/${parentTaskId}`);
+                if (response.data?.status === "SUCCESS") {
+                  setSelectedTask(response.data.data as Task);
+                } else {
+                  console.error("Failed to fetch parent task");
+                  toast.error("Could not load parent task");
+                }
+              }
+            } catch (error) {
+              console.error("Error navigating to parent task:", error);
+              toast.error("Failed to navigate to parent task");
+            }
+          }}
         />
       )}
     </div>

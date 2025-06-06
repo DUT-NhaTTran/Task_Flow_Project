@@ -1,6 +1,6 @@
 package com.tmnhat.fileservice.repository;
 
-import com.tmnhat.fileservice.entity.Attachment;
+import com.tmnhat.fileservice.model.Attachment;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

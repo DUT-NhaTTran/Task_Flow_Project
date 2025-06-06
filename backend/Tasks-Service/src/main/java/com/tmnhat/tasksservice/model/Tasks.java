@@ -2,6 +2,7 @@ package com.tmnhat.tasksservice.model;
 
 import com.tmnhat.tasksservice.payload.enums.TaskStatus;
 import com.tmnhat.tasksservice.payload.enums.TaskTag;
+import com.tmnhat.tasksservice.payload.enums.TaskPriority;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -24,6 +25,7 @@ public class Tasks {
     private UUID parentTaskId;
     private List<TaskTag> tags;
     private String label;
+    private TaskPriority priority;  // ✅ New priority field
 
     public Tasks() {
     }
@@ -43,6 +45,7 @@ public class Tasks {
         this.parentTaskId = builder.parentTaskId;
         this.tags = builder.tags;
         this.label = builder.label;
+        this.priority = builder.priority;
     }
 
     // ✅ Getters & Setters
@@ -159,6 +162,14 @@ public class Tasks {
         this.label = label;
     }
 
+    public TaskPriority getPriority() {
+        return priority;
+    }
+
+    public void setPriority(TaskPriority priority) {
+        this.priority = priority;
+    }
+
     // Builder class
 
     public static class Builder {
@@ -176,6 +187,7 @@ public class Tasks {
         private UUID parentTaskId;
         private List<TaskTag> tags;
         private String label;
+        private TaskPriority priority;
 
         public Builder() {}
 
@@ -246,6 +258,11 @@ public class Tasks {
 
         public Builder label(String label) {
             this.label = label;
+            return this;
+        }
+
+        public Builder priority(TaskPriority priority) {
+            this.priority = priority;
             return this;
         }
 

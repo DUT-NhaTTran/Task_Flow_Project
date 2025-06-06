@@ -10,6 +10,8 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.Map;
+import java.util.HashMap;
 
 public class SprintDAO extends BaseDAO {
 
@@ -150,6 +152,88 @@ public class SprintDAO extends BaseDAO {
                 list.add(mapResultSetToSprint(rs));
             }
             return list;
+        });
+    }
+
+    // Calendar Filter Methods
+    public List<Sprints> getFilteredSprintsForCalendar(UUID projectId, String search, 
+                                                      List<String> assigneeIds, List<String> statuses, 
+                                                      String startDate, String endDate) throws SQLException {
+        StringBuilder sql = new StringBuilder("SELECT * FROM sprints WHERE project_id = ?");
+        
+        List<Object> params = new ArrayList<>();
+        params.add(projectId);
+        
+        // Search filter
+        if (search != null && !search.trim().isEmpty()) {
+            sql.append(" AND (name ILIKE ? OR goal ILIKE ?)");
+            String searchPattern = "%" + search.trim() + "%";
+            params.add(searchPattern);
+            params.add(searchPattern);
+        }
+        
+        // Note: Assignee filter removed since sprints table doesn't have assignee_id column
+        // The assignee functionality would need to be implemented differently
+        
+        // Status filter
+        if (statuses != null && !statuses.isEmpty()) {
+            sql.append(" AND status IN (");
+            for (int i = 0; i < statuses.size(); i++) {
+                if (i > 0) sql.append(", ");
+                sql.append("?");
+                params.add(statuses.get(i));
+            }
+            sql.append(")");
+        }
+        
+        // Date range filter
+        if (startDate != null && !startDate.trim().isEmpty()) {
+            sql.append(" AND (start_date >= ? OR end_date >= ?)");
+            params.add(startDate);
+            params.add(startDate);
+        }
+        
+        if (endDate != null && !endDate.trim().isEmpty()) {
+            sql.append(" AND (start_date <= ? OR end_date <= ?)");
+            params.add(endDate);
+            params.add(endDate);
+        }
+        
+        sql.append(" ORDER BY start_date DESC");
+        
+        return executeQuery(sql.toString(), stmt -> {
+            for (int i = 0; i < params.size(); i++) {
+                stmt.setObject(i + 1, params.get(i));
+            }
+            List<Sprints> sprints = new ArrayList<>();
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                sprints.add(mapResultSetToSprint(rs));
+            }
+            return sprints;
+        });
+    }
+
+    public List<Map<String, Object>> getSprintAssignees(UUID projectId) throws SQLException {
+        // Since sprints don't have assignees, return empty list
+        // This could be modified to return assignees from tasks within sprints
+        return new ArrayList<>();
+    }
+
+    public List<String> getSprintStatuses(UUID projectId) throws SQLException {
+        String sql = "SELECT DISTINCT status FROM sprints WHERE project_id = ? ORDER BY status";
+        
+        return executeQuery(sql, stmt -> {
+            stmt.setObject(1, projectId);
+            List<String> statuses = new ArrayList<>();
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                String status = rs.getString("status");
+                if (status != null && !status.trim().isEmpty()) {
+                    statuses.add(status);
+                }
+            }
+            return statuses;
         });
     }
 

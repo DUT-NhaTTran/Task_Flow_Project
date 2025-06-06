@@ -30,27 +30,37 @@ export default function SignInPage() {
 
             // Lưu vào localStorage
             localStorage.setItem("token", token);
-            localStorage.setItem("ownerId", userId);
+            localStorage.setItem("userId", userId);
             
             console.log("Saved to localStorage:", {
                 token: localStorage.getItem("token"),
-                ownerId: localStorage.getItem("ownerId")
+                userId: localStorage.getItem("userId")
             });
 
-            // Gọi API lấy project mới nhất
-            const latestProjectRes = await axios.get(`http://localhost:8083/api/projects/latest?ownerId=${userId}`, {
-                headers: {
-                    Authorization: `Bearer ${token}`, // nếu API yêu cầu xác thực
-                },
-            });
+            // Thử gọi API lấy project mới nhất (không bắt buộc)
+            try {
+                console.log("Fetching latest project for userId:", userId);
+                const latestProjectRes = await axios.get(`http://localhost:8083/api/projects/latest?ownerId=${userId}`, {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                });
 
-            const latestProjectId = latestProjectRes.data.projectId;
+                const latestProjectId = latestProjectRes.data.projectId;
+                console.log("Latest project found:", latestProjectId);
 
-            // Điều hướng tới trang project_homescreen
-            router.push(`/project/project_homescreen?projectId=${latestProjectId}`);
+                // Điều hướng tới trang project_homescreen
+                router.push(`/project/project_homescreen?projectId=${latestProjectId}`);
+            } catch (projectErr) {
+                console.log("No latest project found or Projects Service not available, redirecting to work page");
+                // Không hiển thị lỗi cho user, chỉ redirect đến work page
+                router.push(`/work?userId=${userId}`);
+            }
         } catch (err: unknown) {
+            console.error("Login error:", err);
             if (axios.isAxiosError(err)) {
                 const errorMessage = err.response?.data?.error || "Login failed. Please try again.";
+                console.error("API Error response:", err.response?.data);
                 setError(errorMessage);
             } else if (err instanceof Error) {
                 setError(err.message);
@@ -58,7 +68,6 @@ export default function SignInPage() {
                 setError("An unknown error occurred.");
             }
         }
-
     };
 
 

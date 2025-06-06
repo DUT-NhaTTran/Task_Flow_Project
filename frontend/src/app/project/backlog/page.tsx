@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { useSearchParams } from "next/navigation";
 import { TopNavigation } from "@/components/ui/top-navigation";
 import { Sidebar } from "@/components/ui/sidebar";
+import { useNavigation } from "@/contexts/NavigationContext";
 import { Search, ChevronDown, MoreHorizontal, ChevronRight, Plus, Edit, Check, Calendar, ChevronUp, Trash2 } from "lucide-react";
 
 // Define types for the task
@@ -30,6 +31,12 @@ export interface TaskData {
   tags?: string[] | null;
   team?: string;
   label?: string;
+  priority?: "LOWEST" | "LOW" | "MEDIUM" | "HIGH" | "HIGHEST";
+  // AI Estimation fields
+  estimatedStoryPoints?: number;
+  estimationConfidence?: number;
+  isAiEstimated?: boolean;
+  estimationCreatedAt?: string;
 }
 
 export interface SprintOption {
@@ -54,8 +61,19 @@ type CheckboxNames = 'sprintHeader' | 'backlogHeader';
 
 export default function BacklogPage() {
   const searchParams = useSearchParams();
-  const projectId = searchParams?.get("projectId") || null;
+  const { currentProjectId, setCurrentProjectId } = useNavigation();
   
+  // Ưu tiên projectId từ context (từ board), sau đó mới lấy từ URL
+  const urlProjectId = searchParams?.get("projectId");
+  const projectId = currentProjectId || urlProjectId;
+  
+  // Chỉ cập nhật context nếu có URL projectId nhưng context chưa có (backward compatibility)
+  useEffect(() => {
+    if (urlProjectId && !currentProjectId) {
+      setCurrentProjectId(urlProjectId);
+    }
+  }, [urlProjectId, currentProjectId, setCurrentProjectId]);
+
   const [tasks, setTasks] = useState<TaskData[]>([]);
   const [sprints, setSprints] = useState<SprintOption[]>([]);
   const [newTaskTitle, setNewTaskTitle] = useState("");
@@ -113,8 +131,8 @@ export default function BacklogPage() {
           const allTasks = tasksResponse.data || [];
           setTasks(allTasks);
           
-          // Filter out tasks that are not assigned to any sprint (backlog tasks)
-          const backlogTasksList = allTasks.filter((task: TaskData) => !task.sprintId);
+          // Filter out tasks that are not assigned to any sprint (backlog tasks) và chỉ hiển thị parent tasks
+          const backlogTasksList = allTasks.filter((task: TaskData) => !task.sprintId && (task.parentTaskId === null || task.parentTaskId === undefined));
           setBacklogTasks(backlogTasksList);
         } else {
           console.error("Failed to fetch tasks:", tasksResponse.data);
@@ -204,7 +222,7 @@ export default function BacklogPage() {
           setTasks(allTasks);
           
           // Update backlog tasks
-          const backlogTasksList = allTasks.filter((task: TaskData) => !task.sprintId);
+          const backlogTasksList = allTasks.filter((task: TaskData) => !task.sprintId && (task.parentTaskId === null || task.parentTaskId === undefined));
           setBacklogTasks(backlogTasksList);
         }
         
@@ -466,8 +484,8 @@ export default function BacklogPage() {
         toast.success("Sprint deleted successfully");
         await fetchSprints();
         
-        // Move tasks from deleted sprint back to backlog
-        const sprintTasks = tasks.filter(task => task.sprintId === sprintId);
+        // Move tasks from deleted sprint back to backlog - chỉ xử lý parent tasks
+        const sprintTasks = tasks.filter(task => task.sprintId === sprintId && (task.parentTaskId === null || task.parentTaskId === undefined));
         for (const task of sprintTasks) {
           await handleMoveTaskToBacklog(task.id);
         }
@@ -574,6 +592,55 @@ export default function BacklogPage() {
     }
   };
 
+  // Calculate total story points for a sprint
+  const getSprintStoryPoints = (sprintId: string) => {
+    const sprintTasks = tasks.filter(task => 
+      task.sprintId === sprintId && 
+      (task.parentTaskId === null || task.parentTaskId === undefined)
+    );
+    
+    const totalPoints = sprintTasks.reduce((total, task) => {
+      return total + (task.storyPoint || 0);
+    }, 0);
+    
+    return totalPoints;
+  };
+
+  // Calculate completed story points for a sprint
+  const getCompletedSprintStoryPoints = (sprintId: string) => {
+    const completedTasks = tasks.filter(task => 
+      task.sprintId === sprintId && 
+      task.status === "DONE" &&
+      (task.parentTaskId === null || task.parentTaskId === undefined)
+    );
+    
+    const completedPoints = completedTasks.reduce((total, task) => {
+      return total + (task.storyPoint || 0);
+    }, 0);
+    
+    return completedPoints;
+  };
+
+  // Calculate total story points for backlog
+  const getBacklogStoryPoints = () => {
+    const totalPoints = backlogTasks.reduce((total, task) => {
+      return total + (task.storyPoint || 0);
+    }, 0);
+    
+    return totalPoints;
+  };
+
+  // Calculate completed story points for backlog
+  const getCompletedBacklogStoryPoints = () => {
+    const completedTasks = backlogTasks.filter(task => task.status === "DONE");
+    
+    const completedPoints = completedTasks.reduce((total, task) => {
+      return total + (task.storyPoint || 0);
+    }, 0);
+    
+    return completedPoints;
+  };
+
   // Format date for display
   const formatDate = (dateString?: string) => {
     if (!dateString) return '';
@@ -619,6 +686,108 @@ export default function BacklogPage() {
     }
   };
 
+  // AI Estimation function
+  const estimateStoryPoints = async (taskId: string) => {
+    try {
+      const response = await axios.post(`http://localhost:8085/api/tasks/${taskId}/estimate-story-points`);
+      
+      if (response.data && response.data.success) {
+        const { estimatedStoryPoints, confidence } = response.data.data;
+        
+        toast.success(
+          `AI suggests ${estimatedStoryPoints} story points (${Math.round(confidence * 100)}% confidence)`
+        );
+        
+        // Refresh tasks to show updated estimation
+        const tasksResponse = await axios.get(`http://localhost:8085/api/tasks/project/${projectId}`);
+        if (tasksResponse.data) {
+          const allTasks = tasksResponse.data || [];
+          setTasks(allTasks);
+          
+          // Update backlog tasks
+          const backlogTasksList = allTasks.filter((task: TaskData) => !task.sprintId && (task.parentTaskId === null || task.parentTaskId === undefined));
+          setBacklogTasks(backlogTasksList);
+        }
+        
+        return estimatedStoryPoints;
+      } else {
+        toast.error("Failed to estimate story points");
+        return null;
+      }
+    } catch (error) {
+      console.error("Error estimating story points:", error);
+      toast.error("Error estimating story points");
+      return null;
+    }
+  };
+
+  // Train AI Model function
+  const trainAIModel = async () => {
+    try {
+      toast.info("Training AI model... This may take a few minutes.");
+      
+      const response = await axios.post(`http://localhost:8085/api/tasks/train-ai-model`);
+      
+      if (response.data && response.data.success) {
+        toast.success("AI model trained successfully!");
+      } else {
+        toast.error("Failed to train AI model");
+      }
+    } catch (error) {
+      console.error("Error training AI model:", error);
+      toast.error("Error training AI model");
+    }
+  };
+
+  // Add priority sorting function
+  const sortTasksByPriority = (tasks: TaskData[]): TaskData[] => {
+    const priorityOrder = {
+      'HIGHEST': 5,
+      'HIGH': 4,
+      'MEDIUM': 3,
+      'LOW': 2,
+      'LOWEST': 1
+    };
+
+    return [...tasks].sort((a, b) => {
+      const aPriority = priorityOrder[a.priority || 'MEDIUM'];
+      const bPriority = priorityOrder[b.priority || 'MEDIUM'];
+      
+      // Sort by priority first (highest to lowest)
+      if (aPriority !== bPriority) {
+        return bPriority - aPriority;
+      }
+      
+      // If priorities are equal, sort by created date (newest first)
+      const aCreated = new Date(a.createdAt || 0);
+      const bCreated = new Date(b.createdAt || 0);
+      return bCreated.getTime() - aCreated.getTime();
+    });
+  };
+
+  // Get priority icon and color
+  const getPriorityIcon = (priority?: string) => {
+    switch (priority) {
+      case 'HIGHEST': return '🔴';
+      case 'HIGH': return '🟠';
+      case 'MEDIUM': return '🟡';
+      case 'LOW': return '🟢';
+      case 'LOWEST': return '🔵';
+      default: return '🟡';
+    }
+  };
+
+  const getPriorityColorClass = (priority?: string) => {
+    switch (priority) {
+      case 'HIGHEST': return 'bg-red-100 text-red-800 border-red-300';
+      case 'HIGH': return 'bg-orange-100 text-orange-800 border-orange-300';
+      case 'MEDIUM': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+      case 'LOW': return 'bg-green-100 text-green-800 border-green-300';
+      case 'LOWEST': return 'bg-blue-100 text-blue-800 border-blue-300';
+      default: return 'bg-gray-100 text-gray-800 border-gray-300';
+    }
+  };
+
   return (
     <div className="flex h-screen bg-gray-50">
       <Sidebar projectId={projectId || undefined} />
@@ -642,6 +811,14 @@ export default function BacklogPage() {
                 className="h-9 bg-blue-500 text-white hover:bg-blue-600"
               >
                 Create Sprint
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={trainAIModel}
+                className="h-9 border-orange-300 text-orange-700 hover:bg-orange-50"
+              >
+                🤖 Train AI Model
               </Button>
               <Button variant="outline" className="h-9 border-gray-300 flex items-center gap-1">
                 Epic <ChevronDown className="h-4 w-4" />
@@ -700,22 +877,27 @@ export default function BacklogPage() {
                               `${formatDate(sprint.startDate)} - ${formatDate(sprint.endDate)}` : 
                               ''
                             }
-                            ({tasks.filter(task => task.sprintId === sprint.id).length} work items)
+                            ({tasks.filter(task => task.sprintId === sprint.id && (task.parentTaskId === null || task.parentTaskId === undefined)).length} work items)
+                            {getSprintStoryPoints(sprint.id) > 0 && (
+                              <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                                {getCompletedSprintStoryPoints(sprint.id)}/{getSprintStoryPoints(sprint.id)} SP
+                              </span>
+                            )}
                           </span>
                         </button>
                         <div className="ml-auto flex space-x-2">
                           <div className="flex items-center text-xs">
                             <span className="flex items-center justify-center w-5 h-5 text-center bg-gray-200 rounded mx-0.5">
-                              {tasks.filter(task => task.sprintId === sprint.id && task.status === "TODO").length}
+                              {tasks.filter(task => task.sprintId === sprint.id && task.status === "TODO" && (task.parentTaskId === null || task.parentTaskId === undefined)).length}
                             </span>
                             <span className="flex items-center justify-center w-5 h-5 text-center bg-blue-200 rounded mx-0.5">
-                              {tasks.filter(task => task.sprintId === sprint.id && task.status === "IN_PROGRESS").length}
+                              {tasks.filter(task => task.sprintId === sprint.id && task.status === "IN_PROGRESS" && (task.parentTaskId === null || task.parentTaskId === undefined)).length}
                             </span>
                             <span className="flex items-center justify-center w-5 h-5 text-center bg-purple-200 rounded mx-0.5">
-                              {tasks.filter(task => task.sprintId === sprint.id && task.status === "REVIEW").length}
+                              {tasks.filter(task => task.sprintId === sprint.id && task.status === "REVIEW" && (task.parentTaskId === null || task.parentTaskId === undefined)).length}
                             </span>
                             <span className="flex items-center justify-center w-5 h-5 text-center bg-green-200 rounded mx-0.5">
-                              {tasks.filter(task => task.sprintId === sprint.id && task.status === "DONE").length}
+                              {tasks.filter(task => task.sprintId === sprint.id && task.status === "DONE" && (task.parentTaskId === null || task.parentTaskId === undefined)).length}
                             </span>
                           </div>
                           {sprint.status === "ACTIVE" ? (
@@ -796,9 +978,9 @@ export default function BacklogPage() {
 
                       {expandedSprint === sprint.id && (
                         <div className="ml-6 mt-2">
-                          {/* Task Items */}
-                          {tasks.filter(task => task.sprintId === sprint.id).length > 0 ? (
-                            tasks.filter(task => task.sprintId === sprint.id).map(task => (
+                          {/* Task Items - Sort by priority */}
+                          {tasks.filter(task => task.sprintId === sprint.id && (task.parentTaskId === null || task.parentTaskId === undefined)).length > 0 ? (
+                            sortTasksByPriority(tasks.filter(task => task.sprintId === sprint.id && (task.parentTaskId === null || task.parentTaskId === undefined))).map(task => (
                               <div className="border rounded-sm mb-2" key={task.id}>
                                 <div className="flex items-center p-3">
                                   <input 
@@ -813,6 +995,12 @@ export default function BacklogPage() {
                                       }
                                     }} 
                                   />
+                                  
+                                  {/* Priority indicator */}
+                                  <div className={`w-6 h-6 rounded text-xs flex items-center justify-center mr-2 border ${getPriorityColorClass(task.priority)}`}>
+                                    {getPriorityIcon(task.priority)}
+                                  </div>
+                                  
                                   <span className="text-blue-600 font-medium text-sm mr-2">{task.shortKey || task.id.substring(0, 8)}</span>
                                   <span className="text-sm">{task.title}</span>
                                   {task.label && (
@@ -864,6 +1052,15 @@ export default function BacklogPage() {
                                     <span className="h-5 w-5 flex items-center justify-center">
                                       {task.storyPoint || "-"}
                                     </span>
+                                    <Button 
+                                      variant="ghost" 
+                                      size="sm" 
+                                      className="h-8 w-8 text-purple-600 hover:bg-purple-50"
+                                      onClick={() => estimateStoryPoints(task.id)}
+                                      title="AI Estimate Story Points"
+                                    >
+                                      🤖
+                                    </Button>
                                     <Button variant="ghost" size="sm" className="h-8 w-8">
                                       <Edit className="h-4 w-4" />
                                     </Button>
@@ -923,6 +1120,191 @@ export default function BacklogPage() {
                     </Button>
                   </div>
                 )}
+
+                {/* Backlog Section */}
+                <div className="mb-6">
+                  <div className="flex items-center py-2">
+                    <input 
+                      type="checkbox" 
+                      className="mr-2" 
+                      checked={checkboxState.backlogHeader}
+                      onChange={() => handleCheckboxChange('backlogHeader')}
+                    />
+                    <button 
+                      onClick={() => toggleSprint('backlog')}
+                      className="flex items-center"
+                    >
+                      {expandedSprint === 'backlog' ? 
+                        <ChevronDown className="h-4 w-4 mr-2" /> : 
+                        <ChevronRight className="h-4 w-4 mr-2" />
+                      }
+                      <span className="font-medium">Backlog</span>
+                      <span className="text-sm text-gray-500 ml-2">
+                        ({backlogTasks.length} work items)
+                        {getBacklogStoryPoints() > 0 && (
+                          <span className="ml-2 px-2 py-1 bg-gray-100 text-gray-800 rounded-full text-xs font-medium">
+                            {getCompletedBacklogStoryPoints()}/{getBacklogStoryPoints()} SP
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                    <div className="ml-auto flex space-x-2">
+                      <div className="flex items-center text-xs">
+                        <span className="flex items-center justify-center w-5 h-5 text-center bg-gray-200 rounded mx-0.5">
+                          {backlogTasks.filter(task => task.status === "TODO").length}
+                        </span>
+                        <span className="flex items-center justify-center w-5 h-5 text-center bg-blue-200 rounded mx-0.5">
+                          {backlogTasks.filter(task => task.status === "IN_PROGRESS").length}
+                        </span>
+                        <span className="flex items-center justify-center w-5 h-5 text-center bg-purple-200 rounded mx-0.5">
+                          {backlogTasks.filter(task => task.status === "REVIEW").length}
+                        </span>
+                        <span className="flex items-center justify-center w-5 h-5 text-center bg-green-200 rounded mx-0.5">
+                          {backlogTasks.filter(task => task.status === "DONE").length}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {expandedSprint === 'backlog' && (
+                    <div className="ml-6 mt-2">
+                      {/* Backlog Task Items - Sort by priority */}
+                      {backlogTasks.length > 0 ? (
+                        sortTasksByPriority(backlogTasks).map(task => (
+                          <div className="border rounded-sm mb-2" key={task.id}>
+                            <div className="flex items-center p-3">
+                              <input 
+                                type="checkbox" 
+                                className="mr-3" 
+                                checked={task.status === "DONE"}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    handleStatusChange(task.id, "DONE");
+                                  } else {
+                                    handleStatusChange(task.id, "TODO");
+                                  }
+                                }} 
+                              />
+                              
+                              {/* Priority indicator */}
+                              <div className={`w-6 h-6 rounded text-xs flex items-center justify-center mr-2 border ${getPriorityColorClass(task.priority)}`}>
+                                {getPriorityIcon(task.priority)}
+                              </div>
+                              
+                              <span className="text-blue-600 font-medium text-sm mr-2">{task.shortKey || task.id.substring(0, 8)}</span>
+                              <span className="text-sm">{task.title}</span>
+                              {task.label && (
+                                <div className="ml-2 bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs font-medium">
+                                  {task.label}
+                                </div>
+                              )}
+                              <div className="ml-auto flex items-center space-x-2">
+                                <div className="relative">
+                                  <button 
+                                    className={`px-2 py-1 ${getStatusColorClass(task.status)} rounded text-sm flex items-center`}
+                                    onClick={() => setOpenStatusDropdown(openStatusDropdown === task.id ? null : task.id)}
+                                  >
+                                    {task.status} <ChevronDown className="h-3 w-3 ml-1" />
+                                  </button>
+                                  
+                                  {openStatusDropdown === task.id && (
+                                    <div 
+                                      ref={statusDropdownRef}
+                                      className="absolute right-0 mt-1 w-36 bg-white rounded shadow-lg z-10 py-1 border"
+                                    >
+                                      {statusOptions.map(option => (
+                                        <button
+                                          key={option.value}
+                                          className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center ${option.value === task.status ? 'font-medium' : ''}`}
+                                          onClick={() => {
+                                            handleStatusChange(task.id, option.value);
+                                            setOpenStatusDropdown(null);
+                                          }}
+                                        >
+                                          <div className={`h-3 w-3 rounded-full ${getStatusColorClass(option.value)} mr-2`}></div>
+                                          {option.label}
+                                          {option.value === task.status && (
+                                            <Check className="h-3 w-3 ml-auto" />
+                                          )}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                                
+                                {/* Sprint assignment dropdown */}
+                                <div className="relative">
+                                  <button className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-sm hover:bg-gray-200">
+                                    Move to Sprint
+                                  </button>
+                                </div>
+                                
+                                <Button size="sm" variant="ghost" className="h-8 w-8">
+                                  <span className="sr-only">Assign</span>
+                                  <svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <circle cx="10" cy="10" r="9" stroke="currentColor" strokeWidth="2"/>
+                                    <circle cx="10" cy="7" r="3" stroke="currentColor" strokeWidth="2"/>
+                                    <path d="M3 17C3 13.6863 6.13401 11 10 11C13.866 11 17 13.6863 17 17" stroke="currentColor" strokeWidth="2"/>
+                                  </svg>
+                                </Button>
+                                <span className="h-5 w-5 flex items-center justify-center">
+                                  {task.storyPoint || "-"}
+                                </span>
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  className="h-8 w-8 text-purple-600 hover:bg-purple-50"
+                                  onClick={() => estimateStoryPoints(task.id)}
+                                  title="AI Estimate Story Points"
+                                >
+                                  🤖
+                                </Button>
+                                <Button variant="ghost" size="sm" className="h-8 w-8">
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button variant="ghost" size="sm" className="h-8 w-8">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="p-8 border border-dashed rounded-md text-center">
+                          <p className="text-gray-500">No tasks in backlog. Create new tasks to get started.</p>
+                        </div>
+                      )}
+
+                      {/* Create new task input for backlog */}
+                      <div className="border border-blue-300 rounded-sm p-3 flex items-center mt-3">
+                        <input type="checkbox" className="mr-3" disabled />
+                        <ChevronDown className="h-4 w-4 mr-2 text-gray-400" />
+                        <Input 
+                          className="border-none text-sm h-7 flex-1"
+                          placeholder="What needs to be done?"
+                          value={newTaskTitle}
+                          onChange={(e) => setNewTaskTitle(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !isCreating) {
+                              handleCreateTask();
+                            }
+                          }}
+                        />
+                        {isCreating && <div className="ml-2 animate-spin h-4 w-4 border-2 border-blue-500 rounded-full border-t-transparent"></div>}
+                        {newTaskTitle && !isCreating && (
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="ml-2 text-blue-500"
+                            onClick={handleCreateTask}
+                          >
+                            Add
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </>
             )}
           </div>

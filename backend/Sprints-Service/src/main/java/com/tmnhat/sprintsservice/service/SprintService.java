@@ -4,6 +4,7 @@ package com.tmnhat.sprintsservice.service;
 import com.tmnhat.sprintsservice.model.Sprints;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public interface SprintService {
@@ -20,5 +21,12 @@ public interface SprintService {
     List<Sprints> getSprintsByProject(UUID projectId);
     Sprints getActiveSprint(UUID projectId);
     void moveIncompleteTasks(UUID fromSprintId, UUID toSprintId);
+
+    // Calendar Filter Methods
+    List<Sprints> getFilteredSprintsForCalendar(UUID projectId, String search, 
+                                               List<String> assigneeIds, List<String> statuses, 
+                                               String startDate, String endDate);
+    List<Map<String, Object>> getSprintAssignees(UUID projectId);
+    List<String> getSprintStatuses(UUID projectId);
 }
 

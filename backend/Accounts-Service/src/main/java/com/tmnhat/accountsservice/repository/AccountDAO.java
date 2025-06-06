@@ -114,12 +114,16 @@ public class AccountDAO extends BaseDAO {
                 .build();
     }
     public UUID getUserIdByEmail(String email) throws SQLException {
-        String sql = "SELECT id FROM accounts WHERE email = ?";
+        String sql = "SELECT user_id FROM accounts WHERE email = ?";
         return executeQuery(sql, stmt -> {
             stmt.setString(1, email);
             ResultSet rs = stmt.executeQuery();
             if (rs.next()) {
-                return UUID.fromString(rs.getString("id"));
+                UUID userId = (UUID) rs.getObject("user_id");
+                if (userId == null) {
+                    throw new ResourceNotFoundException("No user_id linked to account with email: " + email);
+                }
+                return userId;
             }
             throw new ResourceNotFoundException("No account found for email: " + email);
         });
@@ -144,6 +148,20 @@ public class AccountDAO extends BaseDAO {
         });
     }
     
-
+    public UUID getAccountIdByEmail(String email) throws SQLException {
+        String sql = "SELECT id FROM accounts WHERE email = ?";
+        return executeQuery(sql, stmt -> {
+            stmt.setString(1, email);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                UUID accountId = (UUID) rs.getObject("id");
+                if (accountId == null) {
+                    throw new ResourceNotFoundException("No account found for email: " + email);
+                }
+                return accountId;
+            }
+            throw new ResourceNotFoundException("No account found for email: " + email);
+        });
+    }
 
 }

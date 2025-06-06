@@ -18,6 +18,8 @@ public interface ProjectService {
 
     List<Projects> getAllProjects();
 
+    List<Projects> getAllProjectsByUserMembership(UUID userId);
+
     void assignMember(UUID projectId, UUID userId, String roleInProject);
     
     void assignMember(ProjectMembers memberDTO);
@@ -27,6 +29,8 @@ public interface ProjectService {
     void changeProjectOwner(UUID projectId, UUID newOwnerId);
 
     List<Projects> searchProjects(String keyword);
+
+    List<Projects> searchProjectsByUserMembership(String keyword, UUID userId);
 
     List<Projects> filterProjectsByType(String projectType);
 

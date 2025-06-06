@@ -27,4 +27,10 @@ public class ProjectValidator {
             throw new BadRequestException("Project ID is required");
         }
     }
+
+    public static void validateUserId(UUID userId) {
+        if (userId == null) {
+            throw new BadRequestException("User ID is required");
+        }
+    }
 }

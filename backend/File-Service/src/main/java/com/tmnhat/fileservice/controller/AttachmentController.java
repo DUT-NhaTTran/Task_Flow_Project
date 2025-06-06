@@ -1,7 +1,7 @@
 package com.tmnhat.fileservice.controller;
 
-import com.tmnhat.common.payload.ResponseDataAPI;
-import com.tmnhat.fileservice.entity.Attachment;
+import com.tmnhat.fileservice.payload.ResponseDataAPI;
+import com.tmnhat.fileservice.model.Attachment;
 import com.tmnhat.fileservice.service.AttachmentService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.Resource;

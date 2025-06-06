@@ -125,16 +125,18 @@ services:
       - key: SPRING_PROFILES_ACTIVE
         value: "render"
 
-  # Frontend (Next.js)
+  # Frontend (Next.js) - Optimized for memory usage
   - type: web
     name: taskflow-frontend
     env: node
-    buildCommand: "cd frontend && npm install && npm run build"
-    startCommand: "cd frontend && npm run start"
+    buildCommand: "cd frontend && ./render-build.sh"
+    startCommand: "cd frontend && NODE_OPTIONS='--max-old-space-size=400' npm run start"
     plan: free
     envVars:
       - key: NODE_ENV
         value: "production"
+      - key: NODE_OPTIONS
+        value: "--max-old-space-size=400"
       - key: REACT_APP_AI_SERVICE_URL
         fromService:
           type: web

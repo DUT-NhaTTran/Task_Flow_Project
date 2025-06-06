@@ -99,4 +99,32 @@ public class SprintController {
         List<Sprints> list = sprintsService.getSprintsByProject(projectId);
         return ResponseEntity.ok(Map.of("data", list));
     }
+
+    // Calendar Filter Endpoints
+    @GetMapping("/project/{projectId}/calendar/filter")
+    public ResponseEntity<ResponseDataAPI> getFilteredSprintsForCalendar(
+        @PathVariable UUID projectId,
+        @RequestParam(required = false) String search,
+        @RequestParam(required = false) List<String> assigneeIds,
+        @RequestParam(required = false) List<String> statuses,
+        @RequestParam(required = false) String startDate,
+        @RequestParam(required = false) String endDate) {
+        
+        List<Sprints> filteredSprints = sprintsService.getFilteredSprintsForCalendar(
+            projectId, search, assigneeIds, statuses, startDate, endDate);
+        
+        return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(filteredSprints));
+    }
+
+    @GetMapping("/project/{projectId}/calendar/assignees")
+    public ResponseEntity<ResponseDataAPI> getSprintAssigneesForCalendar(@PathVariable UUID projectId) {
+        List<Map<String, Object>> assignees = sprintsService.getSprintAssignees(projectId);
+        return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(assignees));
+    }
+
+    @GetMapping("/project/{projectId}/calendar/statuses")
+    public ResponseEntity<ResponseDataAPI> getSprintStatusesForCalendar(@PathVariable UUID projectId) {
+        List<String> statuses = sprintsService.getSprintStatuses(projectId);
+        return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(statuses));
+    }
 }

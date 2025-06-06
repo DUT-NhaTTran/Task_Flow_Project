@@ -14,11 +14,11 @@ public class WebConfig {
             @Override
             public void addCorsMappings(CorsRegistry registry) {
                 registry.addMapping("/**") // 👈 cho tất cả API
-                        .allowedOrigins("http://localhost:3000", "http://127.0.0.1:3000")
+                        .allowedOriginPatterns("*") // Use allowedOriginPatterns instead of allowedOrigins
                         .allowedMethods("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS") // các method cho phép
                         .allowedHeaders("*") // cho phép tất cả header
-                        .allowCredentials(true); // nếu bạn cần cookie (auth token)
+                        .allowCredentials(false); // Set to false to avoid CORS error with "*"
             }
         };
     }
-}
+} 

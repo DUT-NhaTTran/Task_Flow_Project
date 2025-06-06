@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 @Import(WebConfig.class)
 
@@ -210,5 +211,92 @@ public class TasksController {
     @GetMapping("/project/{projectId}")
     public List<Tasks> getTasksByProjectId(@PathVariable UUID projectId) {
         return taskService.getTasksByProjectId(projectId);
+    }
+
+    // Get tasks by project ID with sorting
+    @GetMapping("/project/{projectId}/sorted")
+    public ResponseEntity<ResponseDataAPI> getTasksByProjectIdSorted(
+            @PathVariable UUID projectId,
+            @RequestParam(defaultValue = "updated") String sortBy,
+            @RequestParam(defaultValue = "desc") String sortOrder) {
+        List<Tasks> tasks = taskService.getTasksByProjectIdSorted(projectId, sortBy, sortOrder);
+        return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(tasks));
+    }
+
+    // Get project activity (Recent activity for project summary)
+    @GetMapping("/project/{projectId}/activity")
+    public ResponseEntity<ResponseDataAPI> getProjectActivity(@PathVariable UUID projectId) {
+        TaskValidator.validateProjectId(projectId);
+        List<Object> activities = taskService.getProjectActivity(projectId);
+        return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(activities));
+    }
+
+    // AI Story Point Estimation
+    @PostMapping("/{taskId}/estimate-story-points")
+    public ResponseEntity<ResponseDataAPI> estimateStoryPoints(@PathVariable UUID taskId) {
+        TaskValidator.validateTaskId(taskId);
+        Object estimation = taskService.estimateStoryPoints(taskId);
+        return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(estimation));
+    }
+
+    // Train AI Model
+    @PostMapping("/train-ai-model")
+    public ResponseEntity<ResponseDataAPI> trainAIModel() {
+        Object result = taskService.trainAIModel();
+        return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(result));
+    }
+
+    // Bulk AI Estimation for Project
+    @PostMapping("/project/{projectId}/bulk-estimate")
+    public ResponseEntity<ResponseDataAPI> bulkEstimateProject(@PathVariable UUID projectId) {
+        TaskValidator.validateProjectId(projectId);
+        Object result = taskService.bulkEstimateStoryPoints(projectId);
+        return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(result));
+    }
+
+    @GetMapping("/project/{projectId}/calendar/filter")
+    public ResponseEntity<ResponseDataAPI> getFilteredTasksForCalendar(
+        @PathVariable UUID projectId,
+        @RequestParam(required = false) String search,
+        @RequestParam(required = false) List<String> assigneeIds,
+        @RequestParam(required = false) List<String> types,
+        @RequestParam(required = false) List<String> statuses,
+        @RequestParam(required = false) String startDate,
+        @RequestParam(required = false) String endDate,
+        @RequestParam(required = false) String sprintId) {
+        
+        TaskValidator.validateProjectId(projectId);
+        
+        List<Tasks> filteredTasks = taskService.getFilteredTasksForCalendar(
+            projectId, search, assigneeIds, types, statuses, startDate, endDate, sprintId);
+        
+        return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(filteredTasks));
+    }
+
+    @GetMapping("/project/{projectId}/calendar/assignees")
+    public ResponseEntity<ResponseDataAPI> getTaskAssigneesForCalendar(@PathVariable UUID projectId) {
+        TaskValidator.validateProjectId(projectId);
+        
+        List<Map<String, Object>> assignees = taskService.getTaskAssignees(projectId);
+        
+        return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(assignees));
+    }
+
+    @GetMapping("/project/{projectId}/calendar/types")
+    public ResponseEntity<ResponseDataAPI> getTaskTypesForCalendar(@PathVariable UUID projectId) {
+        TaskValidator.validateProjectId(projectId);
+        
+        List<String> types = taskService.getTaskTypes(projectId);
+        
+        return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(types));
+    }
+
+    @GetMapping("/project/{projectId}/calendar/statuses")
+    public ResponseEntity<ResponseDataAPI> getTaskStatusesForCalendar(@PathVariable UUID projectId) {
+        TaskValidator.validateProjectId(projectId);
+        
+        List<String> statuses = taskService.getTaskStatuses(projectId);
+        
+        return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(statuses));
     }
 }

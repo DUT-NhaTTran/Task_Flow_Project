@@ -90,6 +90,12 @@ public class CommentService {
         return commentRepository.countByTaskIdAndNotDeleted(taskId);
     }
     
+    // Get comment by ID
+    public Comment getCommentById(Long commentId) {
+        Optional<Comment> commentOpt = commentRepository.findById(commentId);
+        return commentOpt.orElse(null);
+    }
+    
     // Get replies for a comment
     public List<Comment> getReplies(Long commentId) {
         return commentRepository.findByParentCommentIdAndIsDeletedFalse(commentId);

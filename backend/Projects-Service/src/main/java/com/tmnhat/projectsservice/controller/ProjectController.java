@@ -35,6 +35,14 @@ public class ProjectController {
         return ResponseEntity.ok(Map.of("data", results));
     }
 
+    @GetMapping("/search/member")
+    public ResponseEntity<?> searchProjectsByUserMembership(
+            @RequestParam String keyword, 
+            @RequestParam UUID userId) {
+        List<Projects> results = projectService.searchProjectsByUserMembership(keyword, userId);
+        return ResponseEntity.ok(Map.of("data", results));
+    }
+
     @GetMapping("/filter")
     public ResponseEntity<?> filterProjectsByType(@RequestParam String projectType) {
         List<Projects> results = projectService.filterProjectsByType(projectType);
@@ -57,6 +65,13 @@ public class ProjectController {
     @GetMapping
     public ResponseEntity<ResponseDataAPI> getAllProjects() {
         List<Projects> projectList = projectService.getAllProjects();
+        return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(projectList));
+    }
+
+    @GetMapping("/member/{userId}")
+    public ResponseEntity<ResponseDataAPI> getAllProjectsByUserMembership(@PathVariable UUID userId) {
+        ProjectValidator.validateUserId(userId);
+        List<Projects> projectList = projectService.getAllProjectsByUserMembership(userId);
         return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(projectList));
     }
 

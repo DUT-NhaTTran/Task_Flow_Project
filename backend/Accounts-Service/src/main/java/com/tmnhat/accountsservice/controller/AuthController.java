@@ -1,4 +1,5 @@
 package com.tmnhat.accountsservice.controller;
+import com.tmnhat.accountsservice.model.Accounts;
 import com.tmnhat.accountsservice.model.LoginRequest;
 import com.tmnhat.accountsservice.service.AuthService;
 import com.tmnhat.accountsservice.validation.AccountValidator;
@@ -52,7 +53,21 @@ public class AuthController {
             AccountValidator.validateLoginRequest(loginRequest);
     
             String token = authService.login(loginRequest.getEmail(), loginRequest.getPassword());
-            UUID userId = authService.getUserIdByEmail(loginRequest.getEmail());
+            
+            UUID userId;
+            try {
+                // Lấy user_id từ accounts.user_id
+                userId = authService.getUserIdByEmail(loginRequest.getEmail());
+            } catch (Exception e) {
+                // Nếu chưa có user_id, tự động tạo mới và link vào account
+                userId = UUID.randomUUID();
+                var account = authService.getAccountByEmail(loginRequest.getEmail());
+                if (account != null) {
+                    authService.linkUserIdToAccount(account.getId(), userId);
+                } else {
+                    return ResponseEntity.status(400).body(Map.of("error", "Account not found"));
+                }
+            }
     
             if (userId == null) {
                 return ResponseEntity.status(400).body(Map.of("error", "User ID not found"));

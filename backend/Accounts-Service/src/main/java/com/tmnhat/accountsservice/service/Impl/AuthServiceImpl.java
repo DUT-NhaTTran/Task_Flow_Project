@@ -74,5 +74,19 @@ public class AuthServiceImpl implements AuthService {
         }
     }
 
+    @Override
+    public Accounts getAccountByEmail(String email) throws SQLException {
+        return accountDAO.getAccountByEmail(email);
+    }
+
+    @Override
+    public void linkUserIdToAccount(UUID accountId, UUID userId) throws SQLException {
+        accountDAO.linkUserIdToAccount(accountId, userId);
+    }
+
+    @Override
+    public UUID getAccountIdByEmail(String email) throws SQLException {
+        return accountDAO.getAccountIdByEmail(email);
+    }
 
 }

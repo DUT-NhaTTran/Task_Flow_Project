@@ -3,6 +3,7 @@ package com.tmnhat.tasksservice.repository;
 import com.tmnhat.tasksservice.model.Tasks;
 import com.tmnhat.tasksservice.payload.enums.TaskStatus;
 import com.tmnhat.tasksservice.payload.enums.TaskTag;
+import com.tmnhat.tasksservice.payload.enums.TaskPriority;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.sql.ResultSet;
@@ -14,12 +15,14 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.Map;
+import java.util.HashMap;
 
 public class TasksDAO extends BaseDAO {
 
     public void addTask(Tasks task) throws SQLException {
-        String sql = "INSERT INTO tasks (sprint_id, project_id, title, description, status, story_point, assignee_id, due_date, created_at, completed_at, parent_task_id, label) " +
-                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, now(), ?, ?, ?)";
+        String sql = "INSERT INTO tasks (sprint_id, project_id, title, description, status, story_point, assignee_id, due_date, created_at, completed_at, parent_task_id, label, priority, updated_at) " +
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, now(), ?, ?, ?, ?, now())";
 
         executeUpdate(sql, stmt -> {
             stmt.setObject(1, task.getSprintId());
@@ -32,12 +35,13 @@ public class TasksDAO extends BaseDAO {
             stmt.setTimestamp(8, task.getDueDate() != null ? Timestamp.valueOf(task.getDueDate().atStartOfDay()) : null);
             stmt.setTimestamp(9, task.getCompletedAt() != null ? Timestamp.valueOf(task.getCompletedAt()) : null);
             stmt.setObject(10, task.getParentTaskId());
-            stmt.setString(11, task.getLabel());  // Insert label directly
+            stmt.setString(11, task.getLabel());
+            stmt.setString(12, task.getPriority() != null ? task.getPriority().name() : TaskPriority.MEDIUM.name());
         });
     }
 
     public void updateTask(UUID id, Tasks task) throws SQLException {
-        String sql = "UPDATE tasks SET title = ?, description = ?, status = ?, story_point = ?, assignee_id = ?, due_date = ?, completed_at = ?, parent_task_id = ?, label = ? WHERE id = ?";
+        String sql = "UPDATE tasks SET title = ?, description = ?, status = ?, story_point = ?, assignee_id = ?, due_date = ?, completed_at = ?, parent_task_id = ?, label = ?, priority = ?, updated_at = now() WHERE id = ?";
         
         executeUpdate(sql, stmt -> {
             stmt.setString(1, task.getTitle());
@@ -48,8 +52,9 @@ public class TasksDAO extends BaseDAO {
             stmt.setTimestamp(6, task.getDueDate() != null ? Timestamp.valueOf(task.getDueDate().atStartOfDay()) : null);
             stmt.setTimestamp(7, task.getCompletedAt() != null ? Timestamp.valueOf(task.getCompletedAt()) : null);
             stmt.setObject(8, task.getParentTaskId());
-            stmt.setString(9, task.getLabel());  // Update label directly
-            stmt.setObject(10, id);
+            stmt.setString(9, task.getLabel());
+            stmt.setString(10, task.getPriority() != null ? task.getPriority().name() : TaskPriority.MEDIUM.name());
+            stmt.setObject(11, id);
         });
     }
 
@@ -99,7 +104,7 @@ public class TasksDAO extends BaseDAO {
     // --- Các hàm khác ---
 
     public void assignTask(UUID taskId, UUID userId) throws SQLException {
-        String sql = "UPDATE tasks SET assignee_id = ? WHERE id = ?";
+        String sql = "UPDATE tasks SET assignee_id = ?, updated_at = now() WHERE id = ?";
         executeUpdate(sql, stmt -> {
             stmt.setObject(1, userId);
             stmt.setObject(2, taskId);
@@ -107,7 +112,7 @@ public class TasksDAO extends BaseDAO {
     }
 
     public void changeTaskStatus(UUID taskId, String status) throws SQLException {
-        String sql = "UPDATE tasks SET status = ? WHERE id = ?";
+        String sql = "UPDATE tasks SET status = ?, updated_at = now() WHERE id = ?";
         executeUpdate(sql, stmt -> {
             stmt.setString(1, status);
             stmt.setObject(2, taskId);
@@ -115,7 +120,7 @@ public class TasksDAO extends BaseDAO {
     }
 
     public void updateStoryPoint(UUID taskId, int storyPoint) throws SQLException {
-        String sql = "UPDATE tasks SET story_point = ? WHERE id = ?";
+        String sql = "UPDATE tasks SET story_point = ?, updated_at = now() WHERE id = ?";
         executeUpdate(sql, stmt -> {
             stmt.setInt(1, storyPoint);
             stmt.setObject(2, taskId);
@@ -250,6 +255,236 @@ public class TasksDAO extends BaseDAO {
             return tasks;
         });
     }
+
+    public List<Tasks> getTasksByProjectIdSorted(UUID projectId, String sortBy, String sortOrder) throws SQLException {
+        // Validate sortBy to prevent SQL injection
+        String orderByColumn;
+        switch (sortBy.toLowerCase()) {
+            case "updated":
+                orderByColumn = "updated_at";
+                break;
+            case "created":
+                orderByColumn = "created_at";
+                break;
+            case "due-date":
+                orderByColumn = "due_date";
+                break;
+            case "priority":
+                // Use CASE statement to convert priority enum to numeric values for proper sorting
+                orderByColumn = "CASE priority " +
+                    "WHEN 'HIGHEST' THEN 5 " +
+                    "WHEN 'HIGH' THEN 4 " +
+                    "WHEN 'MEDIUM' THEN 3 " +
+                    "WHEN 'LOW' THEN 2 " +
+                    "WHEN 'LOWEST' THEN 1 " +
+                    "ELSE 3 END";
+                break;
+            case "status":
+                orderByColumn = "status";
+                break;
+            case "title":
+                orderByColumn = "title";
+                break;
+            default:
+                orderByColumn = "updated_at"; // Default to updated_at
+        }
+
+        // Validate sortOrder to prevent SQL injection
+        String order = "desc".equalsIgnoreCase(sortOrder) ? "DESC" : "ASC";
+        
+        // For due_date, we want to handle NULL values (put them at the end)
+        String sql;
+        if ("due_date".equals(orderByColumn)) {
+            sql = String.format("SELECT * FROM tasks WHERE project_id = ? ORDER BY %s %s NULLS LAST", orderByColumn, order);
+        } else {
+            sql = String.format("SELECT * FROM tasks WHERE project_id = ? ORDER BY %s %s", orderByColumn, order);
+        }
+        
+        return executeQuery(sql, stmt -> {
+            stmt.setObject(1, projectId);
+            ResultSet rs = stmt.executeQuery();
+            List<Tasks> tasks = new ArrayList<>();
+            while (rs.next()) {
+                tasks.add(mapResultSetToTask(rs));
+            }
+            return tasks;
+        });
+    }
+
+    // Add method to update task priority
+    public void updateTaskPriority(UUID taskId, TaskPriority priority) throws SQLException {
+        String sql = "UPDATE tasks SET priority = ?, updated_at = now() WHERE id = ?";
+        executeUpdate(sql, stmt -> {
+            stmt.setString(1, priority.name());
+            stmt.setObject(2, taskId);
+        });
+    }
+
+    // Add method to get tasks by priority
+    public List<Tasks> getTasksByPriority(UUID projectId, TaskPriority priority) throws SQLException {
+        String sql = "SELECT * FROM tasks WHERE project_id = ? AND priority = ?";
+        return executeQuery(sql, stmt -> {
+            stmt.setObject(1, projectId);
+            stmt.setString(2, priority.name());
+            List<Tasks> tasks = new ArrayList<>();
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                tasks.add(mapResultSetToTask(rs));
+            }
+            return tasks;
+        });
+    }
+
+    // Calendar Filter Methods
+    public List<Tasks> getFilteredTasksForCalendar(UUID projectId, String search, 
+                                                  List<String> assigneeIds, List<String> types, 
+                                                  List<String> statuses, String startDate, 
+                                                  String endDate, String sprintId) throws SQLException {
+        StringBuilder sql = new StringBuilder("SELECT t.*, u.username as assignee_name FROM tasks t ");
+        sql.append("LEFT JOIN users u ON t.assignee_id = u.id WHERE t.project_id = ?");
+        
+        List<Object> params = new ArrayList<>();
+        params.add(projectId);
+        
+        // Search filter
+        if (search != null && !search.trim().isEmpty()) {
+            sql.append(" AND (t.title ILIKE ? OR t.description ILIKE ?)");
+            String searchPattern = "%" + search.trim() + "%";
+            params.add(searchPattern);
+            params.add(searchPattern);
+        }
+        
+        // Assignee filter
+        if (assigneeIds != null && !assigneeIds.isEmpty()) {
+            sql.append(" AND (t.assignee_id IN (");
+            for (int i = 0; i < assigneeIds.size(); i++) {
+                if (i > 0) sql.append(", ");
+                sql.append("?");
+                try {
+                    params.add(UUID.fromString(assigneeIds.get(i)));
+                } catch (IllegalArgumentException e) {
+                    // Skip invalid UUIDs
+                    continue;
+                }
+            }
+            sql.append(") OR t.assignee_id IS NULL)");
+        }
+        
+        // Type filter (using label field as type)
+        if (types != null && !types.isEmpty()) {
+            sql.append(" AND t.label IN (");
+            for (int i = 0; i < types.size(); i++) {
+                if (i > 0) sql.append(", ");
+                sql.append("?");
+                params.add(types.get(i));
+            }
+            sql.append(")");
+        }
+        
+        // Status filter
+        if (statuses != null && !statuses.isEmpty()) {
+            sql.append(" AND t.status IN (");
+            for (int i = 0; i < statuses.size(); i++) {
+                if (i > 0) sql.append(", ");
+                sql.append("?");
+                params.add(statuses.get(i));
+            }
+            sql.append(")");
+        }
+        
+        // Date range filter
+        if (startDate != null && !startDate.trim().isEmpty()) {
+            sql.append(" AND (t.due_date >= ? OR t.created_at >= ?)");
+            params.add(startDate);
+            params.add(startDate);
+        }
+        
+        if (endDate != null && !endDate.trim().isEmpty()) {
+            sql.append(" AND (t.due_date <= ? OR t.created_at <= ?)");
+            params.add(endDate);
+            params.add(endDate);
+        }
+        
+        // Sprint filter
+        if (sprintId != null && !sprintId.trim().isEmpty()) {
+            sql.append(" AND t.sprint_id = ?");
+            try {
+                params.add(UUID.fromString(sprintId));
+            } catch (IllegalArgumentException e) {
+                // Skip invalid UUID
+            }
+        }
+        
+        sql.append(" ORDER BY t.created_at DESC");
+        
+        return executeQuery(sql.toString(), stmt -> {
+            for (int i = 0; i < params.size(); i++) {
+                stmt.setObject(i + 1, params.get(i));
+            }
+            List<Tasks> tasks = new ArrayList<>();
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                tasks.add(mapResultSetToTask(rs));
+            }
+            return tasks;
+        });
+    }
+
+    public List<Map<String, Object>> getTaskAssignees(UUID projectId) throws SQLException {
+        String sql = "SELECT DISTINCT u.id, u.username, u.email FROM users u " +
+                    "INNER JOIN tasks t ON u.id = t.assignee_id " +
+                    "WHERE t.project_id = ? AND t.assignee_id IS NOT NULL " +
+                    "ORDER BY u.username";
+        
+        return executeQuery(sql, stmt -> {
+            stmt.setObject(1, projectId);
+            List<Map<String, Object>> assignees = new ArrayList<>();
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                Map<String, Object> assignee = new HashMap<>();
+                assignee.put("id", rs.getObject("id"));
+                assignee.put("name", rs.getString("username"));
+                assignee.put("email", rs.getString("email"));
+                assignees.add(assignee);
+            }
+            return assignees;
+        });
+    }
+
+    public List<String> getTaskTypes(UUID projectId) throws SQLException {
+        String sql = "SELECT DISTINCT label FROM tasks WHERE project_id = ? AND label IS NOT NULL ORDER BY label";
+        
+        return executeQuery(sql, stmt -> {
+            stmt.setObject(1, projectId);
+            List<String> types = new ArrayList<>();
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                String label = rs.getString("label");
+                if (label != null && !label.trim().isEmpty()) {
+                    types.add(label);
+                }
+            }
+            return types;
+        });
+    }
+
+    public List<String> getTaskStatuses(UUID projectId) throws SQLException {
+        String sql = "SELECT DISTINCT status FROM tasks WHERE project_id = ? ORDER BY status";
+        
+        return executeQuery(sql, stmt -> {
+            stmt.setObject(1, projectId);
+            List<String> statuses = new ArrayList<>();
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                String status = rs.getString("status");
+                if (status != null && !status.trim().isEmpty()) {
+                    statuses.add(status);
+                }
+            }
+            return statuses;
+        });
+    }
+
     // --- Helper: mapping ResultSet -> Tasks object ---
     private Tasks mapResultSetToTask(ResultSet rs) throws SQLException {
         Tasks.Builder builder = new Tasks.Builder()
@@ -267,17 +502,71 @@ public class TasksDAO extends BaseDAO {
                 .parentTaskId(rs.getObject("parent_task_id", UUID.class))
                 .tags(null);
                 
-        // Thử lấy trường label nếu có
+        // Try to get label field if exists
         try {
             String label = rs.getString("label");
             if (label != null) {
                 builder.label(label);
             }
         } catch (SQLException e) {
-            // Bỏ qua nếu không có cột label
+            // Ignore if label column doesn't exist
+        }
+        
+        // Try to get priority field if exists
+        try {
+            String priorityStr = rs.getString("priority");
+            if (priorityStr != null) {
+                try {
+                    TaskPriority priority = TaskPriority.valueOf(priorityStr);
+                    builder.priority(priority);
+                } catch (IllegalArgumentException e) {
+                    // If priority value is invalid, default to MEDIUM
+                    builder.priority(TaskPriority.MEDIUM);
+                }
+            } else {
+                builder.priority(TaskPriority.MEDIUM);
+            }
+        } catch (SQLException e) {
+            // If priority column doesn't exist, default to MEDIUM
+            builder.priority(TaskPriority.MEDIUM);
         }
         
         return builder.build();
+    }
+
+    // Get project activity - returns recent task updates as activity data
+    public List<Object> getProjectActivity(UUID projectId) throws SQLException {
+        String sql = """
+            SELECT t.id, t.title, t.status, t.assignee_id, t.updated_at, t.created_at,
+                   u.username as assignee_name
+            FROM tasks t
+            LEFT JOIN users u ON t.assignee_id = u.id
+            WHERE t.project_id = ?
+            ORDER BY t.updated_at DESC
+            LIMIT 10
+            """;
+            
+        return executeQuery(sql, stmt -> {
+            stmt.setObject(1, projectId);
+            ResultSet rs = stmt.executeQuery();
+            List<Object> activities = new ArrayList<>();
+            
+            while (rs.next()) {
+                // Create activity object with task update information
+                var activity = new java.util.HashMap<String, Object>();
+                activity.put("id", rs.getObject("id", UUID.class));
+                activity.put("type", "task_updated");
+                activity.put("user", rs.getString("assignee_name") != null ? rs.getString("assignee_name") : "Unknown User");
+                activity.put("task", rs.getString("title"));
+                activity.put("taskKey", "TASK-" + rs.getObject("id", UUID.class).toString().substring(0, 8));
+                activity.put("status", rs.getString("status"));
+                activity.put("timestamp", rs.getTimestamp("updated_at") != null ? rs.getTimestamp("updated_at").toLocalDateTime() : rs.getTimestamp("created_at").toLocalDateTime());
+                
+                activities.add(activity);
+            }
+            
+            return activities;
+        });
     }
 
 }

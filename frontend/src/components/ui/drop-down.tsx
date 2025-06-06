@@ -9,6 +9,7 @@ interface DropdownProps {
     onSelect?: (value: string) => void
     defaultValue?: string
     disabled?: boolean
+    className?: string
 }
 
 export function Dropdown({ 
@@ -16,10 +17,12 @@ export function Dropdown({
     options, 
     onSelect, 
     defaultValue, 
-    disabled = false 
+    disabled = false,
+    className = ""
 }: DropdownProps) {
     const [selected, setSelected] = React.useState(defaultValue || placeholder)
     const [open, setOpen] = React.useState(false)
+    const dropdownRef = React.useRef<HTMLDivElement>(null)
 
     // Update selected value when defaultValue changes
     React.useEffect(() => {
@@ -28,35 +31,98 @@ export function Dropdown({
         }
     }, [defaultValue])
 
+    // Close dropdown when clicking outside
+    React.useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setOpen(false)
+            }
+        }
+
+        if (open) {
+            document.addEventListener('mousedown', handleClickOutside)
+        }
+
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside)
+        }
+    }, [open])
+
     const handleSelect = (option: string) => {
+        console.log('Dropdown selecting:', option) // Debug log
         setSelected(option)
         setOpen(false)
         onSelect?.(option)
     }
 
+    const handleToggle = () => {
+        if (!disabled) {
+            console.log('Dropdown toggle, current open:', open) // Debug log
+            setOpen(!open)
+        }
+    }
+
+    console.log('Dropdown render - open:', open, 'options:', options) // Debug log
+
     return (
-        <div className="relative w-full text-sm">
+        <div ref={dropdownRef} className={`relative w-full text-sm ${className}`}>
             <button
-                onClick={() => !disabled && setOpen(!open)}
-                className={`w-full border ${disabled ? 'bg-gray-100 text-gray-400' : 'border-gray-300'} rounded-md px-3 py-2 flex items-center justify-between text-left ${!disabled && 'focus:outline-none focus:ring-2 focus:ring-blue-500'}`}
+                type="button"
+                onClick={handleToggle}
+                className={`w-full ${
+                    className.includes('border-0') 
+                        ? '' 
+                        : 'border'
+                } ${
+                    disabled 
+                        ? 'bg-gray-100 text-gray-400 border-gray-200' 
+                        : className.includes('border-0')
+                            ? 'bg-white hover:bg-gray-50'
+                            : 'border-gray-300 bg-white hover:border-gray-400 hover:bg-gray-50'
+                } ${
+                    className.includes('rounded-none') ? 'rounded-none' : 'rounded-md'
+                } px-3 py-2 h-9 flex items-center justify-between text-left transition-colors ${
+                    !disabled && 'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
+                }`}
                 disabled={disabled}
             >
-                <span className={selected === placeholder ? "text-gray-400" : ""}>{selected}</span>
-                <ChevronDown className={`h-4 w-4 ${disabled ? 'text-gray-300' : 'text-gray-500'}`} />
+                <span className={`truncate ${selected === placeholder ? "text-gray-400" : "text-gray-900"}`}>
+                    {selected}
+                </span>
+                <ChevronDown className={`h-4 w-4 ml-2 flex-shrink-0 transition-transform ${
+                    open ? 'rotate-180' : ''
+                } ${disabled ? 'text-gray-300' : 'text-gray-500'}`} />
             </button>
 
             {open && !disabled && (
-                <div className="absolute z-10 mt-1 w-full border rounded-md bg-white shadow">
-                    {options.map((option) => (
-                        <button
-                            key={option}
-                            onClick={() => handleSelect(option)}
-                            className="block w-full px-4 py-2 text-left hover:bg-gray-100"
-                        >
-                            {option}
-                        </button>
-                    ))}
-                </div>
+                <>
+                    {/* Backdrop */}
+                    <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+                    
+                    {/* Dropdown menu */}
+                    <div className="absolute z-50 mt-1 w-full min-w-max border border-gray-200 rounded-md bg-white shadow-lg">
+                        <div className="py-1 max-h-60 overflow-auto">
+                            {options.map((option) => {
+                                const isSelected = option === selected
+                                
+                                return (
+                                    <button
+                                        key={option}
+                                        type="button"
+                                        onClick={() => handleSelect(option)}
+                                        className={`block w-full px-4 py-2 text-left text-sm hover:bg-blue-50 hover:text-blue-700 transition-colors ${
+                                            isSelected 
+                                                ? 'bg-blue-50 text-blue-700 font-medium' 
+                                                : 'text-gray-700'
+                                        }`}
+                                    >
+                                        <span className="truncate">{option}</span>
+                                    </button>
+                                )
+                            })}
+                        </div>
+                    </div>
+                </>
             )}
         </div>
     )

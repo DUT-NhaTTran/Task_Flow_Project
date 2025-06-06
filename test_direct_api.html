@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Direct API Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        button { padding: 10px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .result { background: #f8f9fa; padding: 10px; margin: 10px 0; border-left: 4px solid #007bff; white-space: pre-wrap; }
+        .success { background: #d4edda; border-color: #28a745; }
+        .error { background: #f8d7da; border-color: #dc3545; }
+        input { padding: 8px; margin: 5px; width: 300px; }
+    </style>
+</head>
+<body>
+    <h1>🔥 Direct API Test - Bypass All Cache</h1>
+    
+    <div>
+        <label>User ID: <input type="text" id="userId" /></label>
+        <button onclick="testDirectAPI()">Test Direct API</button>
+        <button onclick="fillCurrentUser()">Use Current User</button>
+    </div>
+    
+    <div>
+        <button onclick="multipleTests()">Run Multiple Tests (5x)</button>
+        <button onclick="compareResponses()">Compare 2 Responses</button>
+    </div>
+    
+    <div id="result" class="result"></div>
+
+    <script>
+        function fillCurrentUser() {
+            const keys = ['ownerId', 'userId', 'currentUserId', 'user_id', 'id'];
+            for (const key of keys) {
+                const value = localStorage.getItem(key);
+                if (value) {
+                    document.getElementById('userId').value = value;
+                    return;
+                }
+            }
+            alert('No user ID found in localStorage');
+        }
+
+        async function testDirectAPI() {
+            const userId = document.getElementById('userId').value.trim();
+            if (!userId) {
+                alert('Please enter User ID');
+                return;
+            }
+
+            const resultDiv = document.getElementById('result');
+            resultDiv.className = 'result';
+            resultDiv.innerHTML = `Testing API for user: ${userId}...\n`;
+
+            try {
+                const timestamp = Date.now();
+                const random = Math.random().toString(36);
+                
+                console.log(`🔥 DIRECT API TEST - User: ${userId}, Time: ${new Date().toISOString()}`);
+                
+                const url = `http://localhost:8089/api/notifications/user/${userId}?force=${timestamp}&nocache=${random}&_=${Date.now()}`;
+                console.log(`🌐 API URL: ${url}`);
+
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Cache-Control': 'no-cache, no-store, must-revalidate',
+                        'Pragma': 'no-cache',
+                        'Expires': '0'
+                    }
+                });
+
+                const data = await response.json();
+                
+                let result = `✅ API Response Success!\n`;
+                result += `Status: ${response.status}\n`;
+                result += `Time: ${new Date().toISOString()}\n\n`;
+                
+                // Handle response structure
+                const notifications = data?.data || data || [];
+                result += `Total Notifications: ${notifications.length}\n\n`;
+                
+                // Look for "Report generator" notification
+                const reportGenNotif = notifications.find(n => 
+                    n.message?.includes('Report generator') || 
+                    n.title?.includes('Report generator')
+                );
+                
+                if (reportGenNotif) {
+                    result += `🎯 FOUND "Report generator" notification!\n`;
+                    result += `ID: ${reportGenNotif.id}\n`;
+                    result += `Title: ${reportGenNotif.title}\n`;
+                    result += `Message: ${reportGenNotif.message}\n`;
+                    result += `Recipient: ${reportGenNotif.recipientUserId}\n`;
+                    result += `Created: ${new Date(reportGenNotif.createdAt).toLocaleString()}\n`;
+                    result += `Read: ${reportGenNotif.isRead}\n\n`;
+                    resultDiv.className = 'result success';
+                } else {
+                    result += `❌ "Report generator" notification NOT FOUND\n\n`;
+                    resultDiv.className = 'result error';
+                }
+                
+                // Show all notifications
+                result += `All Notifications:\n`;
+                result += `================\n`;
+                notifications.forEach((n, i) => {
+                    result += `${i + 1}. ID: ${n.id} | Title: ${n.title}\n`;
+                    result += `   Message: ${n.message}\n`;
+                    result += `   Recipient: ${n.recipientUserId} | Created: ${new Date(n.createdAt).toLocaleString()}\n\n`;
+                });
+
+                resultDiv.innerHTML = result;
+                
+            } catch (error) {
+                console.error('❌ Direct API Error:', error);
+                resultDiv.className = 'result error';
+                resultDiv.innerHTML = `❌ Error: ${error.message}\n\nCheck console for details.`;
+            }
+        }
+
+        async function multipleTests() {
+            const userId = document.getElementById('userId').value.trim();
+            if (!userId) {
+                alert('Please enter User ID');
+                return;
+            }
+
+            const resultDiv = document.getElementById('result');
+            resultDiv.className = 'result';
+            resultDiv.innerHTML = 'Running 5 consecutive tests...\n\n';
+
+            const results = [];
+            
+            for (let i = 1; i <= 5; i++) {
+                try {
+                    const timestamp = Date.now();
+                    const response = await fetch(`http://localhost:8089/api/notifications/user/${userId}?test=${i}&t=${timestamp}`, {
+                        headers: { 'Cache-Control': 'no-cache' }
+                    });
+                    const data = await response.json();
+                    const notifications = data?.data || data || [];
+                    
+                    const hasReportGen = notifications.some(n => 
+                        n.message?.includes('Report generator') || n.title?.includes('Report generator')
+                    );
+                    
+                    results.push({
+                        test: i,
+                        count: notifications.length,
+                        hasReportGen,
+                        timestamp: new Date().toISOString()
+                    });
+                    
+                    resultDiv.innerHTML += `Test ${i}: ${notifications.length} notifications, Report Gen: ${hasReportGen ? '✅' : '❌'}\n`;
+                    
+                    // Wait 1 second between tests
+                    if (i < 5) await new Promise(resolve => setTimeout(resolve, 1000));
+                    
+                } catch (error) {
+                    results.push({
+                        test: i,
+                        error: error.message,
+                        timestamp: new Date().toISOString()
+                    });
+                    resultDiv.innerHTML += `Test ${i}: ❌ Error - ${error.message}\n`;
+                }
+            }
+            
+            // Summary
+            resultDiv.innerHTML += '\n=== SUMMARY ===\n';
+            resultDiv.innerHTML += `Consistent count: ${results.every(r => r.count === results[0].count)}\n`;
+            resultDiv.innerHTML += `Consistent Report Gen: ${results.every(r => r.hasReportGen === results[0].hasReportGen)}\n`;
+            
+            console.log('Multiple test results:', results);
+        }
+
+        async function compareResponses() {
+            const userId = document.getElementById('userId').value.trim();
+            if (!userId) {
+                alert('Please enter User ID');
+                return;
+            }
+
+            const resultDiv = document.getElementById('result');
+            resultDiv.className = 'result';
+            resultDiv.innerHTML = 'Comparing 2 API responses with 5 second gap...\n\n';
+
+            try {
+                // First call
+                const response1 = await fetch(`http://localhost:8089/api/notifications/user/${userId}?call=1&t=${Date.now()}`);
+                const data1 = await response1.json();
+                const notifications1 = data1?.data || data1 || [];
+                
+                resultDiv.innerHTML += `First call: ${notifications1.length} notifications\n`;
+                
+                // Wait 5 seconds
+                resultDiv.innerHTML += 'Waiting 5 seconds...\n';
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                
+                // Second call
+                const response2 = await fetch(`http://localhost:8089/api/notifications/user/${userId}?call=2&t=${Date.now()}`);
+                const data2 = await response2.json();
+                const notifications2 = data2?.data || data2 || [];
+                
+                resultDiv.innerHTML += `Second call: ${notifications2.length} notifications\n\n`;
+                
+                // Compare
+                const same = JSON.stringify(notifications1) === JSON.stringify(notifications2);
+                resultDiv.innerHTML += `Responses identical: ${same ? '✅' : '❌'}\n`;
+                
+                if (!same) {
+                    resultDiv.innerHTML += '\n🔍 DIFFERENCE DETECTED - Possible fresh data!\n';
+                    resultDiv.className = 'result success';
+                } else {
+                    resultDiv.innerHTML += '\n⚠️ Same response - Possible caching issue\n';
+                    resultDiv.className = 'result error';
+                }
+                
+            } catch (error) {
+                resultDiv.innerHTML += `❌ Error: ${error.message}\n`;
+                resultDiv.className = 'result error';
+            }
+        }
+
+        // Auto-fill current user on load
+        window.onload = function() {
+            fillCurrentUser();
+        };
+    </script>
+</body>
+</html> 

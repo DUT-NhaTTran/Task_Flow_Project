@@ -65,7 +65,7 @@ public class ProjectDAO extends BaseDAO {
     }
 
     public List<Projects> getAllProjects() throws SQLException {
-        String sql = "SELECT * FROM projects";
+        String sql = "SELECT * FROM projects ORDER BY created_at DESC";
         return executeQuery(sql, stmt -> {
             List<Projects> projects = new ArrayList<>();
             ResultSet rs = stmt.executeQuery();
@@ -80,6 +80,24 @@ public class ProjectDAO extends BaseDAO {
         String sql = "SELECT * FROM projects WHERE name ILIKE ?";
         return executeQuery(sql, stmt -> {
             stmt.setString(1, "%" + keyword + "%");
+            List<Projects> projects = new ArrayList<>();
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                projects.add(mapResultSetToProject(rs));
+            }
+            return projects;
+        });
+    }
+
+    public List<Projects> searchProjectsByUserMembership(String keyword, UUID userId) throws SQLException {
+        String sql = "SELECT DISTINCT p.* FROM projects p " +
+                     "INNER JOIN project_members pm ON p.id = pm.project_id " +
+                     "WHERE pm.user_id = ? " +
+                     "AND p.name ILIKE ? " +
+                     "ORDER BY p.created_at DESC";
+        return executeQuery(sql, stmt -> {
+            stmt.setObject(1, userId);
+            stmt.setString(2, "%" + keyword + "%");
             List<Projects> projects = new ArrayList<>();
             ResultSet rs = stmt.executeQuery();
             while (rs.next()) {
@@ -121,6 +139,32 @@ public class ProjectDAO extends BaseDAO {
         });
     }
 
+    public List<Projects> getAllProjectsByUserMembership(UUID userId) throws SQLException {
+        String sql = "SELECT DISTINCT p.* FROM projects p " +
+                     "INNER JOIN project_members pm ON p.id = pm.project_id " +
+                     "WHERE pm.user_id = ? " +
+                     "ORDER BY p.created_at DESC";
+        
+        System.out.println("=== DEBUG getAllProjectsByUserMembership ===");
+        System.out.println("Query: " + sql);
+        System.out.println("UserId: " + userId);
+        
+        return executeQuery(sql, stmt -> {
+            stmt.setObject(1, userId);
+            List<Projects> projects = new ArrayList<>();
+            ResultSet rs = stmt.executeQuery();
+            int count = 0;
+            while (rs.next()) {
+                Projects project = mapResultSetToProject(rs);
+                projects.add(project);
+                count++;
+                System.out.println("Found project " + count + ": " + project.getName() + " (ID: " + project.getId() + ")");
+            }
+            System.out.println("Total projects found: " + count);
+            System.out.println("=== END DEBUG ===");
+            return projects;
+        });
+    }
 
     private Projects mapResultSetToProject(ResultSet rs) throws SQLException {
         return new Projects.Builder()

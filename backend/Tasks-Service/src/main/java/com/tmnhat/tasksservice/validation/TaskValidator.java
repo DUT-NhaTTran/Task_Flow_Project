@@ -38,4 +38,10 @@ public class TaskValidator {
         }
     }
 
+    public static void validateProjectId(UUID projectId) {
+        if (projectId == null) {
+            throw new BadRequestException("Project ID cannot be null");
+        }
+    }
+
 }
