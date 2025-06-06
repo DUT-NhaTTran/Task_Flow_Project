@@ -1243,6 +1243,19 @@ export default function TaskDetailModal({
         const fetchedComments = response.data.data || [];
         setComments(fetchedComments);
         console.log("Comments fetched:", fetchedComments);
+
+        // ✅ Fetch user info for all commenters to display avatars
+        const uniqueUserIds = [...new Set(fetchedComments.map((comment: CommentData) => comment.userId))];
+        console.log("Fetching user info for commenters:", uniqueUserIds);
+        
+        // Fetch user info for all commenters in background
+        uniqueUserIds.forEach((userId) => {
+          if (userId && typeof userId === 'string' && !getUserById(userId)) {
+            fetchUserById(userId).catch(error => {
+              console.log("Failed to fetch user info for commenter:", userId);
+            });
+          }
+        });
       } else {
         console.error("Failed to fetch comments:", response.data);
         setComments([]);
@@ -3702,9 +3715,14 @@ export default function TaskDetailModal({
                     <div key={cmt.id} className="space-y-3">
                       {/* Parent Comment */}
                       <div className="flex gap-3 group hover:bg-gray-50/50 rounded-lg p-3 -m-3 transition-colors">
-                        <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white text-sm font-medium shadow-sm">
-                          {getUserInitials(cmt.userId)}
-                        </div>
+                        {/* ✅ Use UserAvatar component for real avatar */}
+                        {getUserById(cmt.userId) ? (
+                          <UserAvatar user={getUserById(cmt.userId)!} size="sm" className="w-8 h-8" />
+                        ) : (
+                          <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white text-sm font-medium shadow-sm">
+                            {getUserInitials(cmt.userId)}
+                          </div>
+                        )}
                         <div className="flex-1">
                           <div className="bg-gray-50 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow">
                             <div className="flex items-center justify-between mb-2">
@@ -3822,9 +3840,14 @@ export default function TaskDetailModal({
                                   key={reply.id}
                                   className="flex gap-3 group"
                                 >
-                                  <div className="w-7 h-7 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center text-white text-xs font-medium shadow-sm">
-                                    {getUserInitials(reply.userId)}
-                                  </div>
+                                  {/* ✅ Use UserAvatar component for real avatar */}
+                                  {getUserById(reply.userId) ? (
+                                    <UserAvatar user={getUserById(reply.userId)!} size="sm" className="w-7 h-7" />
+                                  ) : (
+                                    <div className="w-7 h-7 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center text-white text-xs font-medium shadow-sm">
+                                      {getUserInitials(reply.userId)}
+                                    </div>
+                                  )}
                                   <div className="flex-1">
                                     <div className="bg-white border border-green-100 rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow">
                                       <div className="flex items-center justify-between mb-2">

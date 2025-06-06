@@ -33,9 +33,9 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   // Initialize from localStorage and URL params
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      // Get saved values from localStorage
-      const savedProjectId = localStorage.getItem('currentProjectId');
-      const savedUserId = localStorage.getItem('userId');
+      // Get saved values from sessionStorage (changed from localStorage)
+      const savedProjectId = sessionStorage.getItem('currentProjectId') || localStorage.getItem('currentProjectId');
+      const savedUserId = sessionStorage.getItem('userId') || localStorage.getItem('userId');
       
       // Get from URL params
       const urlProjectId = searchParams?.get('projectId');
@@ -51,24 +51,24 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
         isNavigating: false
       });
       
-      // Save to localStorage
+      // Save to sessionStorage (changed from localStorage)
       if (finalProjectId) {
-        localStorage.setItem('currentProjectId', finalProjectId);
+        sessionStorage.setItem('currentProjectId', finalProjectId);
       }
       if (finalUserId) {
-        localStorage.setItem('userId', finalUserId);
+        sessionStorage.setItem('userId', finalUserId);
       }
     }
   }, [searchParams]);
 
   const setCurrentProjectId = (projectId: string) => {
     setState(prev => ({ ...prev, currentProjectId: projectId }));
-    localStorage.setItem('currentProjectId', projectId);
+    sessionStorage.setItem('currentProjectId', projectId);
   };
 
   const setUserId = (userId: string) => {
     setState(prev => ({ ...prev, userId: userId }));
-    localStorage.setItem('userId', userId);
+    sessionStorage.setItem('userId', userId);
   };
 
   const navigateTo = (path: string, preserveState = true) => {

@@ -51,19 +51,8 @@ export const useUserStorage = (): UseUserStorageReturn => {
     }
   }, []);
 
-  // Listen to localStorage changes (for multiple tabs)
-  useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'taskflow_logged_user') {
-        const newData = UserStorageService.getLoggedInUser();
-        setUserData(newData);
-        console.log('📱 User data updated from another tab');
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
+  // NOTE: Removed storage event listener for sessionStorage
+  // sessionStorage doesn't sync between tabs which is what we want for independent sessions
 
   // Actions
   const saveUser = (account: AccountInfo, profile: UserProfile, sessionToken?: string) => {

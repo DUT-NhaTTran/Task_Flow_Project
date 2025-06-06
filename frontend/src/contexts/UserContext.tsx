@@ -49,22 +49,33 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     try {
       setIsLoading(true);
       
-      // Check localStorage keys in priority order - "userId" first since login saves it there
-      const currentUserId = localStorage.getItem("userId") ||
+      // Check sessionStorage keys in priority order - "userId" first since login saves it there
+      const currentUserId = sessionStorage.getItem("userId") ||
+                           sessionStorage.getItem("ownerId") || 
+                           sessionStorage.getItem("currentUserId") ||
+                           sessionStorage.getItem("user_id") ||
+                           // Fallback to localStorage for migration
+                           localStorage.getItem("userId") ||
                            localStorage.getItem("ownerId") || 
                            localStorage.getItem("currentUserId") ||
                            localStorage.getItem("user_id");
       
-      console.log("🔍 UserContext: Checking localStorage for userId...");
-      console.log("🔍 UserContext: userId:", localStorage.getItem("userId"));
-      console.log("🔍 UserContext: ownerId:", localStorage.getItem("ownerId"));
+      console.log("🔍 UserContext: Checking sessionStorage for userId...");
+      console.log("🔍 UserContext: userId:", sessionStorage.getItem("userId"));
+      console.log("🔍 UserContext: ownerId:", sessionStorage.getItem("ownerId"));
       console.log("🔍 UserContext: Selected currentUserId:", currentUserId);
 
       if (!currentUserId) {
-        console.log("❌ UserContext: No user ID found in localStorage");
+        console.log("❌ UserContext: No user ID found in sessionStorage");
         setCurrentUser(null);
         setIsLoading(false);
         return;
+      }
+
+      // Migrate from localStorage to sessionStorage if needed
+      if (!sessionStorage.getItem("userId") && localStorage.getItem("userId")) {
+        console.log("🔄 UserContext: Migrating userId from localStorage to sessionStorage");
+        sessionStorage.setItem("userId", currentUserId);
       }
 
       // Check if user already in cache
@@ -258,7 +269,12 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     getCurrentUserId: () => {
       if (typeof window === 'undefined') return null;
       
-      return localStorage.getItem("userId") ||
+      return sessionStorage.getItem("userId") ||
+             sessionStorage.getItem("ownerId") || 
+             sessionStorage.getItem("currentUserId") ||
+             sessionStorage.getItem("user_id") ||
+             // Fallback to localStorage for migration
+             localStorage.getItem("userId") ||
              localStorage.getItem("ownerId") || 
              localStorage.getItem("currentUserId") ||
              localStorage.getItem("user_id");
@@ -266,20 +282,37 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     setCurrentUserId: (userId: string) => {
       if (typeof window === 'undefined') return;
       
-      localStorage.setItem("userId", userId);
+      // Clear current user and cache when switching users
+      setCurrentUser(null);
+      setUsers([]);
+      
+      sessionStorage.setItem("userId", userId);
       // Also set ownerId for backward compatibility
-      localStorage.setItem("ownerId", userId);
-      console.log("✅ UserId saved to localStorage:", userId);
+      sessionStorage.setItem("ownerId", userId);
+      console.log("✅ UserId saved to sessionStorage and cache cleared:", userId);
+      
+      // Trigger refresh of current user
+      setTimeout(() => {
+        refreshCurrentUser();
+      }, 100);
     },
     clearCurrentUserId: () => {
       if (typeof window === 'undefined') return;
       
+      sessionStorage.removeItem("userId");
+      sessionStorage.removeItem("ownerId");
+      sessionStorage.removeItem("currentUserId");
+      sessionStorage.removeItem("user_id");
+      sessionStorage.removeItem("token");
+      
+      // Also clear from localStorage
       localStorage.removeItem("userId");
       localStorage.removeItem("ownerId");
       localStorage.removeItem("currentUserId");
       localStorage.removeItem("user_id");
       localStorage.removeItem("token");
-      console.log("✅ UserId cleared from localStorage");
+      
+      console.log("✅ UserId cleared from sessionStorage");
     }
   };
 

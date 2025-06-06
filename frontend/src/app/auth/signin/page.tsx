@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import axios from "axios"
@@ -10,7 +10,7 @@ import UserStorageService from "@/services/userStorageService"
 
 export default function SignInPage() {
     const router = useRouter()
-    const { setCurrentUserId } = useUser()
+    const { setCurrentUserId, currentUser, refreshCurrentUser } = useUser()
 
     // Thêm state
     const [email, setEmail] = useState("")
@@ -18,13 +18,28 @@ export default function SignInPage() {
     const [error, setError] = useState("")
     const [isLoggingIn, setIsLoggingIn] = useState(false)
 
+    // Force refresh user context on page load
+    useEffect(() => {
+        console.log("🔄 SignIn page: Force refreshing UserContext...");
+        refreshCurrentUser();
+    }, []);
+
+    // Debug function to clear all data
+    const clearAllData = () => {
+        sessionStorage.clear();
+        localStorage.clear();
+        console.log("🧹 All storage cleared");
+        window.location.reload();
+    };
+
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         setError("");
         setIsLoggingIn(true);
 
         try {
-            console.log("🔑 Starting login process...");
+           
+            UserStorageService.clearLoggedInUser();
 
             // Step 1: Login via Auth service  
             const loginRes = await axios.post("http://localhost:8080/api/auth/login", {
@@ -76,23 +91,11 @@ export default function SignInPage() {
             
             // Step 6: Debug log saved data
             console.log("🔍 Verifying saved data:");
-            UserStorageService.debugLogUserData();
-
-            // Step 7: Check localStorage for verification
-            console.log("🔍 Verification - localStorage contents:", {
-                taskflow_logged_user: localStorage.getItem("taskflow_logged_user") ? "✅ Saved" : "❌ Missing",
-                taskflow_user_session: localStorage.getItem("taskflow_user_session") ? "✅ Saved" : "❌ Missing",
-                token: localStorage.getItem("token") ? "✅ Saved" : "❌ Missing",
-                userId: localStorage.getItem("userId") ? "✅ Saved" : "❌ Missing"
-            });
-
-            console.log("🎉 Login completed successfully! Redirecting...");
             
             // Navigate to main page
             router.push("/project/project_homescreen");
 
         } catch (error: any) {
-            console.error("❌ Login failed:", error);
             
             if (error.response?.status === 401) {
                 setError("Invalid email or password");

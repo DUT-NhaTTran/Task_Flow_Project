@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect } from "react";
 import {
   Globe,
@@ -18,6 +18,7 @@ import {
   Layout,
 } from "lucide-react";
 import { useNavigation } from "@/contexts/NavigationContext";
+import { useUser } from "@/contexts/UserContext";
 
 interface SidebarProps {
   projectId?: string;
@@ -25,44 +26,60 @@ interface SidebarProps {
 
 export function Sidebar({ projectId }: SidebarProps) {
   const pathname = usePathname();
-  const { 
-    currentProjectId, 
-    userId, 
-    isNavigating, 
-    navigateTo, 
-    getProjectPath, 
+  const searchParams = useSearchParams();
+  const {
+    currentProjectId,
+    userId,
+    isNavigating,
+    navigateTo,
+    getProjectPath,
     getUserPath,
-    setCurrentProjectId 
+    setCurrentProjectId,
+    setUserId,
   } = useNavigation();
 
-  // Update project ID if provided as prop - use useEffect to avoid setState during render
+  // Get current user from UserContext
+  const { currentUser } = useUser();
+
+  // Auto-update navigation context with current data
   useEffect(() => {
-    if (projectId && projectId !== currentProjectId) {
-      setCurrentProjectId(projectId);
+    // Update projectId from URL params or prop
+    const urlProjectId = searchParams?.get('projectId');
+    const finalProjectId = urlProjectId || projectId;
+    
+    if (finalProjectId && finalProjectId !== currentProjectId) {
+      console.log("🎯 Sidebar: Setting projectId from URL/prop:", finalProjectId);
+      setCurrentProjectId(finalProjectId);
     }
-  }, [projectId, currentProjectId, setCurrentProjectId]);
+
+    // Update userId from UserContext
+    if (currentUser?.id && currentUser.id !== userId) {
+      console.log("👤 Sidebar: Setting userId from UserContext:", currentUser.id);
+      setUserId(currentUser.id);
+    }
+  }, [projectId, searchParams, currentUser?.id, currentProjectId, userId, setCurrentProjectId, setUserId]);
 
   // Check if current path matches specific routes
   const isActive = (path: string) => {
     if (!pathname) return false;
-    
+
     // Handle different path patterns
-    if (path.includes('/work')) {
-      return pathname.includes('/work');
+    if (path.includes("/work")) {
+      return pathname.includes("/work");
     }
-    if (path.includes('/project/summary')) {
-      return pathname.includes('/project/summary');
+    if (path.includes("/project/summary")) {
+      return pathname.includes("/project/summary");
     }
-    if (path.includes('/project/project_homescreen')) {
-      return pathname.includes('/project/project_homescreen');
+    if (path.includes("/project/project_homescreen")) {
+      return pathname.includes("/project/project_homescreen");
     }
-    if (path.includes('/project/backlog')) {
-      return pathname.includes('/project/backlog');
+    if (path.includes("/project/backlog")) {
+      return pathname.includes("/project/backlog");
     }
-    if (path.includes('/project/calendar')) {
-      return pathname.includes('/project/calendar');
+    if (path.includes("/project/calendar")) {
+      return pathname.includes("/project/calendar");
     }
-    
+
     return pathname.includes(path);
   };
 
@@ -70,54 +87,79 @@ export function Sidebar({ projectId }: SidebarProps) {
   const makeLinkClass = (path: string) => {
     const active = isActive(path);
     return `flex items-center space-x-3 px-2 py-1 rounded transition-colors duration-200 ${
-      active 
-        ? "bg-blue-50 text-blue-600 border-r-2 border-blue-600" 
+      active
+        ? "bg-blue-50 text-blue-600 border-r-2 border-blue-600"
         : "text-gray-700 hover:bg-gray-100"
-    } ${isNavigating ? 'opacity-50' : ''}`;
+    } ${isNavigating ? "opacity-50" : ""}`;
+  };
+
+  // Create fallback project paths if no currentProjectId
+  const createProjectPath = (page: string): string => {
+    const urlProjectId = searchParams?.get('projectId');
+    const activeProjectId = urlProjectId || currentProjectId;
+    
+    const basePaths: Record<string, string> = {
+      'summary': '/project/summary',
+      'board': '/project/project_homescreen',
+      'backlog': '/project/backlog',
+      'calendar': '/project/calendar'
+    };
+    
+    const basePath = basePaths[page];
+    if (!basePath) return '#';
+    
+    // If we have a project ID, use it
+    if (activeProjectId) {
+      return `${basePath}?projectId=${activeProjectId}`;
+    }
+    
+    // Otherwise, just go to the page (it will handle missing project)
+    return basePath;
   };
 
   // Navigation data
   const navItems = [
     {
       name: "Summary",
-      path: getProjectPath('summary'),
+      path: createProjectPath("summary"),
       icon: BarChart3,
       pathPattern: "/project/summary",
-      available: !!currentProjectId
+      available: true, // Always available
     },
     {
-      name: "Board", 
-      path: getProjectPath('board'),
+      name: "Board",
+      path: createProjectPath("board"),
       icon: LayoutGrid,
       pathPattern: "/project/project_homescreen",
-      available: !!currentProjectId
+      available: true, // Always available
     },
     {
       name: "Backlog",
-      path: getProjectPath('backlog'), 
+      path: createProjectPath("backlog"),
       icon: ListChecks,
       pathPattern: "/project/backlog",
-      available: !!currentProjectId
+      available: true, // Always available
     },
     {
       name: "Calendar",
-      path: getProjectPath('calendar'),
+      path: createProjectPath("calendar"),
       icon: Calendar,
-      pathPattern: "/project/calendar", 
-      available: !!currentProjectId
+      pathPattern: "/project/calendar",
+      available: true, // Always available
     },
     {
       name: "All work",
-      path: getUserPath('work'),
+      path: userId ? getUserPath("work") : "/work",
       icon: Briefcase,
       pathPattern: "/work",
-      available: !!userId
-    }
+      available: true, // Always available
+    },
   ];
 
   const handleNavClick = (e: React.MouseEvent, path: string) => {
     e.preventDefault();
-    if (path !== '#' && !isNavigating) {
+    if (path !== "#" && !isNavigating) {
+      console.log("🧭 Sidebar: Navigating to:", path);
       navigateTo(path);
     }
   };
@@ -131,8 +173,10 @@ export function Sidebar({ projectId }: SidebarProps) {
             <Package className="h-5 w-5" />
           </div>
           <div>
-            <h2 className="font-semibold">Bug Tracking System</h2>
-            <p className="text-xs text-gray-500">Software project</p>
+            <h2 className="font-semibold">
+              {currentUser?.username || "User"} <br /> workspace
+            </h2>
+            <p className="text-xs text-gray-500">TaskFlow project</p>
           </div>
         </div>
       </div>
@@ -144,40 +188,46 @@ export function Sidebar({ projectId }: SidebarProps) {
           {navItems.map((item) => {
             const Icon = item.icon;
             const isDisabled = !item.available;
-            
+
             return (
               <Link
                 key={item.name}
                 href={item.path}
                 className={`${makeLinkClass(item.pathPattern)} ${
-                  isDisabled ? 'opacity-40 cursor-not-allowed' : ''
+                  isDisabled ? "opacity-40 cursor-not-allowed" : ""
                 }`}
                 onClick={(e) => handleNavClick(e, item.path)}
-                title={isDisabled ? `${item.name} - No ${item.name.includes('work') ? 'user' : 'project'} selected` : item.name}
+                title={item.name}
               >
                 <Icon className="h-4 w-4" />
                 <span>{item.name}</span>
-                {isDisabled && (
-                  <span className="text-xs text-gray-400 ml-auto">N/A</span>
-                )}
               </Link>
             );
           })}
 
           {/* Placeholder items */}
-          <Link href="#" className="flex items-center space-x-3 px-2 py-1 rounded hover:bg-gray-100 text-gray-400 cursor-not-allowed">
+          <Link
+            href="#"
+            className="flex items-center space-x-3 px-2 py-1 rounded hover:bg-gray-100 text-gray-400 cursor-not-allowed"
+          >
             <List className="h-4 w-4" />
             <span>List</span>
             <span className="text-xs ml-auto">Soon</span>
           </Link>
 
-          <Link href="#" className="flex items-center space-x-3 px-2 py-1 rounded hover:bg-gray-100 text-gray-400 cursor-not-allowed">
+          <Link
+            href="#"
+            className="flex items-center space-x-3 px-2 py-1 rounded hover:bg-gray-100 text-gray-400 cursor-not-allowed"
+          >
             <FileText className="h-4 w-4" />
             <span>Forms</span>
             <span className="text-xs ml-auto">Soon</span>
           </Link>
 
-          <Link href="#" className="flex items-center space-x-3 px-2 py-1 rounded hover:bg-gray-100 text-gray-400 cursor-not-allowed">
+          <Link
+            href="#"
+            className="flex items-center space-x-3 px-2 py-1 rounded hover:bg-gray-100 text-gray-400 cursor-not-allowed"
+          >
             <Target className="h-4 w-4" />
             <span>Goals</span>
             <span className="text-xs ml-auto">Soon</span>
@@ -187,7 +237,9 @@ export function Sidebar({ projectId }: SidebarProps) {
 
       {/* Footer */}
       <div className="p-4 border-t border-gray-200">
-        <p className="text-xs text-gray-600">You're in a team-managed project</p>
+        <p className="text-xs text-gray-600">
+          You're in a team-managed project
+        </p>
         {isNavigating && (
           <div className="mt-2 flex items-center gap-2">
             <div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse"></div>

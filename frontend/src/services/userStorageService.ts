@@ -37,14 +37,14 @@ export interface LoggedInUserData {
   sessionToken?: string;
 }
 
-// Key để lưu trong localStorage
+// Key để lưu trong sessionStorage (thay đổi từ localStorage)
 const USER_STORAGE_KEY = 'taskflow_logged_user';
 const USER_SESSION_KEY = 'taskflow_user_session';
 
 export class UserStorageService {
   
   /**
-   * Lưu thông tin user vào localStorage khi login thành công
+   * Lưu thông tin user vào sessionStorage khi login thành công
    */
   static saveLoggedInUser(accountData: AccountInfo, userProfile: UserProfile, sessionToken?: string): void {
     try {
@@ -58,16 +58,16 @@ export class UserStorageService {
         sessionToken: sessionToken
       };
 
-      // Lưu vào localStorage
-      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(loggedInData));
+      // Lưu vào sessionStorage thay vì localStorage
+      sessionStorage.setItem(USER_STORAGE_KEY, JSON.stringify(loggedInData));
       
       // Lưu session token riêng để dễ truy cập
       if (sessionToken) {
-        localStorage.setItem(USER_SESSION_KEY, sessionToken);
+        sessionStorage.setItem(USER_SESSION_KEY, sessionToken);
       }
 
       // Log để debug
-      console.log('✅ User data saved to localStorage:', {
+      console.log('✅ User data saved to sessionStorage:', {
         userId: userProfile.id,
         username: userProfile.username,
         email: accountData.email,
@@ -75,16 +75,16 @@ export class UserStorageService {
       });
 
     } catch (error) {
-      console.error('❌ Error saving user data to localStorage:', error);
+      console.error('❌ Error saving user data to sessionStorage:', error);
     }
   }
 
   /**
-   * Lấy thông tin user đã login từ localStorage
+   * Lấy thông tin user đã login từ sessionStorage
    */
   static getLoggedInUser(): LoggedInUserData | null {
     try {
-      const userData = localStorage.getItem(USER_STORAGE_KEY);
+      const userData = sessionStorage.getItem(USER_STORAGE_KEY);
       if (!userData) {
         return null;
       }
@@ -93,14 +93,14 @@ export class UserStorageService {
       
       // Kiểm tra tính hợp lệ của session (có thể thêm logic expire)
       if (!parsedData.account || !parsedData.profile) {
-        console.warn('⚠️ Invalid user data in localStorage');
+        console.warn('⚠️ Invalid user data in sessionStorage');
         this.clearLoggedInUser();
         return null;
       }
 
       return parsedData;
     } catch (error) {
-      console.error('❌ Error reading user data from localStorage:', error);
+      console.error('❌ Error reading user data from sessionStorage:', error);
       this.clearLoggedInUser();
       return null;
     }
@@ -126,7 +126,7 @@ export class UserStorageService {
    * Lấy session token
    */
   static getSessionToken(): string | null {
-    return localStorage.getItem(USER_SESSION_KEY);
+    return sessionStorage.getItem(USER_SESSION_KEY);
   }
 
   /**
@@ -148,8 +148,8 @@ export class UserStorageService {
         }
       };
 
-      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updatedData));
-      console.log('✅ User profile updated in localStorage');
+      sessionStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updatedData));
+      console.log('✅ User profile updated in sessionStorage');
     } catch (error) {
       console.error('❌ Error updating user profile:', error);
     }
@@ -160,17 +160,43 @@ export class UserStorageService {
    */
   static clearLoggedInUser(): void {
     try {
+      console.log("🧹 UserStorageService: Starting complete data cleanup...");
+      
+      // Clear main user data from sessionStorage
+      sessionStorage.removeItem(USER_STORAGE_KEY);
+      sessionStorage.removeItem(USER_SESSION_KEY);
+      
+      // Clear all possible user-related keys from sessionStorage
+      const sessionKeysToRemove = [
+        'username', 'userId', 'userEmail', 'user_name', 'userName',
+        'ownerId', 'currentUserId', 'user_id', 'currentProjectId',
+        'token', 'authToken', 'sessionToken', 'accessToken',
+        'currentProjectName', 'currentProjectKey', 'projectId',
+        'taskflow_logged_user', 'taskflow_user_session'
+      ];
+      
+      sessionKeysToRemove.forEach(key => {
+        sessionStorage.removeItem(key);
+      });
+      
+      // Clear main user data from localStorage for migration/cleanup
       localStorage.removeItem(USER_STORAGE_KEY);
       localStorage.removeItem(USER_SESSION_KEY);
       
-      // Xóa các key cũ nếu có
-      localStorage.removeItem('username');
-      localStorage.removeItem('userId');
-      localStorage.removeItem('userEmail');
-      localStorage.removeItem('user_name');
-      localStorage.removeItem('userName');
+      // Clear all possible user-related keys from localStorage
+      const localKeysToRemove = [
+        'username', 'userId', 'userEmail', 'user_name', 'userName',
+        'ownerId', 'currentUserId', 'user_id', 'currentProjectId',
+        'token', 'authToken', 'sessionToken', 'accessToken',
+        'currentProjectName', 'currentProjectKey', 'projectId',
+        'taskflow_logged_user', 'taskflow_user_session'
+      ];
       
-      console.log('✅ User data cleared from localStorage');
+      localKeysToRemove.forEach(key => {
+        localStorage.removeItem(key);
+      });
+      
+      console.log("✅ UserStorageService: All user data cleared from both sessionStorage and localStorage");
     } catch (error) {
       console.error('❌ Error clearing user data:', error);
     }
@@ -201,7 +227,7 @@ export class UserStorageService {
         const userProfile: UserProfile = userResponse.data.data;
         const accountInfo: AccountInfo = accountResponse.data.data;
 
-        // Lưu thông tin mới vào localStorage
+        // Lưu thông tin mới vào sessionStorage
         this.saveLoggedInUser(accountInfo, userProfile, this.getSessionToken() || undefined);
 
         console.log('✅ User data synced from server successfully');
@@ -217,48 +243,40 @@ export class UserStorageService {
   }
 
   /**
-   * Migrate từ localStorage cũ sang format mới
+   * Migration từ localStorage sang sessionStorage (một lần)
    */
   static migrateOldUserData(): void {
     try {
-      // Kiểm tra xem đã có data mới chưa
-      if (this.getLoggedInUser()) {
-        return; // Đã có data mới rồi
-      }
-
-      // Tìm data cũ
-      const oldUserId = localStorage.getItem('userId');
-      const oldUsername = localStorage.getItem('username') || localStorage.getItem('user_name');
-      const oldEmail = localStorage.getItem('userEmail');
-
-      if (oldUserId && oldUsername) {
-        console.log('🔄 Migrating old user data to new format...');
+      // Kiểm tra xem có data cũ trong localStorage không
+      const oldUserData = localStorage.getItem(USER_STORAGE_KEY);
+      const currentSessionData = sessionStorage.getItem(USER_STORAGE_KEY);
+      
+      // Chỉ migrate nếu sessionStorage chưa có data và localStorage có data
+      if (!currentSessionData && oldUserData) {
+        console.log('🔄 Migrating user data from localStorage to sessionStorage...');
         
-        // Tạo data tạm thời từ thông tin cũ
-        const tempAccount: AccountInfo = {
-          id: oldUserId,
-          email: oldEmail || '',
-          isEmailVerified: true,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          isActive: true
-        };
-
-        const tempProfile: UserProfile = {
-          id: oldUserId,
-          username: oldUsername,
-          email: oldEmail || ''
-        };
-
-        this.saveLoggedInUser(tempAccount, tempProfile);
+        // Copy data sang sessionStorage
+        sessionStorage.setItem(USER_STORAGE_KEY, oldUserData);
         
-        // Sau đó sync với server để lấy data đúng
-        this.syncUserFromServer(oldUserId);
+        // Migrate session token nếu có
+        const oldSessionToken = localStorage.getItem(USER_SESSION_KEY);
+        if (oldSessionToken) {
+          sessionStorage.setItem(USER_SESSION_KEY, oldSessionToken);
+        }
         
-        console.log('✅ Old user data migrated successfully');
+        // Migrate các key khác
+        const keysToMigrate = ['userId', 'ownerId', 'currentUserId', 'user_id', 'currentProjectId'];
+        keysToMigrate.forEach(key => {
+          const value = localStorage.getItem(key);
+          if (value) {
+            sessionStorage.setItem(key, value);
+          }
+        });
+        
+        console.log('✅ Migration completed successfully');
       }
     } catch (error) {
-      console.error('❌ Error migrating old user data:', error);
+      console.error('❌ Error during migration:', error);
     }
   }
 
@@ -290,22 +308,6 @@ export class UserStorageService {
       .slice(0, 2);
   }
 
-  /**
-   * Debug: Log toàn bộ thông tin user hiện tại
-   */
-  static debugLogUserData(): void {
-    const userData = this.getLoggedInUser();
-    if (userData) {
-      console.group('🔍 Current User Data');
-      console.log('📧 Account Info:', userData.account);
-      console.log('👤 Profile Info:', userData.profile);
-      console.log('🕒 Login Time:', userData.loginTime);
-      console.log('🎫 Session Token:', userData.sessionToken ? '***' + userData.sessionToken.slice(-8) : 'None');
-      console.groupEnd();
-    } else {
-      console.log('❌ No user logged in');
-    }
-  }
 }
 
 // Export default instance
