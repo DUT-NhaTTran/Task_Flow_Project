@@ -31,3 +31,18 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Python ###
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
