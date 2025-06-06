@@ -19,4 +19,5 @@ public interface UserService {
     List<Users> searchUsers(String keyword);
     void updateAvatar(UUID userId, MultipartFile avatar);
     List<Users> getUsersByProjectId(UUID projectId);
+    String getUsernameById(UUID id);
 } 

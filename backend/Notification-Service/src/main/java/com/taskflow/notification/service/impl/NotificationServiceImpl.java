@@ -8,7 +8,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -21,49 +20,24 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     @Transactional(readOnly = true)
     public List<Notification> getNotificationsByUserId(String userId) {
-        // Validate userId
         if (userId == null || userId.trim().isEmpty()) {
             System.out.println("SERVICE: Warning - Empty or null userId provided");
-            return List.of(); // Return empty list instead of null
+            return List.of();
         }
         
-        // Log the request to track database access
-        System.out.println("SERVICE: Getting notifications for user " + userId + " at " + System.currentTimeMillis());
-        
-        // Force fresh data from database
         List<Notification> notifications = notificationDAO.findByRecipientUserIdOrderByCreatedAtDesc(userId);
-        
-        // Log the results
-        System.out.println("SERVICE: Found " + notifications.size() + " notifications for user " + userId);
-        
-        // Log details of each notification for debugging
-        if (!notifications.isEmpty()) {
-            System.out.println("SERVICE: Latest notification ID: " + notifications.get(0).getId());
-            
-            for (Notification notification : notifications) {
-                System.out.println("SERVICE: Notification[" + notification.getId() + "] - " 
-                    + "Type: " + notification.getType() 
-                    + ", Title: " + notification.getTitle()
-                    + ", RecipientId: " + notification.getRecipientUserId()
-                    + ", IsRead: " + notification.getIsRead());
-            }
-        }
         
         return notifications;
     }
     
     @Override
-    public List<Notification> getNotificationsByUserId(String userId, int page, int size) {
-        int offset = page * size;
-        return notificationDAO.findByRecipientUserIdOrderByCreatedAtDesc(userId, size, offset);
-    }
-    
-    @Override
+    @Transactional(readOnly = true)
     public List<Notification> getUnreadNotificationsByUserId(String userId) {
         return notificationDAO.findByRecipientUserIdAndIsReadFalseOrderByCreatedAtDesc(userId);
     }
     
     @Override
+    @Transactional(readOnly = true)
     public long getUnreadCount(String userId) {
         return notificationDAO.countByRecipientUserIdAndIsReadFalse(userId);
     }
@@ -76,10 +50,7 @@ public class NotificationServiceImpl implements NotificationService {
                                          String taskId, String sprintId, String commentId,
                                          String actionUrl) {
         
-        // Check for duplicate notifications (prevent spam)
-        if (taskId != null && shouldPreventDuplicate(recipientUserId, actorUserId, type, taskId)) {
-            return null;
-        }
+        System.out.println("🔍 SERVICE: Creating notification with actorUserName: '" + actorUserName + "'");
         
         Notification notification = new Notification.Builder()
                 .type(type)
@@ -99,7 +70,14 @@ public class NotificationServiceImpl implements NotificationService {
         
         notification = notificationDAO.save(notification);
         
+        
         return notification;
+    }
+    
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<Notification> getNotificationById(Long notificationId) {
+        return notificationDAO.findById(notificationId);
     }
     
     @Override
@@ -119,13 +97,6 @@ public class NotificationServiceImpl implements NotificationService {
     
     @Override
     @Transactional
-    public int markAllAsRead(String userId) {
-        int updatedCount = notificationDAO.markAllAsReadByUserId(userId, LocalDateTime.now());
-        return updatedCount;
-    }
-    
-    @Override
-    @Transactional
     public boolean deleteNotification(Long notificationId) {
         if (notificationDAO.existsById(notificationId)) {
             notificationDAO.deleteById(notificationId);
@@ -133,27 +104,6 @@ public class NotificationServiceImpl implements NotificationService {
         }
         
         return false;
-    }
-    
-    @Override
-    public List<Notification> getRecentNotifications(String userId) {
-        LocalDateTime sevenDaysAgo = LocalDateTime.now().minusDays(7);
-        return notificationDAO.findRecentNotifications(userId, sevenDaysAgo);
-    }
-    
-    @Override
-    @Transactional
-    public int cleanupOldNotifications() {
-        LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(30);
-        int deletedCount = notificationDAO.deleteOldReadNotifications(thirtyDaysAgo);
-        return deletedCount;
-    }
-    
-    // Check if we should prevent duplicate notification
-    private boolean shouldPreventDuplicate(String recipientUserId, String actorUserId, 
-                                         NotificationType type, String taskId) {
-        LocalDateTime oneHourAgo = LocalDateTime.now().minusHours(1);
-        return notificationDAO.existsSimilarNotification(recipientUserId, actorUserId, type, taskId, oneHourAgo);
     }
     
     @Override
@@ -173,7 +123,7 @@ public class NotificationServiceImpl implements NotificationService {
             taskId,
             null, // sprintId
             null, // commentId
-            String.format("/project/board?projectId=%s&taskId=%s", projectId, taskId)
+            String.format("/project/project_homescreen?projectId=%s&taskId=%s&from=notification", projectId, taskId)
         );
     }
     
@@ -195,7 +145,7 @@ public class NotificationServiceImpl implements NotificationService {
             taskId,
             null, // sprintId
             commentId,
-            String.format("/project/board?projectId=%s&taskId=%s", projectId, taskId)
+            String.format("/project/project_homescreen?projectId=%s&taskId=%s&from=notification", projectId, taskId)
         );
     }
     
@@ -217,7 +167,7 @@ public class NotificationServiceImpl implements NotificationService {
             taskId,
             null, // sprintId
             null, // commentId
-            String.format("/project/board?projectId=%s&taskId=%s", projectId, taskId)
+            String.format("/project/project_homescreen?projectId=%s&taskId=%s&from=notification", projectId, taskId)
         );
     }
 } 

@@ -123,13 +123,30 @@ public class CommentController {
     // Helper method to send comment notification
     private void sendCommentNotification(String taskId, String commenterId, Long commentId) {
         try {
+            System.out.println("🔍 BACKEND: === COMMENT NOTIFICATION DEBUG ===");
+            System.out.println("🔍 BACKEND: taskId: " + taskId);
+            System.out.println("🔍 BACKEND: commenterId: " + commenterId);
+            System.out.println("🔍 BACKEND: commentId: " + commentId);
+            
             // Get task details
             Tasks task = taskService.getTaskById(java.util.UUID.fromString(taskId));
             String projectName = getProjectName(task.getProjectId());
             String commenterName = getUserName(commenterId);
             
+            System.out.println("🔍 BACKEND: task.getAssigneeId(): " + task.getAssigneeId());
+            System.out.println("🔍 BACKEND: commenterName from getUserName(): '" + commenterName + "'");
+            System.out.println("🔍 BACKEND: projectName: " + projectName);
+            
             // Send notification to task assignee (if different from commenter)
             if (task.getAssigneeId() != null && !task.getAssigneeId().toString().equals(commenterId)) {
+                System.out.println("🔍 BACKEND: Sending notification to assignee: " + task.getAssigneeId());
+                System.out.println("🔍 BACKEND: Notification payload:");
+                System.out.println("🔍 BACKEND:   recipientUserId: " + task.getAssigneeId().toString());
+                System.out.println("🔍 BACKEND:   actorUserId: " + commenterId);
+                System.out.println("🔍 BACKEND:   actorUserName: '" + commenterName + "'");
+                System.out.println("🔍 BACKEND:   taskId: " + task.getId().toString());
+                System.out.println("🔍 BACKEND:   taskTitle: " + task.getTitle());
+                
                 notificationClient.sendTaskCommentNotification(
                     task.getAssigneeId().toString(),
                     commenterId,
@@ -140,13 +157,19 @@ public class CommentController {
                     projectName,
                     commentId.toString()
                 );
+                
+                System.out.println("✅ BACKEND: Comment notification sent successfully");
+            } else {
+                System.out.println("⏭️ BACKEND: Skipping notification - assignee is null or same as commenter");
             }
+            System.out.println("🔍 BACKEND: ================================");
             
             // Also send notification to other project members who are watching this task
             // (You might want to implement a "watchers" feature)
             
         } catch (Exception e) {
-            System.err.println("Failed to send comment notification: " + e.getMessage());
+            System.err.println("❌ BACKEND: Failed to send comment notification: " + e.getMessage());
+            e.printStackTrace();
         }
     }
     
@@ -206,16 +229,21 @@ public class CommentController {
     private String getUserName(String userId) {
         try {
             RestTemplate restTemplate = new RestTemplate();
-            String url = "http://localhost:8086/api/users/" + userId;
+            String url = "http://localhost:8086/api/users/" + userId + "/username";
             ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
             
-            if (response.getBody() != null && response.getBody().get("data") != null) {
-                Map<String, Object> userData = (Map<String, Object>) response.getBody().get("data");
-                return (String) userData.get("name");
+            if (response.getBody() != null && 
+                "SUCCESS".equals(response.getBody().get("status")) &&
+                response.getBody().get("data") != null) {
+                return (String) response.getBody().get("data");
             }
-            return "Unknown User";
+            
+            System.err.println("⚠️ BACKEND: User Service API returned invalid response for userId: " + userId);
+            System.err.println("⚠️ BACKEND: Response: " + response.getBody());
+            return "User-" + userId.substring(0, Math.min(8, userId.length()));
         } catch (Exception e) {
-            return "Unknown User";
+            System.err.println("❌ BACKEND: Failed to get username for userId: " + userId + ", error: " + e.getMessage());
+            return "User-" + userId.substring(0, Math.min(8, userId.length()));
         }
     }
     

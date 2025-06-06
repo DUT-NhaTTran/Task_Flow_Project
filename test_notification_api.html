@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Notification API</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { color: green; font-weight: bold; }
+        .error { color: red; font-weight: bold; }
+        .info { color: blue; font-weight: bold; }
+        button { padding: 10px 15px; margin: 5px; background: #007cba; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        button:hover { background: #005a87; }
+        textarea { width: 100%; height: 100px; margin: 10px 0; }
+        input { width: 300px; margin: 5px; padding: 5px; }
+        .log { background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 3px; max-height: 300px; overflow-y: auto; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔔 Notification API Test</h1>
+        
+        <div class="section">
+            <h3>Test Comment Notification</h3>
+            <input type="text" id="taskAssigneeId" placeholder="Task Assignee User ID" value="user-123">
+            <input type="text" id="commentAuthorId" placeholder="Comment Author User ID" value="user-456">  
+            <input type="text" id="commentAuthorName" placeholder="Comment Author Name" value="Test User">
+            <input type="text" id="taskId" placeholder="Task ID" value="task-789">
+            <input type="text" id="taskTitle" placeholder="Task Title" value="Test Task">
+            <input type="text" id="projectId" placeholder="Project ID" value="project-111">
+            <textarea id="commentContent" placeholder="Comment content">This is a test comment for notification</textarea>
+            <br>
+            <button onclick="testCommentNotification()">🧪 Test Comment Notification</button>
+        </div>
+
+        <div class="section">
+            <h3>Test Raw Notification Creation</h3>
+            <textarea id="rawNotificationData" placeholder="Raw notification JSON">{
+  "type": "TASK_COMMENT",
+  "title": "New comment on your task", 
+  "message": "Test User commented on your task \"Test Task\": \"This is a test comment\"",
+  "recipientUserId": "user-123",
+  "actorUserId": "user-456",
+  "actorUserName": "Test User",
+  "projectId": "project-111",
+  "projectName": "Test Project",
+  "taskId": "task-789",
+  "actionUrl": "/project/board?projectId=project-111&taskId=task-789",
+  "commentContent": "This is a test comment"
+}</textarea>
+            <br>
+            <button onclick="testRawNotification()">🧪 Test Raw Notification</button>
+        </div>
+
+        <div class="section">
+            <h3>Check Notifications for User</h3>
+            <input type="text" id="checkUserId" placeholder="User ID to check" value="user-123">
+            <button onclick="checkUserNotifications()">📋 Check Notifications</button>
+        </div>
+
+        <div class="section">
+            <h3>API Logs</h3>
+            <div id="logOutput" class="log">Ready to test notifications...\n</div>
+            <button onclick="clearLogs()">🗑️ Clear Logs</button>
+        </div>
+    </div>
+
+    <script>
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('logOutput');
+            const timestamp = new Date().toLocaleTimeString();
+            const colorClass = type === 'error' ? 'error' : type === 'success' ? 'success' : 'info';
+            logDiv.innerHTML += `<span class="${colorClass}">[${timestamp}] ${message}</span>\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(`[${timestamp}] ${message}`);
+        }
+
+        function clearLogs() {
+            document.getElementById('logOutput').innerHTML = 'Logs cleared...\n';
+        }
+
+        async function testCommentNotification() {
+            const taskAssigneeId = document.getElementById('taskAssigneeId').value;
+            const commentAuthorId = document.getElementById('commentAuthorId').value;
+            const commentAuthorName = document.getElementById('commentAuthorName').value;
+            const taskId = document.getElementById('taskId').value;
+            const taskTitle = document.getElementById('taskTitle').value;
+            const projectId = document.getElementById('projectId').value;
+            const commentContent = document.getElementById('commentContent').value;
+
+            const notificationData = {
+                type: "TASK_COMMENT",
+                title: "New comment on your task",
+                message: `${commentAuthorName} commented on your task "${taskTitle}": "${commentContent}"`,
+                recipientUserId: taskAssigneeId,
+                actorUserId: commentAuthorId,
+                actorUserName: commentAuthorName,
+                projectId: projectId,
+                projectName: "Test Project",
+                taskId: taskId,
+                actionUrl: `/project/board?projectId=${projectId}&taskId=${taskId}`,
+                commentContent: commentContent,
+                taskTitle: taskTitle
+            };
+
+            try {
+                log('🚀 Sending notification request...', 'info');
+                log(`📤 Data: ${JSON.stringify(notificationData, null, 2)}`, 'info');
+                
+                const response = await fetch('http://localhost:8089/api/notifications/create', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(notificationData)
+                });
+
+                log(`📬 Response status: ${response.status}`, 'info');
+                
+                const data = await response.json();
+                log(`📬 Response data: ${JSON.stringify(data, null, 2)}`, 'info');
+
+                if (response.ok) {
+                    if (data.success && data.data) {
+                        log(`✅ Notification created successfully!`, 'success');
+                        log(`📧 Notification ID: ${data.data.id}`, 'success');
+                        log(`📧 Type: ${data.data.type}`, 'success');
+                        log(`📧 Recipient: ${data.data.recipientUserId}`, 'success');
+                        log(`📧 Actor: ${data.data.actorUserName}`, 'success');
+                        log(`📧 Created At: ${new Date(data.data.createdAt).toLocaleString()}`, 'success');
+                    } else if (data.success && data.data === null) {
+                        log(`⚠️ Notification not created - duplicate detected`, 'info');
+                        log(`💡 Message: ${data.message}`, 'info');
+                    } else {
+                        log(`❌ Unexpected response format: ${JSON.stringify(data)}`, 'error');
+                    }
+                } else {
+                    log(`❌ Failed to create notification. Status: ${response.status}`, 'error');
+                    log(`❌ Response: ${JSON.stringify(data)}`, 'error');
+                }
+            } catch (error) {
+                log(`❌ Error: ${error.message}`, 'error');
+                console.error('Error creating notification:', error);
+            }
+        }
+
+        async function testRawNotification() {
+            const rawData = document.getElementById('rawNotificationData').value;
+            
+            try {
+                const notificationData = JSON.parse(rawData);
+                
+                log('🚀 Sending raw notification request...', 'info');
+                log(`📤 Raw data: ${JSON.stringify(notificationData, null, 2)}`, 'info');
+                
+                const response = await fetch('http://localhost:8089/api/notifications/create', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(notificationData)
+                });
+
+                log(`📬 Response status: ${response.status}`, 'info');
+                
+                const data = await response.json();
+                log(`📬 Response data: ${JSON.stringify(data, null, 2)}`, 'info');
+
+                if (response.ok && data.success && data.data) {
+                    log(`✅ Raw notification created successfully!`, 'success');
+                    log(`📧 Notification ID: ${data.data.id}`, 'success');
+                } else {
+                    log(`❌ Raw notification failed: ${JSON.stringify(data)}`, 'error');
+                }
+            } catch (error) {
+                log(`❌ Raw notification error: ${error.message}`, 'error');
+            }
+        }
+
+        async function checkUserNotifications() {
+            const userId = document.getElementById('checkUserId').value;
+            
+            try {
+                log(`🔍 Checking notifications for user: ${userId}`, 'info');
+                
+                const response = await fetch(`http://localhost:8089/api/notifications/user/${userId}`, {
+                    method: 'GET'
+                });
+
+                log(`📬 Check response status: ${response.status}`, 'info');
+                
+                const data = await response.json();
+                log(`📬 Check response data: ${JSON.stringify(data, null, 2)}`, 'info');
+
+                if (response.ok && data.success) {
+                    const notifications = data.data || [];
+                    log(`✅ Found ${notifications.length} notifications for user ${userId}`, 'success');
+                    
+                    if (notifications.length > 0) {
+                        notifications.slice(0, 3).forEach((notif, index) => {
+                            log(`📧 [${index + 1}] ID: ${notif.id}, Type: ${notif.type}, Title: ${notif.title}, Read: ${notif.isRead}`, 'info');
+                        });
+                    } else {
+                        log(`📭 No notifications found for user ${userId}`, 'info');
+                    }
+                } else {
+                    log(`❌ Failed to check notifications: ${JSON.stringify(data)}`, 'error');
+                }
+            } catch (error) {
+                log(`❌ Check notifications error: ${error.message}`, 'error');
+            }
+        }
+
+        // Auto-load test on page load
+        window.onload = function() {
+            log('🔔 Notification API Test Ready!', 'success');
+            log('📍 Backend URL: http://localhost:8089/api/notifications', 'info');
+            log('💡 Use the buttons above to test notification functionality', 'info');
+        };
+    </script>
+</body>
+</html> 

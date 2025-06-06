@@ -4,14 +4,12 @@ import com.taskflow.notification.model.Notification;
 import com.taskflow.notification.payload.enums.NotificationType;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface NotificationService {
     
     // Get all notifications for a user
     List<Notification> getNotificationsByUserId(String userId);
-    
-    // Get notifications with pagination
-    List<Notification> getNotificationsByUserId(String userId, int page, int size);
     
     // Get unread notifications for a user
     List<Notification> getUnreadNotificationsByUserId(String userId);
@@ -26,20 +24,14 @@ public interface NotificationService {
                                   String taskId, String sprintId, String commentId,
                                   String actionUrl);
     
+    // Get notification by ID
+    Optional<Notification> getNotificationById(Long notificationId);
+    
     // Mark notification as read
     boolean markAsRead(Long notificationId);
     
-    // Mark all notifications as read for a user
-    int markAllAsRead(String userId);
-    
     // Delete notification
     boolean deleteNotification(Long notificationId);
-    
-    // Get recent notifications (last 7 days)
-    List<Notification> getRecentNotifications(String userId);
-    
-    // Clean up old read notifications (older than 30 days)
-    int cleanupOldNotifications();
     
     // Helper methods for specific notification types
     Notification createTaskAssignedNotification(String recipientUserId, String actorUserId, 

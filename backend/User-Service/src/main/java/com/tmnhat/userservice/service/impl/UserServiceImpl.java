@@ -148,4 +148,10 @@ public class UserServiceImpl implements UserService {
             throw new RuntimeException("Error fetching users by project ID", e);
         }
     }
+
+    @Override
+    public String getUsernameById(UUID id) {
+        Users user = getUserById(id); // Reuse existing method with validation
+        return user.getUsername();
+    }
 } 

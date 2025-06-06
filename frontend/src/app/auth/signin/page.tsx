@@ -5,72 +5,108 @@ import Link from "next/link"
 import Image from "next/image"
 import axios from "axios"
 import { useRouter } from "next/navigation"
+import { useUser } from "@/contexts/UserContext"
+import UserStorageService from "@/services/userStorageService"
 
 export default function SignInPage() {
     const router = useRouter()
+    const { setCurrentUserId } = useUser()
 
     // Thêm state
     const [email, setEmail] = useState("")
     const [password, setPassword] = useState("")
     const [error, setError] = useState("")
+    const [isLoggingIn, setIsLoggingIn] = useState(false)
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         setError("");
+        setIsLoggingIn(true);
 
         try {
-            const res = await axios.post("http://localhost:8080/api/auth/login", {
+            console.log("🔑 Starting login process...");
+
+            // Step 1: Login via Auth service  
+            const loginRes = await axios.post("http://localhost:8080/api/auth/login", {
                 email,
                 password,
             });
 
-            const { token, userId } = res.data;
+            const { token, userId, accountData } = loginRes.data;
             
-            console.log("Login successful, received userId:", userId);
-
-            // Lưu vào localStorage
-            localStorage.setItem("token", token);
-            localStorage.setItem("userId", userId);
-            
-            console.log("Saved to localStorage:", {
-                token: localStorage.getItem("token"),
-                userId: localStorage.getItem("userId")
+            console.log("✅ Login successful, received:", {
+                userId,
+                hasToken: !!token,
+                accountData: accountData || "Not provided"
             });
 
-            // Thử gọi API lấy project mới nhất (không bắt buộc)
-            try {
-                console.log("Fetching latest project for userId:", userId);
-                const latestProjectRes = await axios.get(`http://localhost:8083/api/projects/latest?ownerId=${userId}`, {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                    },
-                });
-
-                const latestProjectId = latestProjectRes.data.projectId;
-                console.log("Latest project found:", latestProjectId);
-
-                // Điều hướng tới trang project_homescreen
-                router.push(`/project/project_homescreen?projectId=${latestProjectId}`);
-            } catch (projectErr) {
-                console.log("No latest project found or Projects Service not available, redirecting to work page");
-                // Không hiển thị lỗi cho user, chỉ redirect đến work page
-                router.push(`/work?userId=${userId}`);
+            // Step 2: Fetch user profile from Users service
+            console.log("👤 Fetching user profile from Users service...");
+            const userProfileRes = await axios.get(`http://localhost:8086/api/users/${userId}`);
+            
+            if (userProfileRes.data?.status !== "SUCCESS") {
+                throw new Error("Failed to fetch user profile");
             }
-        } catch (err: unknown) {
-            console.error("Login error:", err);
-            if (axios.isAxiosError(err)) {
-                const errorMessage = err.response?.data?.error || "Login failed. Please try again.";
-                console.error("API Error response:", err.response?.data);
-                setError(errorMessage);
-            } else if (err instanceof Error) {
-                setError(err.message);
+
+            const userProfile = userProfileRes.data.data;
+            console.log("✅ User profile fetched:", {
+                username: userProfile.username,
+                email: userProfile.email,
+                id: userProfile.id
+            });
+
+            // Step 3: Prepare account info (use from login response or create from available data)
+            const accountInfo = accountData || {
+                id: userId,
+                email: email,
+                isEmailVerified: true,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                isActive: true, 
+                username: userProfile.username // 👈 thêm dòng này
+
+            };
+
+            // Step 4: Save using UserStorageService (includes both account + user profile)
+            console.log("💾 Saving complete user data using UserStorageService...");
+            UserStorageService.saveLoggedInUser(accountInfo, userProfile, token);
+
+            // Step 5: Update UserContext for backward compatibility
+            setCurrentUserId(userId);
+            
+            // Step 6: Debug log saved data
+            console.log("🔍 Verifying saved data:");
+            UserStorageService.debugLogUserData();
+
+            // Step 7: Check localStorage for verification
+            console.log("🔍 Verification - localStorage contents:", {
+                taskflow_logged_user: localStorage.getItem("taskflow_logged_user") ? "✅ Saved" : "❌ Missing",
+                taskflow_user_session: localStorage.getItem("taskflow_user_session") ? "✅ Saved" : "❌ Missing",
+                token: localStorage.getItem("token") ? "✅ Saved" : "❌ Missing",
+                userId: localStorage.getItem("userId") ? "✅ Saved" : "❌ Missing"
+            });
+
+            console.log("🎉 Login completed successfully! Redirecting...");
+            
+            // Navigate to main page
+            router.push("/project/project_homescreen");
+
+        } catch (error: any) {
+            console.error("❌ Login failed:", error);
+            
+            if (error.response?.status === 401) {
+                setError("Invalid email or password");
+            } else if (error.response?.status === 404) {
+                setError("User not found");
+            } else if (error.message?.includes("fetch user profile")) {
+                setError("Login successful but failed to load user profile");
             } else {
-                setError("An unknown error occurred.");
+                setError("Login failed. Please try again.");
             }
+        } finally {
+            setIsLoggingIn(false);
         }
-    };
-
-
+    }
 
     return (
         <main className="min-h-screen bg-gray-100 flex items-center justify-center px-4">
@@ -144,8 +180,19 @@ export default function SignInPage() {
                         </p>
                     )}
 
-                    <button type="submit" className="w-full py-2 bg-[#4f46e5] hover:bg-[#4338ca] text-white text-sm font-semibold rounded-md transition">
-                        Log in
+                    <button 
+                        type="submit" 
+                        className="w-full py-2 bg-[#4f46e5] hover:bg-[#4338ca] text-white text-sm font-semibold rounded-md transition disabled:bg-gray-400 disabled:cursor-not-allowed"
+                        disabled={isLoggingIn}
+                    >
+                        {isLoggingIn ? (
+                            <div className="flex items-center justify-center gap-2">
+                                <div className="animate-spin h-4 w-4 border-2 border-white rounded-full border-t-transparent"></div>
+                                <span>Logging in...</span>
+                            </div>
+                        ) : (
+                            "Log in"
+                        )}
                     </button>
                 </form>
 

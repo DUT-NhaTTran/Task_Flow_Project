@@ -113,19 +113,16 @@ public class NotificationClient {
                                           String projectId, String projectName, String commentId) {
         try {
             Map<String, Object> request = new HashMap<>();
-            request.put("type", "TASK_COMMENT");
-            request.put("title", "New comment");
-            request.put("message", String.format("%s commented on task \"%s\"", actorUserName, taskTitle));
-            request.put("recipientUserId", recipientUserId);
-            request.put("actorUserId", actorUserId);
-            request.put("actorUserName", actorUserName);
+            request.put("taskId", taskId);
+            request.put("taskTitle", taskTitle);
+            request.put("taskAssigneeId", recipientUserId);
+            request.put("commentAuthorId", actorUserId);
+            request.put("commentAuthorName", actorUserName);
+            request.put("commentId", commentId);
             request.put("projectId", projectId);
             request.put("projectName", projectName);
-            request.put("taskId", taskId);
-            request.put("commentId", commentId);
-            request.put("actionUrl", String.format("/project/board?projectId=%s&taskId=%s&comment=%s", projectId, taskId, commentId));
             
-            sendNotification(request);
+            sendTaskCommentNotificationDirect(request);
         } catch (Exception e) {
             System.err.println("Failed to send task comment notification: " + e.getMessage());
         }
@@ -266,16 +263,63 @@ public class NotificationClient {
             
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(notificationData, headers);
             
-            String response = restTemplate.postForObject(
+            Map response = restTemplate.postForObject(
                 NOTIFICATION_SERVICE_URL + "/create", 
                 request, 
-                String.class
+                Map.class
             );
             
-            System.out.println("✅ Notification sent successfully: " + response);
+            if (response != null) {
+                System.out.println("✅ Notification sent successfully: " + response);
+            }
         } catch (Exception e) {
             System.err.println("❌ Failed to send notification: " + e.getMessage());
             e.printStackTrace();
+        }
+    }
+    
+    private void sendTaskCommentNotificationDirect(Map<String, Object> notificationData) {
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            
+            HttpEntity<Map<String, Object>> request = new HttpEntity<>(notificationData, headers);
+            
+            Map response = restTemplate.postForObject(
+                NOTIFICATION_SERVICE_URL + "/task-comment", 
+                request, 
+                Map.class
+            );
+            
+            if (response != null && Boolean.TRUE.equals(response.get("success"))) {
+                System.out.println("✅ Task comment notification sent successfully: " + response.get("message"));
+            } else {
+                System.err.println("⚠️ Task comment notification response: " + response);
+            }
+        } catch (Exception e) {
+            System.err.println("❌ Failed to send task comment notification: " + e.getMessage());
+            e.printStackTrace();
+            
+            try {
+                System.out.println("🔄 Attempting fallback to old notification method...");
+                Map<String, Object> fallbackRequest = new HashMap<>();
+                fallbackRequest.put("type", "TASK_COMMENT");
+                fallbackRequest.put("title", "New comment");
+                fallbackRequest.put("message", String.format("New comment on task"));
+                fallbackRequest.put("recipientUserId", notificationData.get("taskAssigneeId"));
+                fallbackRequest.put("actorUserId", notificationData.get("commentAuthorId"));
+                fallbackRequest.put("actorUserName", notificationData.get("commentAuthorName"));
+                fallbackRequest.put("projectId", notificationData.get("projectId"));
+                fallbackRequest.put("projectName", notificationData.get("projectName"));
+                fallbackRequest.put("taskId", notificationData.get("taskId"));
+                fallbackRequest.put("commentId", notificationData.get("commentId"));
+                fallbackRequest.put("actionUrl", String.format("/project/board?projectId=%s&taskId=%s", 
+                    notificationData.get("projectId"), notificationData.get("taskId")));
+                
+                sendNotification(fallbackRequest);
+            } catch (Exception fallbackException) {
+                System.err.println("❌ Fallback notification also failed: " + fallbackException.getMessage());
+            }
         }
     }
 } 

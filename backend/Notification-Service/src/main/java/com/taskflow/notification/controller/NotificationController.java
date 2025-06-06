@@ -10,6 +10,7 @@ import jakarta.servlet.http.HttpServletResponse;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/notifications")
@@ -18,42 +19,19 @@ public class NotificationController {
     @Autowired
     private NotificationService notificationService;
     
-    // Get all notifications for a user (recipient_id)
+    // Get all notifications for a user
     @GetMapping("/user/{userId}")
     public ResponseEntity<ApiResponse<List<Notification>>> getUserNotifications(
             @PathVariable String userId,
             HttpServletResponse response) {
         
-        // Disable caching to ensure fresh data on every request/refresh
+        // Disable caching
         response.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
         response.setHeader("Pragma", "no-cache");
         response.setHeader("Expires", "0");
-        response.setDateHeader("Date", System.currentTimeMillis());
-        response.setDateHeader("Last-Modified", System.currentTimeMillis());
         
-        // Generate unique ETag to prevent any caching
-        String eTag = String.format("\"%s-%d\"", userId, System.currentTimeMillis());
-        response.setHeader("ETag", eTag);
-        
-        // Log request for debugging
-        System.out.println("API: Fetching ALL notifications for recipient_id: " + userId + " at " + System.currentTimeMillis());
-        
-        // Get ALL notifications for this user (recipient_id) - no filtering, no conditions
         List<Notification> notifications = notificationService.getNotificationsByUserId(userId);
-        
-        // Log response for debugging
-        System.out.println("API: Returning " + notifications.size() + " total notifications for user: " + userId);
-        
-        return ResponseEntity.ok(ApiResponse.success(notifications, "All notifications retrieved successfully"));
-    }
-    
-    // Get notifications with pagination
-    @GetMapping("/user/{userId}/page")
-    public ResponseEntity<ApiResponse<List<Notification>>> getUserNotificationsWithPaging(
-            @PathVariable String userId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        List<Notification> notifications = notificationService.getNotificationsByUserId(userId, page, size);
+                
         return ResponseEntity.ok(ApiResponse.success(notifications, "Notifications retrieved successfully"));
     }
     
@@ -71,11 +49,16 @@ public class NotificationController {
         return ResponseEntity.ok(ApiResponse.success(count, "Unread count retrieved successfully"));
     }
     
-    // Get recent notifications (last 7 days)
-    @GetMapping("/user/{userId}/recent")
-    public ResponseEntity<ApiResponse<List<Notification>>> getRecentNotifications(@PathVariable String userId) {
-        List<Notification> notifications = notificationService.getRecentNotifications(userId);
-        return ResponseEntity.ok(ApiResponse.success(notifications, "Recent notifications retrieved successfully"));
+    // Get notification by ID
+    @GetMapping("/{notificationId}")
+    public ResponseEntity<ApiResponse<Notification>> getNotificationById(@PathVariable Long notificationId) {
+        Optional<Notification> notification = notificationService.getNotificationById(notificationId);
+        
+        if (notification.isPresent()) {
+            return ResponseEntity.ok(ApiResponse.success(notification.get(), "Notification retrieved successfully"));
+        } else {
+            return ResponseEntity.notFound().build();
+        }
     }
     
     // Mark notification as read
@@ -88,13 +71,6 @@ public class NotificationController {
         } else {
             return ResponseEntity.badRequest().body(ApiResponse.error("Notification not found"));
         }
-    }
-    
-    // Mark all notifications as read for a user
-    @PatchMapping("/user/{userId}/mark-all-read")
-    public ResponseEntity<ApiResponse<Integer>> markAllAsRead(@PathVariable String userId) {
-        int updatedCount = notificationService.markAllAsRead(userId);
-        return ResponseEntity.ok(ApiResponse.success(updatedCount, "All notifications marked as read"));
     }
     
     // Delete notification
@@ -115,16 +91,9 @@ public class NotificationController {
         return ResponseEntity.ok(ApiResponse.success("OK", "Notification service is running"));
     }
     
-    // Clean up old notifications (admin endpoint)
-    @DeleteMapping("/cleanup/old")
-    public ResponseEntity<ApiResponse<Integer>> cleanupOldNotifications() {
-        int deletedCount = notificationService.cleanupOldNotifications();
-        return ResponseEntity.ok(ApiResponse.success(deletedCount, "Old notifications cleaned up"));
-    }
-    
-    // New endpoint for creating notifications from other services
+    // Create notification endpoint
     @PostMapping("/create")
-    public ResponseEntity<Notification> createNotification(@RequestBody Map<String, Object> request) {
+    public ResponseEntity<ApiResponse<Notification>> createNotification(@RequestBody Map<String, Object> request) {
         try {
             NotificationType type = NotificationType.valueOf((String) request.get("type"));
             String title = (String) request.get("title");
@@ -138,16 +107,158 @@ public class NotificationController {
             String taskId = (String) request.get("taskId");
             String sprintId = (String) request.get("sprintId");
             String commentId = (String) request.get("commentId");
-            String actionUrl = (String) request.get("actionUrl");
+            
+            // Generate action URL for project homescreen with taskId if available
+            String actionUrl = null;
+            if (projectId != null) {
+                if (taskId != null) {
+                    actionUrl = String.format("/project/project_homescreen?projectId=%s&taskId=%s&from=notification", projectId, taskId);
+                } else {
+                    actionUrl = String.format("/project/project_homescreen?projectId=%s&from=notification", projectId);
+                }
+            }
+            
+            System.out.println("🔍 CONTROLLER: Creating notification with actorUserName: '" + actorUserName + "'");
+            System.out.println("🔍 CONTROLLER: Generated actionUrl: '" + actionUrl + "'");
+            
+            // Validate required fields
+            if (type == null || recipientUserId == null || actorUserId == null) {
+                return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Missing required fields: type, recipientUserId, or actorUserId"));
+            }
             
             Notification notification = notificationService.createNotification(
                 type, title, message, recipientUserId, actorUserId, actorUserName,
                 actorUserAvatar, projectId, projectName, taskId, sprintId, commentId, actionUrl
             );
             
-            return ResponseEntity.ok(notification);
+            System.out.println("🔍 CONTROLLER: Notification created with ID: " + notification.getId());
+            return ResponseEntity.ok(ApiResponse.success(notification, "Notification created successfully"));
+            
+        } catch (IllegalArgumentException e) {
+            System.err.println("Invalid notification type: " + e.getMessage());
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.error("Invalid notification type: " + e.getMessage()));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().build();
+            System.err.println("Error creating notification: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.error("Failed to create notification: " + e.getMessage()));
+        }
+    }
+    
+    // Task comment notification endpoint
+    @PostMapping("/task-comment")
+    public ResponseEntity<ApiResponse<Notification>> createTaskCommentNotification(@RequestBody Map<String, Object> request) {
+        try {
+            String taskId = (String) request.get("taskId");
+            String taskTitle = (String) request.get("taskTitle");
+            String taskAssigneeId = (String) request.get("taskAssigneeId");
+            String commentAuthorId = (String) request.get("commentAuthorId");
+            String commentAuthorName = (String) request.get("commentAuthorName");
+            String commentId = (String) request.get("commentId");
+            String projectId = (String) request.get("projectId");
+            String projectName = (String) request.get("projectName");
+            
+            // Validate required fields
+            if (taskAssigneeId == null || commentAuthorId == null || taskId == null) {
+                return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Missing required fields: taskAssigneeId, commentAuthorId, or taskId"));
+            }
+            
+            // Don't send notification if user comments on their own assigned task
+            if (taskAssigneeId.equals(commentAuthorId)) {
+                return ResponseEntity.ok(ApiResponse.success(null, "No notification needed - user commented on own task"));
+            }
+            
+            Notification notification = notificationService.createTaskCommentNotification(
+                taskAssigneeId,
+                commentAuthorId,
+                commentAuthorName,
+                taskId,
+                taskTitle,
+                projectId,
+                projectName,
+                commentId
+            );
+            
+            System.out.println("CONTROLLER: Task comment notification created for user " + taskAssigneeId);
+            return ResponseEntity.ok(ApiResponse.success(notification, "Task comment notification created successfully"));
+            
+        } catch (Exception e) {
+            System.err.println("Error creating task comment notification: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.error("Failed to create task comment notification: " + e.getMessage()));
+        }
+    }
+    
+    // Task assigned notification endpoint
+    @PostMapping("/task-assigned")
+    public ResponseEntity<ApiResponse<Notification>> createTaskAssignedNotification(@RequestBody Map<String, Object> request) {
+        try {
+            String recipientUserId = (String) request.get("recipientUserId");
+            String actorUserId = (String) request.get("actorUserId");
+            String actorUserName = (String) request.get("actorUserName");
+            String taskId = (String) request.get("taskId");
+            String taskTitle = (String) request.get("taskTitle");
+            String projectId = (String) request.get("projectId");
+            String projectName = (String) request.get("projectName");
+            
+            // Validate required fields
+            if (recipientUserId == null || actorUserId == null || taskId == null) {
+                return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Missing required fields: recipientUserId, actorUserId, or taskId"));
+            }
+            
+            Notification notification = notificationService.createTaskAssignedNotification(
+                recipientUserId, actorUserId, actorUserName, taskId, taskTitle, projectId, projectName
+            );
+            
+            System.out.println("CONTROLLER: Task assigned notification created for user " + recipientUserId);
+            return ResponseEntity.ok(ApiResponse.success(notification, "Task assigned notification created successfully"));
+            
+        } catch (Exception e) {
+            System.err.println("Error creating task assigned notification: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.error("Failed to create task assigned notification: " + e.getMessage()));
+        }
+    }
+    
+    // Task updated notification endpoint
+    @PostMapping("/task-updated")
+    public ResponseEntity<ApiResponse<Notification>> createTaskUpdatedNotification(@RequestBody Map<String, Object> request) {
+        try {
+            String recipientUserId = (String) request.get("recipientUserId");
+            String actorUserId = (String) request.get("actorUserId");
+            String actorUserName = (String) request.get("actorUserName");
+            String taskId = (String) request.get("taskId");
+            String taskTitle = (String) request.get("taskTitle");
+            String projectId = (String) request.get("projectId");
+            String projectName = (String) request.get("projectName");
+            String updateType = (String) request.get("updateType");
+            String newValue = (String) request.get("newValue");
+            
+            // Validate required fields
+            if (recipientUserId == null || actorUserId == null || taskId == null) {
+                return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Missing required fields: recipientUserId, actorUserId, or taskId"));
+            }
+            
+            Notification notification = notificationService.createTaskUpdatedNotification(
+                recipientUserId, actorUserId, actorUserName, taskId, taskTitle, 
+                projectId, projectName, updateType, newValue
+            );
+            
+            System.out.println("CONTROLLER: Task updated notification created for user " + recipientUserId);
+            return ResponseEntity.ok(ApiResponse.success(notification, "Task updated notification created successfully"));
+            
+        } catch (Exception e) {
+            System.err.println("Error creating task updated notification: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.error("Failed to create task updated notification: " + e.getMessage()));
         }
     }
     

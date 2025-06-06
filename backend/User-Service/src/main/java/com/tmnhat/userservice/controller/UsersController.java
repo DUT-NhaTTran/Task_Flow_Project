@@ -130,5 +130,13 @@ public class UsersController {
         return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(users));
     }
 
+    // ✅ NEW: Get username by user ID (lightweight for notification service)
+    @GetMapping("/{id}/username")
+    public ResponseEntity<ResponseDataAPI> getUsernameById(@PathVariable UUID id) {
+        UserValidator.validateUserId(id);
+        String username = userService.getUsernameById(id);
+        return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(username));
+    }
+
    
 } 

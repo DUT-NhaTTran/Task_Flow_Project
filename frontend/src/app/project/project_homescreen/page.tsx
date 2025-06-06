@@ -89,6 +89,9 @@ export default function ProjectBoardPage() {
   const urlProjectId = searchParams?.get("projectId")
   const projectId = urlProjectId || currentProjectId
   
+  // Get taskId from URL params
+  const urlTaskId = searchParams?.get("taskId")
+  
   // Update context if projectId from URL
   useEffect(() => {
     if (urlProjectId && urlProjectId !== currentProjectId) {
@@ -109,6 +112,7 @@ export default function ProjectBoardPage() {
   });
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingTaskFromUrl, setLoadingTaskFromUrl] = useState(false); // New state for URL task loading
   const [searchProject, setSearchProject] = useState("");
   const [searchResults, setSearchResults] = useState<Project[]>([]);
   const [showSearchResults, setShowSearchResults] = useState(false);
@@ -201,6 +205,81 @@ export default function ProjectBoardPage() {
       setTasks([]);
     }
   }, [tasks]);
+
+  // Improved taskId handling from URL - with better error handling and loading states
+  useEffect(() => {
+    if (!urlTaskId) return;
+
+    console.log("🔗 TaskId found in URL:", urlTaskId);
+    
+    const handleTaskFromUrl = async () => {
+      setLoadingTaskFromUrl(true);
+      
+      try {
+        // First, try to find task in current tasks (if they're loaded)
+        if (tasks.length > 0) {
+          const foundTask = tasks.find(task => task.id === urlTaskId);
+          
+          if (foundTask) {
+            console.log("✅ Task found in current tasks, opening modal:", foundTask.title);
+            setSelectedTask(foundTask);
+            setLoadingTaskFromUrl(false);
+            return;
+          }
+        }
+        
+        // If not found in current tasks, fetch from API
+        console.log("⚠️ Task not found in current tasks, fetching from API...");
+        
+        const response = await axios.get(`http://localhost:8085/api/tasks/${urlTaskId}`);
+        
+        if (response.data?.data) {
+          const fetchedTask = response.data.data;
+          console.log("✅ Task fetched from API:", fetchedTask.title);
+          
+          // Show success message
+          toast.success(`Opened task: ${fetchedTask.title}`, {
+            description: "Task may be from a different sprint"
+          });
+          
+          setSelectedTask(fetchedTask);
+        } else {
+          throw new Error("Task data not found in response");
+        }
+        
+      } catch (error) {
+        console.error("❌ Error fetching task from API:", error);
+        
+        // Show user-friendly error message
+        toast.error("Task not found or you don't have access", {
+          description: `Could not open task ${urlTaskId}`,
+          action: {
+            label: "Browse tasks",
+            onClick: () => {
+              // Remove taskId from URL and stay on project page
+              const newUrl = new URL(window.location.href);
+              newUrl.searchParams.delete('taskId');
+              window.history.replaceState({}, '', newUrl.toString());
+            }
+          }
+        });
+        
+        // Remove taskId from URL
+        setTimeout(() => {
+          const newUrl = new URL(window.location.href);
+          newUrl.searchParams.delete('taskId');
+          window.history.replaceState({}, '', newUrl.toString());
+        }, 3000);
+      } finally {
+        setLoadingTaskFromUrl(false);
+      }
+    };
+
+    // Add a small delay to ensure other data is loaded first
+    const timeoutId = setTimeout(handleTaskFromUrl, 500);
+    
+    return () => clearTimeout(timeoutId);
+  }, [urlTaskId, tasks.length]); // Depend on tasks.length to retry when tasks are loaded
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -1822,6 +1901,29 @@ export default function ProjectBoardPage() {
             }
           }}
         />
+      )}
+
+      {/* Loading indicator for task from URL */}
+      {loadingTaskFromUrl && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-sm mx-4 text-center">
+            <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              {searchParams?.get("from") === "notification" ? "Opening Notification" : "Opening Task"}
+            </h3>
+            <p className="text-gray-500 text-sm">
+              {searchParams?.get("from") === "notification"
+                ? "Loading task from notification..." 
+                : "Loading task details..."
+              }
+            </p>
+            {urlTaskId && (
+              <p className="text-gray-400 text-xs mt-2">
+                Task ID: {urlTaskId}
+              </p>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

@@ -264,9 +264,20 @@ export function NotificationDropdown({ userId }: NotificationDropdownProps) {
         if (!notification.isRead) {
             markAsRead(notification.id)
         }
+        
+        // Navigate using the action URL from backend (already has correct format)
         if (notification.actionUrl) {
-            window.location.href = notification.actionUrl
+            console.log('Navigating to:', notification.actionUrl)
+            window.location.href = `http://localhost:3001${notification.actionUrl}`
+        } else if (notification.projectId) {
+            // Fallback: navigate to project homescreen if no actionUrl but has projectId
+            const fallbackUrl = notification.taskId 
+                ? `/project/project_homescreen?projectId=${notification.projectId}&taskId=${notification.taskId}`
+                : `/project/project_homescreen?projectId=${notification.projectId}`;
+            console.log('Fallback navigation to:', fallbackUrl)
+            window.location.href = `http://localhost:3001${fallbackUrl}`
         }
+        
         setIsOpen(false)
     }
 

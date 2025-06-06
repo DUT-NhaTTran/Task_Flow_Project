@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, forwardRef, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Dropdown } from "@/components/ui/drop-down";
 import axios from "axios";
@@ -108,12 +108,22 @@ export default function TaskDetailModal({
   // State for editing the task
   const [editedTask, setEditedTask] = useState<TaskData>({ ...task });
 
+  // Load web links và linked work items từ task object
+  const loadTaskData = (task: TaskData) => {
+    // Web links and linked work items will be fetched fresh from database in useEffect
+    // No longer loading from potentially stale task object
+    console.log("Task data loaded, fresh data will be fetched from database");
+  };
+
   // Update local state when task prop changes
   useEffect(() => {
+    console.log("Task prop changed:", task);
     setEditedTask({ ...task });
+    loadTaskData(task); // Load web links và linked work items từ task object
     
     // Force refresh all data from database every time modal opens
     if (task?.id) {
+      console.log("Force refreshing all data for task:", task.id);
       fetchAttachments(task.id);
       fetchChildWorkItems(task.id);
       fetchWebLinks(task.id);
@@ -197,6 +207,44 @@ export default function TaskDetailModal({
     setEditedTask((prev) => ({ ...prev, [field]: value }));
   };
 
+  // Utility function to extract only text from HTML content
+  const extractTextFromHtml = (htmlContent: string): string => {
+    if (!htmlContent) return "";
+
+    // Create a temporary DOM element to parse HTML
+    const tempDiv = document.createElement("div");
+    tempDiv.innerHTML = htmlContent;
+
+    // Remove ONLY file links (NOT images)
+    // Images should stay in description content
+    // Only file links should be moved to attachments table
+    const fileLinks = tempDiv.querySelectorAll(
+      'a[href*="/uploads/"], a.file-link, a[data-attachment-id]'
+    );
+    fileLinks.forEach((link) => link.remove());
+
+    // Keep images in description content
+    // Images will also have copies in attachments table for management
+
+    // Get content with images preserved
+    let contentWithImages = tempDiv.innerHTML;
+
+    // Clean up extra line breaks and empty paragraphs
+    contentWithImages = contentWithImages
+      .replace(/<p><br><\/p>/g, "<p></p>") // Remove empty paragraphs with br
+      .replace(/<p>\s*<\/p>/g, "") // Remove completely empty paragraphs
+      .replace(/(<p><\/p>){2,}/g, "<p></p>") // Replace multiple empty paragraphs with single
+      .trim();
+
+    console.log("Original HTML:", htmlContent);
+    console.log(
+      "Content with images preserved (files removed):",
+      contentWithImages
+    );
+
+    return contentWithImages;
+  };
+
   // Extract and save attachments from description content to attachments table
   const extractAndSaveAttachmentsFromDescription = async (
     htmlContent: string
@@ -229,7 +277,10 @@ export default function TaskDetailModal({
           .post("http://localhost:8087/api/attachments/create", attachmentData)
           .then((response) => {
             if (response.data?.status === "SUCCESS") {
-             
+              console.log(
+                "Image saved to attachments table:",
+                response.data.data
+              );
               return response.data.data;
             }
           })
@@ -267,7 +318,10 @@ export default function TaskDetailModal({
           .post("http://localhost:8087/api/attachments/create", attachmentData)
           .then((response) => {
             if (response.data?.status === "SUCCESS") {
-             
+              console.log(
+                "File saved to attachments table:",
+                response.data.data
+              );
               return response.data.data;
             }
           })
@@ -302,7 +356,9 @@ export default function TaskDetailModal({
             }
           );
 
-       
+          console.log(
+            "Successfully moved files from description to attachments table"
+          );
         }
       } catch (error) {
         console.error("Error saving attachments:", error);
@@ -315,6 +371,7 @@ export default function TaskDetailModal({
   useEffect(() => {
     const fetchUsers = async () => {
       if (!editedTask.projectId) {
+        console.log("No projectId available, cannot fetch users");
         return;
       }
 
@@ -322,12 +379,14 @@ export default function TaskDetailModal({
 
       // Check cache first
       if (usersCache[projectIdKey]) {
+        console.log("Using cached users for project:", projectIdKey);
         setProjectUsers(usersCache[projectIdKey]);
         return;
       }
 
       try {
         setLoadingUsers(true);
+        console.log("Fetching users for project:", projectIdKey);
 
         const response = await axios.get(
           `http://localhost:8086/api/users/project/${projectIdKey}`
@@ -335,6 +394,7 @@ export default function TaskDetailModal({
 
         if (response.data?.status === "SUCCESS") {
           const fetchedUsers = response.data.data || [];
+          console.log("Users fetched:", fetchedUsers);
 
           // Update cache and state
           setUsersCache((prev) => ({
@@ -398,7 +458,9 @@ export default function TaskDetailModal({
         formData.append("taskId", editedTask.id);
 
         try {
-         
+          console.log(
+            `Uploading file: ${file.name} to attachments table for task: ${editedTask.id}`
+          );
           // Upload the file to the dedicated File Service - saves to attachments table
           const response = await axios.post(
             "http://localhost:8087/api/attachments/upload",
@@ -413,7 +475,10 @@ export default function TaskDetailModal({
           if (response.data?.status === "SUCCESS" && response.data.data) {
             // Add the attachment object returned from the server (from attachments table)
             uploadedAttachments.push(response.data.data);
-          
+            console.log(
+              "File uploaded successfully to attachments table:",
+              response.data.data
+            );
           } else {
             console.error(
               "Failed to upload file to attachments table:",
@@ -474,7 +539,9 @@ export default function TaskDetailModal({
           }
         }, 100);
 
-       
+        console.log(
+          "Files uploaded successfully to attachments table. No need to save task."
+        );
       } else {
         toast.error("No files were uploaded successfully", {
           id: "file-upload",
@@ -507,7 +574,11 @@ export default function TaskDetailModal({
         ...uniqueNewAttachments,
       ];
 
-     
+      console.log(
+        "Adding attachments to UI (already saved to attachments table):",
+        uniqueNewAttachments
+      );
+      console.log("Updated attachments array for UI:", updatedAttachments);
 
       // Update local UI state only (attachments already in database)
       updateField("attachments", updatedAttachments);
@@ -520,7 +591,9 @@ export default function TaskDetailModal({
         }
       );
 
-     
+      console.log(
+        "Attachments are already saved to attachments table. No need to save task."
+      );
     }
   };
 
@@ -528,9 +601,11 @@ export default function TaskDetailModal({
   const saveChanges = async () => {
     try {
       setIsSaving(true);
+      console.log("Starting save process for task:", editedTask);
 
       // Step 1: Extract and save attachments from description to attachments table
       if (editedTask.description) {
+        console.log("Extracting attachments from description...");
         await extractAndSaveAttachmentsFromDescription(editedTask.description);
       }
 
@@ -550,6 +625,10 @@ export default function TaskDetailModal({
       };
       delete taskToSave.attachments; // Remove attachments from task object
 
+      console.log(
+        "Task data to save (text-only description, without attachments):",
+        taskToSave
+      );
 
       // Validate essential fields before sending
       if (!taskToSave.projectId) {
@@ -563,9 +642,27 @@ export default function TaskDetailModal({
       const newAssigneeId = editedTask.assigneeId;
       const assigneeChanged = originalAssigneeId !== newAssigneeId;
 
+      console.log("🔍 Assignee change check:", {
+        originalAssigneeId,
+        newAssigneeId,
+        assigneeChanged,
+        originalAssigneeType: typeof originalAssigneeId,
+        newAssigneeType: typeof newAssigneeId
+      });
 
       // Additional checks for debugging
-    
+      if (originalAssigneeId === null || originalAssigneeId === undefined) {
+        console.log("📝 Original assignee is null/undefined");
+      }
+      if (newAssigneeId === null || newAssigneeId === undefined) {
+        console.log("📝 New assignee is null/undefined");
+      }
+      if (originalAssigneeId === "") {
+        console.log("📝 Original assignee is empty string");
+      }
+      if (newAssigneeId === "") {
+        console.log("📝 New assignee is empty string");
+      }
 
       // Step 4: Save task with text-only description to Tasks-Service
       const response = await axios.put(
@@ -588,65 +685,63 @@ export default function TaskDetailModal({
 
         // Step 5: Send notification if assignee changed
         if (assigneeChanged && newAssigneeId && newAssigneeId.trim() !== "") {
-
+          console.log("🚀 Conditions met for sending notification:");
+          console.log("  - assigneeChanged:", assigneeChanged);
+          console.log("  - newAssigneeId exists:", !!newAssigneeId);
+          console.log("  - newAssigneeId not empty:", newAssigneeId?.trim() !== "");
           
           try {
             // ✅ ONLY use UserContext to get ACTUAL logged-in user ID - consistent with comment logic
             const currentUserId = currentUser?.id;
             
             if (!currentUserId) {
-              
+              console.log("❌ Cannot send assignee notification - no logged-in user found in UserContext");
+              console.log("❌ currentUser:", currentUser);
               return; // Skip notification if no logged-in user
             }
             
+            console.log("🔍 Current logged-in user ID from UserContext:", currentUserId);
             
-            // ✅ Get actor name from User Service API
+            // Get proper actor name - always prioritize currentUser from UserContext
             let currentUserName = "Unknown User";
             let currentUserAvatar = null;
             
-            try {
-              // ✅ Gọi User Service API để lấy username từ actorUserId
-              console.log(`🔍 FRONTEND: Calling User Service API: http://localhost:8086/api/users/${currentUserId}/username`);
-              
-              const userApiResponse = await axios.get(`http://localhost:8086/api/users/${currentUserId}/username`, {
-                timeout: 5000
-              });
-
-              console.log(`🔍 FRONTEND: User API Response:`, userApiResponse.data);
-
-              if (userApiResponse.data?.status === "SUCCESS" && userApiResponse.data?.data) {
-                currentUserName = userApiResponse.data.data;
-                console.log(`✅ FRONTEND: Got username from User Service API: '${currentUserName}'`);
+            // Always try currentUser from UserContext first (most reliable)
+            if (currentUser?.username) {
+              currentUserName = currentUser.username;
+              currentUserAvatar = currentUser.avatar || null;
+              console.log("✅ Current user name from UserContext:", currentUserName);
+            } else {
+              // Fallback: find current user in cached users
+              const currentUserInCache = getUserById(currentUserId);
+              if (currentUserInCache?.username) {
+                currentUserName = currentUserInCache.username;
+                currentUserAvatar = currentUserInCache.avatar || null;
+                console.log("✅ Current user name from cache:", currentUserName);
               } else {
-                console.warn(`⚠️ FRONTEND: User Service API returned invalid response:`, userApiResponse.data);
+                // Last resort: find in allUsers list
+                const currentUserInList = allUsers.find(u => u.id === currentUserId);
+                if (currentUserInList?.username) {
+                  currentUserName = currentUserInList.username;
+                  currentUserAvatar = currentUserInList.avatar || null;
+                  console.log("✅ Current user name from allUsers:", currentUserName);
+                } else {
+                  // Final fallback: create reasonable display name
+                  currentUserName = `User-${currentUserId.substring(0, 8)}`;
+                  console.log("⚠️ Using fallback actor name:", currentUserName);
+                }
               }
-              
-              // Try to get avatar from current user context
-              if (currentUser?.avatar) {
-                currentUserAvatar = currentUser.avatar;
-              }
-              
-            } catch (error) {
-              console.error(`❌ FRONTEND: Failed to call User Service API http://localhost:8086/api/users/${currentUserId}/username:`, error);
-              // Không có fallback - giữ nguyên "Unknown User"
             }
-
-            // ✅ DEBUG: Check commenterName value before creating payload
-            console.log(`🔍 FRONTEND: commenterName before validation: '${currentUserName}'`);
-
-            // ✅ FINAL VALIDATION: NEVER ALLOW NULL/EMPTY commenterName
-            if (!currentUserName || currentUserName.trim() === '' || currentUserName === "null" || currentUserName === "undefined") {
-              console.error("🚨 FRONTEND CRITICAL: commenterName is invalid after User API call:", currentUserName);
-              currentUserName = `User-${currentUserId.substring(0, 8)}`;
-            }
-
-            console.log(`🔍 FRONTEND: Final commenterName value: '${currentUserName}'`);
 
             // Get assigned user name
             const assignedUser = allUsers.find(u => u.id === newAssigneeId);
             const assignedUserName = assignedUser?.username || editedTask.assigneeName || "Unknown User";
             
-            
+            console.log("🎯 Assigned user info:", {
+              assignedUserId: newAssigneeId,
+              assignedUser: assignedUser,
+              assignedUserName: assignedUserName
+            });
 
             // Skip notification if assigning to self
             if (currentUserId && currentUserId === newAssigneeId) {
@@ -654,10 +749,15 @@ export default function TaskDetailModal({
               console.log("  currentUserId:", currentUserId);
               console.log("  newAssigneeId:", newAssigneeId);
             } else {
+              console.log("✅ Proceeding with notification - different users");
+              console.log("  currentUserId:", currentUserId);
+              console.log("  newAssigneeId:", newAssigneeId);
               
               // Determine if this is a reassignment or new assignment
               const isReassignment = originalAssigneeId && originalAssigneeId.trim() !== "";
               
+              console.log("📋 Notification type:", isReassignment ? "REASSIGNMENT" : "NEW ASSIGNMENT");
+
               // Create notification data with full information
               const notificationData = {
                 type: isReassignment ? "TASK_REASSIGNED" : "TASK_ASSIGNED",
@@ -674,12 +774,7 @@ export default function TaskDetailModal({
                 actionUrl: `/project/board?projectId=${editedTask.projectId}&taskId=${editedTask.id}`
               };
 
-              // ✅ DEBUG: Log notification payload to check actorUserName value
-              console.log("🔍 === NOTIFICATION PAYLOAD DEBUG ===");
-              console.log("🔍 actorUserId:", currentUserId);
-              console.log("🔍 actorUserName:", currentUserName);
-              console.log("🔍 Full payload:", JSON.stringify(notificationData, null, 2));
-              console.log("🔍 ===============================");
+              console.log("🔔 Sending notification with data:", notificationData);
 
               // Send notification to notification service
               const notificationResponse = await axios.post(
@@ -687,6 +782,7 @@ export default function TaskDetailModal({
                 notificationData
               );
 
+              console.log("📬 Notification API response:", notificationResponse);
 
               // ✅ UPDATED: Check correct response format from backend for assignee change
               if (notificationResponse.status === 200 || notificationResponse.status === 201) {
@@ -695,30 +791,53 @@ export default function TaskDetailModal({
                 if (responseData?.success && responseData?.data) {
                   // Notification created successfully and saved to database
                   const notification = responseData.data;
-                
+                  console.log("✅ Assignee change notification sent successfully!");
+                  console.log("📧 Notification ID:", notification.id);
+                  console.log("📧 Notification saved to database with ID:", notification.id);
+                  console.log("🕒 Notification sent at:", new Date().toISOString());
+                  console.log("📧 Check this notification for user:", newAssigneeId);
                   toast.success(
                     `Notification sent to ${assignedUserName} about ${isReassignment ? 'task reassignment' : 'new task assignment'}`
                   );
                 } else if (responseData?.success && responseData?.data === null) {
                   // Duplicate notification was detected and not created
-                 
+                  console.log("⚠️ Duplicate assignee notification detected - not created");
+                  console.log("💡 Response message:", responseData.message);
                   toast.info(`Task saved (duplicate ${isReassignment ? 'reassignment' : 'assignment'} notification prevented)`, { duration: 3000 });
                 } else {
-                
+                  console.error("❌ Notification API returned unexpected format for assignee change:", responseData);
+                  console.error("❌ Expected: { success: boolean, message: string, data: Notification | null }");
+                  console.error("❌ Received:", responseData);
                   toast.warning("Task saved but notification may not have been sent");
                 }
               } else {
+                console.error("❌ Assignee notification API returned non-200 status:", notificationResponse.status);
                 toast.warning("Task saved but assignee notification failed");
               }
             }
           } catch (notificationError) {
+            console.error("❌ Failed to send assignee change notification:", notificationError);
             if (axios.isAxiosError(notificationError)) {
-           
+              console.error("❌ Notification API error details:", {
+                status: notificationError.response?.status,
+                statusText: notificationError.response?.statusText,
+                data: notificationError.response?.data,
+                message: notificationError.message
+              });
             }
             toast.warning("Task saved successfully, but notification could not be sent");
           }
         } else {
-;
+          console.log("❌ Conditions NOT met for sending notification:");
+          console.log("  - assigneeChanged:", assigneeChanged);
+          console.log("  - newAssigneeId exists:", !!newAssigneeId);
+          console.log("  - newAssigneeId:", newAssigneeId);
+          console.log("  - newAssigneeId.trim():", newAssigneeId?.trim());
+          console.log("  - newAssigneeId.trim() !== '':", newAssigneeId?.trim() !== "");
+          
+          if (assigneeChanged && (!newAssigneeId || newAssigneeId.trim() === "")) {
+            console.log("ℹ️ Task unassigned - no notification sent");
+          }
         }
 
         // Exit edit mode after saving
@@ -1109,6 +1228,7 @@ export default function TaskDetailModal({
       }
 
       // Delete the main task
+      console.log("Deleting main task:", editedTask.id);
       const response = await axios.delete(
         `http://localhost:8085/api/tasks/${editedTask.id}`
       );
@@ -1133,17 +1253,32 @@ export default function TaskDetailModal({
 
   // Add comment - simplified version using UserContext
   const addComment = async () => {
-    if (!comment.trim() || !currentUser?.id || !editedTask.id) {
-      toast.error("Please enter a comment and ensure you're logged in");
+    if (!comment.trim() || !editedTask.id) {
+      toast.error("Please enter a comment");
       return;
     }
+
+    // ✅ ONLY use UserContext to get ACTUAL logged-in user ID - no localStorage fallback
+    const currentUserId = currentUser?.id;
+    
+    if (!currentUserId) {
+      toast.error("Please log in to comment");
+      console.log("❌ Cannot comment - no logged-in user found in UserContext");
+      console.log("❌ currentUser:", currentUser);
+      return;
+    }
+
+    console.log("✅ === COMMENT LOGIC ===");
+    console.log("✅ Actual logged-in user (commenter):", currentUserId);
+    console.log("✅ currentUser from UserContext:", currentUser);
+    console.log("✅ Task assignee:", editedTask.assigneeId);
 
     try {
       setIsAddingComment(true);
 
       const commentData = {
         taskId: editedTask.id,
-        userId: currentUser.id,
+        userId: currentUserId,
         content: comment.trim(),
       };
 
@@ -1166,9 +1301,194 @@ export default function TaskDetailModal({
         setComment("");
         toast.success("Comment added successfully");
 
-        // ✅ REMOVED: Frontend notification logic 
-        // Backend CommentController.sendCommentNotification() already handles this
-        console.log("✅ Comment created - backend will handle notifications");
+        // Send notification if commenter is different from assignee
+        if (editedTask.assigneeId && currentUserId !== editedTask.assigneeId) {
+          try {
+            console.log("🔍 === GETTING COMMENTER NAME ===");
+            console.log("   currentUserId:", currentUserId);
+            console.log("   assigneeId:", editedTask.assigneeId);
+
+            // ✅ SIMPLE: Use helper function to get username
+            const actorUserName = await getUsernameFromUserId(currentUserId);
+            
+            console.log("🎯 Final actorUserName:", actorUserName);
+            console.log("🎯 actorUserName type:", typeof actorUserName);
+            console.log("🎯 actorUserName length:", actorUserName.length);
+
+            // Ensure actorUserName is never null or empty
+            if (!actorUserName || actorUserName.trim() === '' || actorUserName === "null") {
+              console.error("🚨 CRITICAL: actorUserName is invalid:", actorUserName);
+              throw new Error("Cannot get valid username for notification");
+            }
+
+            // Get proper actor name - always prioritize currentUser from UserContext
+            let currentUserName = "Unknown User";
+            let currentUserAvatar = null;
+            
+            // Always try currentUser from UserContext first (most reliable)
+            if (currentUser?.username) {
+              currentUserName = currentUser.username;
+              currentUserAvatar = currentUser.avatar || null;
+              console.log("✅ Current user name from UserContext:", currentUserName);
+            } else {
+              // Fallback: find current user in cached users
+              const currentUserInCache = getUserById(currentUserId);
+              if (currentUserInCache?.username) {
+                currentUserName = currentUserInCache.username;
+                currentUserAvatar = currentUserInCache.avatar || null;
+                console.log("✅ Current user name from cache:", currentUserName);
+              } else {
+                // Last resort: find in allUsers list
+                const currentUserInList = allUsers.find(u => u.id === currentUserId);
+                if (currentUserInList?.username) {
+                  currentUserName = currentUserInList.username;
+                  currentUserAvatar = currentUserInList.avatar || null;
+                  console.log("✅ Current user name from allUsers:", currentUserName);
+                } else {
+                  // Final fallback: create reasonable display name
+                  currentUserName = `User-${currentUserId.substring(0, 8)}`;
+                  console.log("⚠️ Using fallback actor name:", currentUserName);
+                }
+              }
+            }
+
+            // Get assigned user name
+            const assignedUser = allUsers.find(u => u.id === editedTask.assigneeId);
+            const assignedUserName = assignedUser?.username || editedTask.assigneeName || "Unknown User";
+            
+            console.log("🎯 Assigned user info:", {
+              assignedUserId: editedTask.assigneeId,
+              assignedUser: assignedUser,
+              assignedUserName: assignedUserName
+            });
+
+            console.log("📤 Sending comment notification with data:", {
+              "👤 Commenter (người comment)": `${actorUserName} (${currentUserId})`,
+              "📬 Recipient (người nhận notification)": editedTask.assigneeId,
+              "📋 Task": editedTask.title,
+              "💬 Comment": comment.trim()
+            });
+
+            const notificationData = {
+              type: "TASK_COMMENT", // ✅ Đúng enum backend expect
+              title: "New comment on your task",
+              message: `${actorUserName} commented on your task "${editedTask.title}": "${comment.trim()}"`,
+              recipientUserId: editedTask.assigneeId, // 👈 Người nhận notification (assignee)
+              actorUserId: currentUserId, // 👈 Người comment (logged-in user)
+              actorUserName: actorUserName, // 👈 Tên người comment từ API
+              actorUserAvatar: currentUser?.avatar || null,
+              projectId: editedTask.projectId,
+              projectName: "TaskFlow Project",
+              taskId: editedTask.id,
+              sprintId: editedTask.sprintId || null,
+              actionUrl: `/project/board?projectId=${editedTask.projectId}&taskId=${editedTask.id}`,
+              // Additional comment-specific fields
+              commentId: newComment.id?.toString(),
+              commentContent: comment.trim(),
+              taskTitle: editedTask.title
+            };
+
+            // ✅ ENHANCED VALIDATION BEFORE SENDING
+            console.log("🔍 === FINAL VALIDATION BEFORE SENDING ===");
+            console.log("actorUserName:", notificationData.actorUserName);
+            console.log("actorUserId:", notificationData.actorUserId);
+            console.log("recipientUserId:", notificationData.recipientUserId);
+            console.log("type:", notificationData.type);
+            console.log("message:", notificationData.message);
+            
+            if (!notificationData.actorUserName || notificationData.actorUserName === "null" || notificationData.actorUserName.trim() === "") {
+              console.error("🚨 ABORT: actorUserName is still invalid:", notificationData.actorUserName);
+              notificationData.actorUserName = `User-${currentUserId.substring(0, 8)}`;
+              console.log("🔧 EMERGENCY FIX: Set actorUserName to:", notificationData.actorUserName);
+            }
+
+            console.log("🚀 Full notification data being sent:", notificationData);
+
+            // Send notification with enhanced error handling
+            console.log("📡 Sending notification to:", "http://localhost:8089/api/notifications/create");
+            
+            const notificationResponse = await axios.post(
+              "http://localhost:8089/api/notifications/create", 
+              notificationData,
+              {
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                timeout: 10000, // 10 second timeout
+              }
+            );
+            
+            console.log("📬 Notification API raw response:", notificationResponse);
+            console.log("📬 Notification API status:", notificationResponse.status);
+            console.log("📬 Notification API data:", notificationResponse.data);
+
+            if (notificationResponse.status === 200 || notificationResponse.status === 201) {
+              // ✅ UPDATED: Check correct response format from backend
+              // Backend returns: ApiResponse<Notification> with structure { success: boolean, message: string, data: Notification }
+              const responseData = notificationResponse.data;
+              
+              if (responseData?.success && responseData?.data) {
+                // Notification created successfully and saved to database
+                const notification = responseData.data;
+                console.log("✅ Comment notification sent successfully!");
+                console.log("📧 Notification ID:", notification.id);
+                console.log("📧 Notification saved to database with ID:", notification.id);
+                console.log(`📧 Notification: "${commenterName} commented on your task: ${editedTask.title}"`);
+                toast.success(`Notification sent to ${assignedUserName}`, { duration: 3000 });
+              } else if (responseData?.success && responseData?.data === null) {
+                // Duplicate notification was detected and not created
+                console.log("⚠️ Duplicate notification detected - not created");
+                console.log("💡 Response message:", responseData.message);
+                toast.info("Comment added (duplicate notification prevented)", { duration: 3000 });
+              } else {
+                console.warn("⚠️ Notification API returned unexpected format:", responseData);
+                console.warn("⚠️ Expected: { success: boolean, message: string, data: Notification | null }");
+                console.warn("⚠️ Received:", responseData);
+                toast.warning("Comment added, but notification format unexpected");
+              }
+            } else {
+              console.error("❌ Notification API returned non-200 status:", notificationResponse.status);
+              toast.warning("Comment added, but notification failed");
+            }
+
+          } catch (notificationError) {
+            console.error("❌ Failed to send comment notification:", notificationError);
+            
+            if (axios.isAxiosError(notificationError)) {
+              console.error("❌ Notification API error details:", {
+                status: notificationError.response?.status,
+                statusText: notificationError.response?.statusText,
+                data: notificationError.response?.data,
+                message: notificationError.message,
+                url: notificationError.config?.url,
+                method: notificationError.config?.method,
+                requestData: notificationError.config?.data
+              });
+              
+              if (notificationError.response?.status === 404) {
+                toast.error("Notification service not found - check if service is running");
+              } else if (notificationError.response?.status === 500) {
+                toast.error("Notification service error - check server logs");
+              } else if (notificationError.code === 'ECONNREFUSED') {
+                toast.error("Cannot connect to notification service");
+              } else {
+                toast.warning("Comment added, but notification could not be sent");
+              }
+            } else {
+              console.error("❌ Non-Axios notification error:", notificationError);
+              toast.warning("Comment added, but notification failed");
+            }
+          }
+        } else {
+          console.log("⏭️ === SKIPPING COMMENT NOTIFICATION ===");
+          if (!editedTask.assigneeId) {
+            console.log("❌ Task không có assignee, không gửi notification");
+          } else if (currentUserId === editedTask.assigneeId) {
+            console.log("⚠️ Người comment chính là assignee, không cần notification");
+            console.log("   Commenter:", currentUserId);
+            console.log("   Assignee:", editedTask.assigneeId);
+          }
+        }
 
       } else {
         toast.error("Failed to add comment");
@@ -1263,6 +1583,7 @@ export default function TaskDetailModal({
     }
 
     try {
+      console.log(`Deleting comment ${commentId} for user ${currentUser.id}`);
 
       const response = await axios.delete(
         `http://localhost:8085/api/comments/${commentId}?userId=${currentUser.id}`
@@ -1338,6 +1659,7 @@ export default function TaskDetailModal({
 
     const selectedUser = allUsers.find((user) => user.username === displayValue);
     if (selectedUser) {
+      console.log("Selected user:", selectedUser);
       updateField("assigneeId", selectedUser.id);
       updateField("assigneeName", selectedUser.username);
     } else {
@@ -1690,8 +2012,10 @@ export default function TaskDetailModal({
   // Effect to fetch attachments when the modal opens - REPLACED with force refresh
   useEffect(() => {
     if (task?.id) {
+      console.log("Task prop changed, updating local state and force refreshing data for task:", task.id);
       // Update local state
       setEditedTask({ ...task });
+      loadTaskData(task);
       
       // Fetch all data from database to ensure fresh information
       fetchAttachments(task.id);
@@ -2169,31 +2493,40 @@ export default function TaskDetailModal({
     return priorityMap[priority || "MEDIUM"] || "🟡 Medium";
   };
 
-  // Utility function to extract only text from HTML content
-  const extractTextFromHtml = (htmlContent: string): string => {
-    if (!htmlContent) return "";
+  // Helper function to get username from userId
+  const getUsernameFromUserId = async (userId: string): Promise<string> => {
+    console.log("🔍 getUsernameFromUserId called with:", userId);
+    
+    if (!userId || userId.trim() === '') {
+      console.error("❌ Invalid userId provided");
+      return "Unknown User";
+    }
 
-    // Create a temporary DOM element to parse HTML
-    const tempDiv = document.createElement("div");
-    tempDiv.innerHTML = htmlContent;
+    // First try: API call
+    try {
+      console.log("📡 Calling User API...");
+      const response = await axios.get(`http://localhost:8086/api/users/${userId}`, {
+        timeout: 5000,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.data?.status === "SUCCESS" && response.data?.data?.username) {
+        const username = response.data.data.username.trim();
+        console.log("✅ Got username from API:", username);
+        return username;
+      } else {
+        console.warn("⚠️ API response invalid format");
+      }
+    } catch (apiError) {
+      console.error("❌ API call failed:", apiError);
+    }
 
-    // Remove ONLY file links (NOT images)
-    const fileLinks = tempDiv.querySelectorAll(
-      'a[href*="/uploads/"], a.file-link, a[data-attachment-id]'
-    );
-    fileLinks.forEach((link) => link.remove());
 
-    // Get content with images preserved
-    let contentWithImages = tempDiv.innerHTML;
-
-    // Clean up extra line breaks and empty paragraphs
-    contentWithImages = contentWithImages
-      .replace(/<p><br><\/p>/g, "<p></p>")
-      .replace(/<p>\s*<\/p>/g, "")
-      .replace(/(<p><\/p>){2,}/g, "<p></p>")
-      .trim();
-
-    return contentWithImages;
+    // Final fallback
+    const fallback = `User-${userId.substring(0, 8)}`;
+    return fallback;
   };
 
   return (

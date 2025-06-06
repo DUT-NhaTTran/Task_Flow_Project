@@ -26,6 +26,7 @@ import { useRouter } from "next/navigation"
 import axios from "axios"
 import { toast } from "sonner"
 import { NotificationDropdown } from "@/components/ui/notification-dropdown"
+import { useUser } from "@/contexts/UserContext"
 
 // Interface for Project
 interface Project {
@@ -40,6 +41,7 @@ interface Project {
 export function TopNavigation() {
     const router = useRouter();
     const searchRef = useRef<HTMLDivElement>(null);
+    const { clearCurrentUserId } = useUser();
     
     // User state
     const [userId, setUserId] = useState<string | null>(null);
@@ -325,9 +327,9 @@ export function TopNavigation() {
         // Đóng dropdown trước
         setOpenDropdown(null);
         
-        // Xóa localStorage
-        localStorage.clear();
-        console.log("LocalStorage cleared");
+        // Xóa localStorage using UserContext helper
+        clearCurrentUserId();
+        console.log("User session cleared");
         
         // Redirect về signin
         console.log("Redirecting to signin...");
