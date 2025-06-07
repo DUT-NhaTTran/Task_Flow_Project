@@ -711,13 +711,7 @@ export default function TaskDetailModal({
                 actionUrl: `/project/board?projectId=${editedTask.projectId}&taskId=${editedTask.id}`
               };
 
-              // ✅ DEBUG: Log notification payload to check actorUserName value
-              console.log("🔍 === NOTIFICATION PAYLOAD DEBUG ===");
-              console.log("🔍 actorUserId:", currentUserId);
-              console.log("🔍 actorUserName:", currentUserName);
-              console.log("🔍 Full payload:", JSON.stringify(notificationData, null, 2));
-              console.log("🔍 ===============================");
-
+             
               // Send notification to notification service
               const notificationResponse = await axios.post(
                 "http://localhost:8089/api/notifications/create",

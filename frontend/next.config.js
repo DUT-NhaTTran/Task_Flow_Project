@@ -78,6 +78,18 @@ const nextConfig = {
                 source: '/api/ai/:path*',
                 destination: `${process.env.REACT_APP_AI_SERVICE_URL || 'http://localhost:8088'}/api/:path*`,
             },
+            {
+                source: '/api/notifications/:path*',
+                destination: 'http://localhost:8089/api/notifications/:path*',
+            },
+            {
+                source: '/api/projects/:path*',
+                destination: 'http://localhost:8083/api/projects/:path*',
+            },
+            {
+                source: '/api/tasks/:path*',
+                destination: 'http://localhost:8085/api/tasks/:path*',
+            }
         ];
     },
 }

@@ -1161,6 +1161,11 @@ export default function ProjectBoardPage() {
         sprintId: latestSprintId,
       });
 
+      // Get current user ID for createdBy field
+      const currentUserId = userData?.profile?.id || userData?.account?.id || localStorage.getItem("ownerId") || localStorage.getItem("userId") || undefined;
+      
+      console.log("🔍 Current user ID for createdBy:", currentUserId);
+
       // Clear input immediately for better UX
       setNewTasks((prev) => ({ ...prev, [status]: "" }));
 
@@ -1178,6 +1183,7 @@ export default function ProjectBoardPage() {
         completedAt: null,
         parentTaskId: null,
         tags: null,
+        createdBy: currentUserId, // Add createdBy field with current user ID
       });
 
       // DEBUG: Log the complete response to understand structure
@@ -1187,20 +1193,52 @@ export default function ProjectBoardPage() {
       console.log("🔍 DEBUG - Response Data Type:", typeof res.data);
       console.log("🔍 DEBUG - Response Data Keys:", res.data ? Object.keys(res.data) : "No data");
 
-      const newTaskFromAPI = res.data?.data;
+      // Try different ways to extract task data from response
+      let newTaskFromAPI = null;
+      
+      // Method 1: Check if data is in res.data.data
+      if (res.data?.data) {
+        newTaskFromAPI = res.data.data;
+        console.log("🔍 DEBUG - Found task in res.data.data:", newTaskFromAPI);
+      }
+      // Method 2: Check if data is directly in res.data
+      else if (res.data && typeof res.data === 'object' && res.data.id) {
+        newTaskFromAPI = res.data;
+        console.log("🔍 DEBUG - Found task directly in res.data:", newTaskFromAPI);
+      }
+      // Method 3: Check for other common response structures
+      else if (res.data?.result) {
+        newTaskFromAPI = res.data.result;
+        console.log("🔍 DEBUG - Found task in res.data.result:", newTaskFromAPI);
+      }
+      else if (res.data?.task) {
+        newTaskFromAPI = res.data.task;
+        console.log("🔍 DEBUG - Found task in res.data.task:", newTaskFromAPI);
+      }
+      // Method 4: Check if response is successful but empty/different structure
+      else if (res.status === 200 || res.status === 201) {
+        console.log("🔍 DEBUG - Response successful but no task data found, will use temporary approach");
+        newTaskFromAPI = {}; // Empty object to trigger temporary task creation
+      }
+
       console.log("🔍 DEBUG - Extracted newTaskFromAPI:", newTaskFromAPI);
       console.log("🔍 DEBUG - newTaskFromAPI Type:", typeof newTaskFromAPI);
-      if (newTaskFromAPI) {
+      
+      if (newTaskFromAPI && typeof newTaskFromAPI === 'object') {
         console.log("🔍 DEBUG - newTaskFromAPI Keys:", Object.keys(newTaskFromAPI));
         console.log("🔍 DEBUG - newTaskFromAPI.id:", newTaskFromAPI.id);
       }
       
       console.log("✅ Task mới đã được tạo từ API:", newTaskFromAPI);
 
-      if (newTaskFromAPI && newTaskFromAPI.id) {
+      // Check if we have valid task data OR if response was successful
+      if (newTaskFromAPI !== null && (newTaskFromAPI.id || res.status === 200 || res.status === 201)) {
+        // Generate ID if missing but response was successful
+        const taskId = newTaskFromAPI.id || `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
         // Create properly formatted task object
         const newTask: Task = {
-          id: newTaskFromAPI.id,
+          id: taskId,
           title: newTaskFromAPI.title || title,
           description: newTaskFromAPI.description || "",
           status: status,
@@ -1215,13 +1253,19 @@ export default function ProjectBoardPage() {
           completedAt: newTaskFromAPI.completedAt || null,
           parentTaskId: newTaskFromAPI.parentTaskId || null,
           tags: newTaskFromAPI.tags || null,
-          createdBy: newTaskFromAPI.createdBy || null
+          createdBy: newTaskFromAPI.createdBy || currentUserId // Use current user ID
         };
 
         // Add to tasks state immediately
         setTasks((prev) => [...prev, newTask]);
         
-        toast.success("Task created successfully");
+        if (newTaskFromAPI.id) {
+          toast.success("Task created successfully");
+          console.log("✅ Task created with real ID:", newTaskFromAPI.id);
+        } else {
+          toast.success("Task created successfully (refreshing to get ID...)");
+          console.log("⚠️ Task created but no ID in response, will refresh to get real data");
+        }
         
         // Refresh tasks after a short delay to ensure consistency
         setTimeout(async () => {
@@ -1231,11 +1275,74 @@ export default function ProjectBoardPage() {
           }
         }, 1000);
       } else {
-        throw new Error("Task creation response missing ID or data");
+        // This should rarely happen now since we handle successful responses above
+        const errorInfo = {
+          responseStatus: res.status,
+          responseData: res.data,
+          hasData: !!res.data,
+          dataKeys: res.data ? Object.keys(res.data) : [],
+          taskFromAPI: newTaskFromAPI,
+          isSuccessfulStatus: res.status >= 200 && res.status < 300
+        };
+        
+        console.error("❌ Task creation failed - Response analysis:", errorInfo);
+        
+        // If status is successful, still try to create temp task and refresh
+        if (res.status >= 200 && res.status < 300) {
+          console.log("🔄 Status is successful but data structure unexpected, creating temporary task and refreshing...");
+          
+          const tempTask: Task = {
+            id: `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            title: title,
+            description: "",
+            status: status,
+            storyPoint: 0,
+            assigneeId: null,
+            assigneeName: "Unassigned",
+            shortKey: `T-${Math.floor(Math.random() * 1000)}`,
+            projectId: projectId,
+            sprintId: latestSprintId,
+            dueDate: null,
+            createdAt: new Date().toISOString(),
+            completedAt: null,
+            parentTaskId: null,
+            tags: null,
+            createdBy: currentUserId // Use current user ID instead of null
+          };
+
+          setTasks((prev) => [...prev, tempTask]);
+          toast.success("Task created successfully (refreshing...)");
+          
+          // Refresh immediately to get the real task
+          setTimeout(async () => {
+            if (projectId && latestSprintId) {
+              console.log("🔄 Tải lại toàn bộ tasks ngay lập tức để lấy dữ liệu chính xác");
+              await fetchTasksForLatestSprint(projectId, latestSprintId);
+            }
+          }, 500);
+        } else {
+          throw new Error(`Task creation failed - Response status: ${res.status}. Please check the API response structure.`);
+        }
       }
     } catch (err) {
       console.error("❌ Lỗi khi tạo task:", err);
-      toast.error("Failed to create task");
+      
+      // Provide more specific error messages
+      if (axios.isAxiosError(err)) {
+        if (err.response?.status === 400) {
+          toast.error("Invalid task data. Please check your input.");
+        } else if (err.response?.status === 401) {
+          toast.error("Authentication required. Please login again.");
+        } else if (err.response?.status === 403) {
+          toast.error("You don't have permission to create tasks in this project.");
+        } else if (err.response?.status === 500) {
+          toast.error("Server error. Please try again later.");
+        } else {
+          toast.error(`Failed to create task: ${err.response?.status || 'Network error'}`);
+        }
+      } else {
+        toast.error("Failed to create task");
+      }
       
       // Restore input value on error
       setNewTasks((prev) => ({ ...prev, [status]: title }));
@@ -1289,27 +1396,6 @@ export default function ProjectBoardPage() {
       toast.error("Failed to update task");
     }
   };
-
-  // Hàm để kiểm tra xem một URL có phải là URL Cloudinary không
-  // const isCloudinaryUrl = (url: string): boolean => {
-  //   if (!url || typeof url !== 'string') return false;
-  //   return url.includes('cloudinary.com') && 
-  //          (url.includes('/image/upload/') || url.includes('/image/upload'));
-  // };
-
-  // Hàm để lấy public_id từ URL Cloudinary
-  // const getPublicIdFromCloudinaryUrl = (url: string): string | null => {
-  //   try {
-  //     // URL mẫu: https://res.cloudinary.com/dwmospuhh/image/upload/v1747715204/avatars/b76b87ab-4bc4-4bec-ab37-d410487927ab.jpg
-  //     const match = url.match(/\/image\/upload\/(?:v\d+\/)?(.+?)(?:\.\w+)?$/);
-  //     if (match && match[1]) {
-  //       return match[1]; // Trả về phần "avatars/b76b87ab-4bc4-4bec-ab37-d410487927ab"
-  //     }
-  //   } catch (error) {
-  //     console.error("Error parsing Cloudinary URL:", error);
-  //   }
-  //   return null;
-  // };
 
   const fetchUserAvatar = async (userId: string): Promise<string | undefined> => {
     if (!userId || userId.trim() === '') {

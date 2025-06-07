@@ -12,10 +12,9 @@ import { Sidebar } from "@/components/ui/sidebar";
 import { useNavigation } from "@/contexts/NavigationContext";
 import { Search, ChevronDown, MoreHorizontal, ChevronRight, Plus, Edit, Check, Calendar, ChevronUp, Trash2 } from "lucide-react";
 import { useUserStorage } from "@/hooks/useUserStorage";
-import TaskDetailModal, { TaskData, SprintOption } from "@/components/tasks/TaskDetailModal";
 
 // Define types for the task
-export interface TaskData {
+interface TaskData {
   id: string;
   title: string;
   description?: string;
@@ -39,9 +38,10 @@ export interface TaskData {
   estimationConfidence?: number;
   isAiEstimated?: boolean;
   estimationCreatedAt?: string;
+  createdBy?: string; // Add this field for notifications
 }
 
-export interface SprintOption {
+interface SprintOption {
   id: string;
   name: string;
   startDate?: string;

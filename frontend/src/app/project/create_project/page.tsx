@@ -4,12 +4,62 @@ import { Sidebar } from "@/components/ui/sidebar";
 import { TopNavigation } from "@/components/ui/top-navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Info } from "lucide-react";
+import { Info, X, Search, UserPlus } from "lucide-react";
 import { Dropdown } from "@/components/ui/drop-down";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import axios, { AxiosError } from "axios";
+import { useUser } from "@/contexts/UserContext";
+
+interface User {
+    id: string;
+    username: string;
+    email: string;
+    avatar?: string;
+    userRole?: string;
+}
+
+// ✅ Avatar Component for better reusability
+const UserAvatar = ({ user, size = "md" }: { user: User; size?: "sm" | "md" | "lg" }) => {
+    const sizeClasses = {
+        sm: "w-5 h-5 text-xs",
+        md: "w-8 h-8 text-sm", 
+        lg: "w-10 h-10 text-base"
+    };
+    
+    const sizeClass = sizeClasses[size];
+    
+    // Check if avatar is a valid URL (Cloudinary or other image URL)
+    const isValidImageUrl = (url?: string) => {
+        if (!url) return false;
+        return url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:');
+    };
+    
+    if (isValidImageUrl(user.avatar)) {
+        return (
+            <img
+                src={user.avatar}
+                alt={user.username}
+                className={`${sizeClass} rounded-full object-cover border border-gray-200`}
+                onError={(e) => {
+                    // Hide image and show fallback
+                    const target = e.target as HTMLImageElement;
+                    target.style.display = 'none';
+                    const fallback = target.nextElementSibling as HTMLElement;
+                    if (fallback) fallback.style.display = 'flex';
+                }}
+            />
+        );
+    }
+    
+    // Fallback to initials
+    return (
+        <div className={`${sizeClass} bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-medium border border-gray-200 shadow-sm`}>
+            {user.username.charAt(0).toUpperCase()}
+        </div>
+    );
+};
 
 export default function CreateProjectPage() {
     const [name, setName] = useState("");
@@ -18,37 +68,126 @@ export default function CreateProjectPage() {
     const [projectType, setProjectType] = useState("");
     const [access, setAccess] = useState("");
     const [deadline, setDeadline] = useState("");
-    const [ownerId, setOwnerId] = useState<string | null>(null);
+    
+    // ✅ Use UserContext instead of localStorage
+    const { currentUser, isLoading: userLoading } = useUser();
+    
+    // ✅ New states for user invitation
+    const [allUsers, setAllUsers] = useState<User[]>([]);
+    const [selectedUsers, setSelectedUsers] = useState<User[]>([]);
+    const [searchTerm, setSearchTerm] = useState("");
+    const [showUserDropdown, setShowUserDropdown] = useState(false);
+    const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+    
     const router = useRouter();
 
+    // ✅ Simplified useEffect with UserContext
     useEffect(() => {
-        const id = localStorage.getItem("ownerId");
-        if (id) {
-            setOwnerId(id);
-        } else {
-            console.warn("Owner ID not found in localStorage");
+        if (!userLoading && currentUser) {
+            console.log("✅ Current user from context:", currentUser);
+            // Fetch users when we have current user
+            fetchAllUsers();
+        } else if (!userLoading && !currentUser) {
+            console.warn("❌ No current user found in context");
+            toast.error("Please log in to create a project");
         }
-    }, []);
+    }, [currentUser, userLoading]);
+
+    // ✅ Fetch all users from API
+    const fetchAllUsers = async () => {
+        setIsLoadingUsers(true);
+        try {
+            const response = await axios.get("http://localhost:8086/api/users");
+            if (response.data && response.data.status === "SUCCESS" && response.data.data) {
+                // ✅ Filter out current user (owner) from the list
+                const users = response.data.data.filter((user: User) => user.id !== currentUser?.id);
+                setAllUsers(users);
+                console.log(`✅ Loaded ${users.length} users (excluding current user)`);
+            } else {
+                console.error("Failed to fetch users:", response.data);
+                toast.error("Failed to load users");
+            }
+        } catch (error) {
+            console.error("Error fetching users:", error);
+            toast.error("Error loading users");
+        } finally {
+            setIsLoadingUsers(false);
+        }
+    };
+
+    // ✅ Filter users based on search term
+    const filteredUsers = allUsers.filter(user => 
+        !selectedUsers.some(selected => selected.id === user.id) &&
+        (user.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+         user.email.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
+
+    // ✅ Add user to selected list
+    const addUser = (user: User) => {
+        setSelectedUsers([...selectedUsers, user]);
+        setSearchTerm("");
+        setShowUserDropdown(false);
+    };
+
+    // ✅ Remove user from selected list
+    const removeUser = (userId: string) => {
+        setSelectedUsers(selectedUsers.filter(user => user.id !== userId));
+    };
+
+    // ✅ Send project invitation notifications
+    const sendProjectInvitations = async (projectId: string, projectName: string) => {
+        if (selectedUsers.length === 0) return;
+
+        try {
+            const ownerName = currentUser?.username || 'Project Owner';
+
+            const invitationPromises = selectedUsers.map(async (user) => {
+                const notificationData = {
+                    type: 'PROJECT_INVITE',
+                    title: 'Project Invitation',
+                    message: `${ownerName} invited you to join project "${projectName}"`,
+                    recipientUserId: user.id,
+                    actorUserId: currentUser?.id,
+                    actorUserName: ownerName,
+                    projectId: projectId,
+                    projectName: projectName,
+                    actionUrl: `/project/invitations?projectId=${projectId}`
+                };
+
+                console.log(`📤 PROJECT: Sending invitation to ${user.username}:`, notificationData);
+                return axios.post('http://localhost:8089/api/notifications/create', notificationData);
+            });
+
+            await Promise.all(invitationPromises);
+            console.log(`✅ PROJECT: ${selectedUsers.length} project invitations sent successfully`);
+            toast.success(`Project invitations sent to ${selectedUsers.length} users`);
+        } catch (error) {
+            console.error('❌ PROJECT: Failed to send project invitations:', error);
+            toast.error('Failed to send some invitations');
+        }
+    };
 
     const handleSubmit = async () => {
-        if (!ownerId) {
-            toast.error("Owner ID is missing. Please log in again.");
+        if (!currentUser) {
+            toast.error("Current user is missing. Please log in again.");
             return;
         }
 
         try {
-            // Gửi yêu cầu tạo Project
+            // ✅ STEP 1: Create Project
+            console.log("🚀 STEP 1: Creating project...");
             const payload = {
                 name,
                 key,
                 description,
                 projectType,
                 access,
-                ownerId,
-                deadline,
+                ownerId: currentUser.id, // Already string UUID from UserContext
+                deadline, // YYYY-MM-DD format from HTML input
                 createdAt: new Date().toISOString(),
             };
 
+            console.log("✅ PROJECT: Sending payload:", payload);
             const res = await axios.post("http://localhost:8083/api/projects", payload);
             const newProjectId: string = res.data?.data?.id;
 
@@ -56,33 +195,78 @@ export default function CreateProjectPage() {
                 toast.error("Project created but no ID returned.");
                 return;
             }
+            console.log("✅ STEP 1 SUCCESS: Project created with ID:", newProjectId);
 
-            // Gửi yêu cầu tạo Sprint mặc định
+            // ✅ STEP 2: Create Sprint
+            console.log("🚀 STEP 2: Creating default sprint...");
             const sprintPayload = {
                 name: "Sprint 1",
                 projectId: newProjectId,
-                startDate: new Date().toISOString().split("T")[0],
-                endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-                goal: null,
-                status: null,
-                createdAt: null,
-                updatedAt: null
+                startDate: new Date().toISOString().split("T")[0], // YYYY-MM-DD
+                endDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split("T")[0], // 2 weeks later
+                goal: "Initial project setup and first tasks",
+                status: "ACTIVE",
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
             };
 
+            console.log("✅ SPRINT: Sending sprint payload:", sprintPayload);
             await axios.post("http://localhost:8084/api/sprints", sprintPayload);
+            console.log("✅ STEP 2 SUCCESS: Sprint created");
 
+            // ✅ STEP 3: Auto-add project owner as member
+            console.log("🚀 STEP 3: Adding owner as member...");
+            try {
+                const ownerMemberData = {
+                    userId: currentUser.id,
+                    roleInProject: "SCRUM_MASTER" // Owner role
+                };
+                
+                console.log("✅ MEMBER: Adding owner as member:", ownerMemberData);
+                await axios.post(`http://localhost:8083/api/projects/${newProjectId}/members`, ownerMemberData);
+                console.log("✅ STEP 3 SUCCESS: Owner added as member");
+            } catch (ownerError) {
+                console.warn("⚠️ STEP 3 WARNING: Failed to auto-add owner as member:", ownerError);
+                // Don't fail the whole process if this fails
+            }
+
+            // ✅ STEP 4: Send project invitations
+            console.log("🚀 STEP 4: Sending notifications...");
+            await sendProjectInvitations(newProjectId, name);
+            console.log("✅ STEP 4 SUCCESS: Notifications sent");
+
+            // ✅ STEP 5: Navigate to project
+            console.log("🚀 STEP 5: Navigating to project...");
+            const redirectUrl = `/project/project_homescreen?projectId=${newProjectId}`;
+            console.log("✅ REDIRECT: Navigating to:", redirectUrl);
+            
             toast.success("Project and default sprint created successfully!");
-            router.push(`/project/project_homescreen?projectId=${newProjectId}`);
+            router.push(redirectUrl);
+            console.log("✅ STEP 5 SUCCESS: Navigation initiated");
+
         } catch (err: unknown) {
             if (axios.isAxiosError(err)) {
-                const axiosErr = err as AxiosError<{ message?: string }>;
-                console.error("Axios Error:", axiosErr.response?.data?.message ?? axiosErr.message ?? axiosErr);
-                toast.error("Error: " + (axiosErr.response?.data?.message || axiosErr.message || "Unknown error"));
+                const axiosErr = err as AxiosError<{ message?: string; error?: string }>;
+                console.error("❌ PROJECT: Axios Error:", axiosErr.response?.data);
+                console.error("❌ PROJECT: Error details:", {
+                    status: axiosErr.response?.status,
+                    statusText: axiosErr.response?.statusText,
+                    url: axiosErr.config?.url,
+                    method: axiosErr.config?.method
+                });
+                
+                // Better error messaging
+                const errorMessage = axiosErr.response?.data?.message || 
+                                   axiosErr.response?.data?.error || 
+                                   axiosErr.message || 
+                                   "Unknown server error";
+                                   
+                toast.error("Error creating project: " + errorMessage);
             } else if (err instanceof Error) {
-                console.error("Error:", err.message);
+                console.error("❌ PROJECT: Error:", err.message);
                 toast.error("Error: " + err.message);
             } else {
-                console.error("Unknown error", err);
+                console.error("❌ PROJECT: Unknown error", err);
                 toast.error("Unknown error occurred.");
             }
         }
@@ -148,20 +332,117 @@ export default function CreateProjectPage() {
                             </label>
                             <Input type="date" value={deadline} onChange={e => setDeadline(e.target.value)} />
                         </div>
+                        
+                        {/* ✅ User Invitation Section */}
+                        <div className="col-span-2">
+                            <label className="block text-sm font-semibold mb-1">
+                                <UserPlus className="w-4 h-4 inline mr-1" />
+                                Invite Team Members
+                            </label>
+                            <p className="text-xs text-gray-500 mb-3">
+                                Add team members to your project. They will receive notifications to accept or decline the invitation.
+                            </p>
+                            
+                            {/* Selected Users */}
+                            {selectedUsers.length > 0 && (
+                                <div className="mb-3">
+                                    <p className="text-sm text-gray-600 mb-2">Selected members ({selectedUsers.length}):</p>
+                                    <div className="flex flex-wrap gap-2">
+                                        {selectedUsers.map(user => (
+                                            <div key={user.id} className="flex items-center bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm gap-2">
+                                                {/* ✅ Avatar for Selected Users */}
+                                                <UserAvatar user={user} size="sm" />
+                                                <span>{user.username}</span>
+                                                <button
+                                                    onClick={() => removeUser(user.id)}
+                                                    className="hover:bg-blue-200 rounded-full p-0.5"
+                                                >
+                                                    <X className="w-3 h-3" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                            
+                            {/* User Search Input */}
+                            <div className="relative">
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                                    <Input
+                                        placeholder="Search users by name or email..."
+                                        value={searchTerm}
+                                        onChange={(e) => {
+                                            setSearchTerm(e.target.value);
+                                            setShowUserDropdown(true);
+                                        }}
+                                        onFocus={() => setShowUserDropdown(true)}
+                                        className="pl-10"
+                                    />
+                                </div>
+                                
+                                {/* User Dropdown */}
+                                {showUserDropdown && searchTerm && (
+                                    <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-md shadow-lg z-10 max-h-60 overflow-y-auto">
+                                        {isLoadingUsers ? (
+                                            <div className="p-3 text-center text-gray-500">
+                                                Loading users...
+                                            </div>
+                                        ) : filteredUsers.length > 0 ? (
+                                            filteredUsers.slice(0, 10).map(user => (
+                                                <button
+                                                    key={user.id}
+                                                    onClick={() => addUser(user)}
+                                                    className="w-full text-left p-3 hover:bg-gray-50 flex items-center gap-3"
+                                                >
+                                                    {/* ✅ Real Avatar Display */}
+                                                    <UserAvatar user={user} />
+                                                    <div>
+                                                        <div className="font-medium text-sm">{user.username}</div>
+                                                        <div className="text-xs text-gray-500">{user.email}</div>
+                                                        {user.userRole && (
+                                                            <div className="text-xs text-gray-400 capitalize">{user.userRole.toLowerCase()}</div>
+                                                        )}
+                                                    </div>
+                                                </button>
+                                            ))
+                                        ) : (
+                                            <div className="p-3 text-center text-gray-500">
+                                                No users found
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     </div>
 
                     <div className="flex space-x-4 mt-10">
                         <Button variant="outline" className="text-sm">Cancel</Button>
                         <Button
                             onClick={handleSubmit}
-                            disabled={!name || !key || !description || !projectType || !access || !deadline}
-                            className={`text-sm ${name && key && description && projectType && access && deadline ? "bg-[#0052CC] text-white" : "bg-gray-300 text-gray-600"}`}
+                            disabled={!name || !key || !description || !projectType || !access || !deadline || !currentUser || userLoading}
+                            className={`text-sm ${name && key && description && projectType && access && deadline && currentUser ? "bg-[#0052CC] text-white" : "bg-gray-300 text-gray-600"}`}
                         >
-                            Create project
+                            {userLoading ? (
+                                <>Loading...</>
+                            ) : !currentUser ? (
+                                <>Please log in first</>
+                            ) : (
+                                <>Create project {selectedUsers.length > 0 && `& Invite ${selectedUsers.length} members`}</>
+                            )}
                         </Button>
                     </div>
                 </main>
             </div>
+            
+            {/* Click outside to close dropdown */}
+            {showUserDropdown && (
+                <div
+                    className="fixed inset-0 z-5"
+                    onClick={() => setShowUserDropdown(false)}
+                />
+            )}
         </div>
     );
 }

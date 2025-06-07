@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useRef } from "react"
-import { Bell, Check, X, MoreHorizontal, Settings, Circle } from "lucide-react"
+import { Bell, Check, X, MoreHorizontal, Settings, Circle, CheckCircle, XCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import axios from "axios"
@@ -165,9 +165,17 @@ export function NotificationDropdown({ userId }: NotificationDropdownProps) {
             }
             
             console.log(`Marking notification ${notificationId} as read`)
-            await axios.patch(`http://localhost:8089/api/notifications/${notificationId}/read`, {
-                userId: userId
+            console.log("Using userId:", userId)
+            
+            const response = await axios.patch(`/api/notifications/${notificationId}/read`, {}, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'Cache-Control': 'no-cache'
+                }
             })
+            
+            console.log("Mark as read response:", response.status, response.data)
             
             // Update local state
             setNotifications(prev =>
@@ -179,6 +187,7 @@ export function NotificationDropdown({ userId }: NotificationDropdownProps) {
             
         } catch (error) {
             console.error("Error marking notification as read:", error)
+            
             // Update locally anyway for better UX
             setNotifications(prev =>
                 prev.map(n =>
@@ -191,59 +200,160 @@ export function NotificationDropdown({ userId }: NotificationDropdownProps) {
 
     // Mark all notifications as read
     const markAllAsRead = async () => {
-        const userId = getUserId();
-        if (!userId) {
-            console.log("❌ No user ID for mark all as read")
-            toast.error("Cannot mark all as read - no user found")
+        try {
+            if (unreadCount === 0) {
+                toast.info("No unread notifications to mark")
+                return
+            }
+
+            const unreadNotifications = notifications.filter(n => !n.isRead)
+            const markPromises = unreadNotifications.map(notification =>
+                fetch(`/api/notifications/${notification.id}/read`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Cache-Control': 'no-cache'
+                    }
+                })
+            )
+
+            await Promise.all(markPromises)
+
+            // Update local state
+            setNotifications(prev => prev.map(n => ({ ...n, isRead: true })))
+            setUnreadCount(0)
+
+            toast.success(`Marked ${unreadNotifications.length} notifications as read`)
+        } catch (error) {
+            console.error("Error marking all notifications as read:", error)
+            toast.error("Failed to mark notifications as read")
+        }
+    }
+
+    // Handle accepting project invitation
+    const handleAcceptInvitation = async (notification: Notification, e: React.MouseEvent) => {
+        e.stopPropagation()
+        
+        if (!notification.projectId) {
+            toast.error("Project ID not found in invitation")
             return
         }
 
         try {
-            console.log("📝 Marking all notifications as read for user:", userId)
+            console.log("🎯 Starting accept invitation process...")
             
-            // Call the mark-all-read endpoint
-            await axios.patch(`http://localhost:8089/api/notifications/user/${userId}/mark-all-read`)
-            console.log("✅ Bulk mark-all-read successful")
-            
-            // Update local state
-            setNotifications(prev => prev.map(n => ({ ...n, isRead: true })))
-            setUnreadCount(0)
-            toast.success("All notifications marked as read")
-            
-        } catch (error) {
-            console.error("❌ Error marking all notifications as read:", error)
-            
-            // Try fallback approach with individual updates
-            try {
-                const unreadNotifications = notifications.filter(n => !n.isRead)
-                const markPromises = unreadNotifications.map(notification => 
-                    axios.patch(`http://localhost:8089/api/notifications/${notification.id}/read`, {
-                        userId: userId
-                    })
-                );
+            // Add user to project members
+            const response = await axios.post(`/api/projects/${notification.projectId}/members`, {
+                userId: getUserId()
+            }, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'Cache-Control': 'no-cache'
+                }
+            })
+
+            console.log("✅ Add member response:", response.status, response.data)
+
+            if (response.status === 200 || response.status === 201) {
+                // Send accept notification back to project owner
+                console.log("📤 Sending accept notification...")
+                await axios.post("/api/notifications/create", {
+                    type: "PROJECT_INVITE",
+                    title: "Invitation Accepted! 🎉",
+                    message: `${notification.recipientUserId} has joined your project "${notification.projectName}"`,
+                    recipientUserId: notification.actorUserId,
+                    actorUserId: getUserId(),
+                    projectId: notification.projectId,
+                    projectName: notification.projectName
+                }, {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'Cache-Control': 'no-cache'
+                    }
+                })
+
+                console.log("✅ Accept notification sent successfully")
                 
-                await Promise.allSettled(markPromises)
-                console.log("✅ Individual mark-as-read completed")
+                // Delete the invitation notification (no need to mark as read)
+                console.log("🗑️ Deleting invitation notification...")
+                await deleteNotification(notification.id)
+
+                toast.success(`Successfully joined project "${notification.projectName}"!`)
                 
-                // Update local state
-                setNotifications(prev => prev.map(n => ({ ...n, isRead: true })))
-                setUnreadCount(0)
-                toast.success("All notifications marked as read")
-                
-            } catch (fallbackError) {
-                console.error("❌ Fallback also failed:", fallbackError)
-                
-                // Update locally anyway for better UX
-                setNotifications(prev => prev.map(n => ({ ...n, isRead: true })))
-                setUnreadCount(0)
-                toast.warning("Marked locally - sync may be incomplete")
+                // Refresh notifications to update UI
+                console.log("🔄 Refreshing notifications...")
+                fetchDirectFromDatabase(true)
             }
+        } catch (error: any) {
+            console.error("❌ Error accepting invitation:", error)
+            
+            // Simple duplicate check
+            const isDuplicateError = error && error.response && 
+                (error.response.status === 409 || 
+                 (error.response.status === 500 && 
+                  String(error.response.data || '').includes("duplicate key")))
+            
+            if (isDuplicateError) {
+                console.log("ℹ️ User already member, deleting notification...")
+                toast.info("You are already a member of this project")
+                
+                // Delete notification since user is already member
+                await deleteNotification(notification.id)
+                
+                // Still refresh to update UI
+                fetchDirectFromDatabase(true)
+            } else {
+                toast.error("Failed to accept invitation")
+            }
+        }
+    }
+
+    // Handle declining project invitation  
+    const handleDeclineInvitation = async (notification: Notification, e: React.MouseEvent) => {
+        e.stopPropagation()
+
+        try {
+            // Send decline notification back to project owner
+            await axios.post("/api/notifications/create", {
+                type: "PROJECT_INVITE",
+                title: "Invitation Declined",
+                message: `${notification.recipientUserId} has declined to join your project "${notification.projectName}"`,
+                recipientUserId: notification.actorUserId,
+                actorUserId: getUserId(),
+                projectId: notification.projectId,
+                projectName: notification.projectName
+            }, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'Cache-Control': 'no-cache'
+                }
+            })
+
+            // Delete the invitation notification (no need to mark as read)
+            await deleteNotification(notification.id)
+
+            toast.info(`Declined invitation to project "${notification.projectName}"`)
+            
+            // Refresh notifications to update UI
+            fetchDirectFromDatabase(true)
+        } catch (error: any) {
+            console.error("Error declining invitation:", error)
+            toast.error("Failed to decline invitation")
         }
     }
 
     const deleteNotification = async (notificationId: string) => {
         try {
-            await axios.delete(`http://localhost:8089/api/notifications/${notificationId}`)
+            await axios.delete(`/api/notifications/${notificationId}`, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'Cache-Control': 'no-cache'
+                }
+            })
             setNotifications(prev => prev.filter(n => n.id !== notificationId))
             const deletedNotification = notifications.find(n => n.id === notificationId)
             if (deletedNotification && !deletedNotification.isRead) {
@@ -379,7 +489,7 @@ export function NotificationDropdown({ userId }: NotificationDropdownProps) {
             
             // Create a completely unique URL to bypass all caching
             const timestamp = Date.now()
-            const url = `http://localhost:8089/api/notifications/user/${userId}?_=${timestamp}&forceRefresh=${forceRefresh ? 'true' : 'false'}`
+            const url = `/api/notifications/user/${userId}?_=${timestamp}&forceRefresh=${forceRefresh ? 'true' : 'false'}`
             
             console.log("Fetching notifications from:", url)
             
@@ -573,10 +683,10 @@ export function NotificationDropdown({ userId }: NotificationDropdownProps) {
                                 {filteredNotifications.map((notification) => (
                                     <div
                                         key={notification.id}
-                                        className={`p-4 hover:bg-gray-50 cursor-pointer transition-colors group ${
+                                        className={`p-4 hover:bg-gray-50 ${notification.type === 'PROJECT_INVITE' ? 'cursor-default' : 'cursor-pointer'} transition-colors group ${
                                             !notification.isRead ? 'bg-blue-50' : ''
                                         }`}
-                                        onClick={() => handleNotificationClick(notification)}
+                                        onClick={notification.type === 'PROJECT_INVITE' ? undefined : () => handleNotificationClick(notification)}
                                     >
                                         <div className="flex items-start gap-3">
                                             {/* Icon */}
@@ -605,11 +715,34 @@ export function NotificationDropdown({ userId }: NotificationDropdownProps) {
                                                                 </>
                                                             )}
                                                         </div>
+                                                        
+                                                        {/* Accept/Decline buttons for PROJECT_INVITE */}
+                                                        {notification.type === 'PROJECT_INVITE' && !notification.isRead && (
+                                                            <div className="flex items-center gap-2 mt-3">
+                                                                <Button
+                                                                    size="sm"
+                                                                    className="bg-green-500 hover:bg-green-600 text-white h-7 px-3 text-xs"
+                                                                    onClick={(e) => handleAcceptInvitation(notification, e)}
+                                                                >
+                                                                    <CheckCircle className="h-3 w-3 mr-1" />
+                                                                    Accept
+                                                                </Button>
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                    className="border-red-300 text-red-600 hover:bg-red-50 h-7 px-3 text-xs"
+                                                                    onClick={(e) => handleDeclineInvitation(notification, e)}
+                                                                >
+                                                                    <XCircle className="h-3 w-3 mr-1" />
+                                                                    Decline
+                                                                </Button>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                     
                                                     {/* Actions */}
                                                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        {!notification.isRead && (
+                                                        {!notification.isRead && notification.type !== 'PROJECT_INVITE' && (
                                                             <Button
                                                                 variant="ghost"
                                                                 size="sm"
