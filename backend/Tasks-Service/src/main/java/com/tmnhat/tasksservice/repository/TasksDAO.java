@@ -572,4 +572,33 @@ public class TasksDAO extends BaseDAO {
         });
     }
 
+    // Get overdue tasks for a specific project
+    public List<Tasks> getOverdueTasks(UUID projectId) throws SQLException {
+        String sql = "SELECT * FROM tasks WHERE project_id = ? AND due_date < CURRENT_DATE AND status != 'DONE' ORDER BY due_date ASC";
+        
+        return executeQuery(sql, stmt -> {
+            stmt.setObject(1, projectId);
+            List<Tasks> overdueTasks = new ArrayList<>();
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                overdueTasks.add(mapResultSetToTask(rs));
+            }
+            return overdueTasks;
+        });
+    }
+
+    // Get all overdue tasks across all projects
+    public List<Tasks> getAllOverdueTasks() throws SQLException {
+        String sql = "SELECT * FROM tasks WHERE due_date < CURRENT_DATE AND status != 'DONE' ORDER BY due_date ASC";
+        
+        return executeQuery(sql, stmt -> {
+            List<Tasks> overdueTasks = new ArrayList<>();
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                overdueTasks.add(mapResultSetToTask(rs));
+            }
+            return overdueTasks;
+        });
+    }
+
 }

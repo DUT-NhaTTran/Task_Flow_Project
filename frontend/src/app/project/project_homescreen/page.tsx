@@ -442,6 +442,223 @@ export default function ProjectBoardPage() {
     }
   };
 
+  // Shared function for sending deduplicated task notifications
+  const sendTaskNotifications = async (
+    task: Task,
+    notificationType: "TASK_UPDATED" | "TASK_DELETED" | "TASK_OVERDUE",
+    customMessage?: string
+  ) => {
+    console.log(`🔔 TASK NOTIFICATIONS: Starting to send ${notificationType} notifications...`);
+    
+    try {
+      // Get current user info
+      const actorUserId = userData?.profile?.id || userData?.account?.id;
+      const actorUserName = userData?.profile?.username || userData?.profile?.firstName || 'User';
+
+      if (!actorUserId) {
+        console.warn('⚠️ TASK NOTIFICATIONS: No current user ID found');
+        return;
+      }
+
+      console.log('🔍 TASK NOTIFICATIONS: Current user:', { actorUserId, actorUserName });
+
+      // 1. Fetch complete task details to get created_by
+      let taskWithCreatedBy = task;
+      try {
+        console.log('🔍 TASK NOTIFICATIONS: Fetching complete task details for created_by...');
+        const taskDetailResponse = await axios.get(`http://localhost:8085/api/tasks/${task.id}`);
+        
+        if (taskDetailResponse.data?.status === "SUCCESS" && taskDetailResponse.data?.data) {
+          taskWithCreatedBy = {
+            ...task,
+            ...taskDetailResponse.data.data
+          };
+          console.log('✅ TASK NOTIFICATIONS: Retrieved task with created_by:', {
+            taskId: taskWithCreatedBy.id,
+            createdBy: taskWithCreatedBy.createdBy,
+            assigneeId: taskWithCreatedBy.assigneeId
+          });
+        } else {
+          console.warn('⚠️ TASK NOTIFICATIONS: Could not fetch task details, using original task data');
+        }
+      } catch (taskFetchError) {
+        console.warn('⚠️ TASK NOTIFICATIONS: Failed to fetch task details:', taskFetchError);
+      }
+
+      // 2. COLLECT USER ROLES - Map each user to their roles
+      const userRoles = new Map<string, string[]>();
+
+      // Add Assignee
+      if (taskWithCreatedBy.assigneeId && taskWithCreatedBy.assigneeId.trim() !== '') {
+        if (!userRoles.has(taskWithCreatedBy.assigneeId)) {
+          userRoles.set(taskWithCreatedBy.assigneeId, []);
+        }
+        userRoles.get(taskWithCreatedBy.assigneeId)!.push('Assignee');
+        console.log('✅ TASK NOTIFICATIONS: Added assignee role for user:', taskWithCreatedBy.assigneeId);
+      } else {
+        console.log('⚠️ TASK NOTIFICATIONS: No assignee found');
+      }
+      
+      // Add Creator
+      if (taskWithCreatedBy.createdBy && taskWithCreatedBy.createdBy.trim() !== '') {
+        if (!userRoles.has(taskWithCreatedBy.createdBy)) {
+          userRoles.set(taskWithCreatedBy.createdBy, []);
+        }
+        userRoles.get(taskWithCreatedBy.createdBy)!.push('Creator');
+        console.log('✅ TASK NOTIFICATIONS: Added creator role for user:', taskWithCreatedBy.createdBy);
+      } else {
+        console.log('⚠️ TASK NOTIFICATIONS: No creator found');
+      }
+
+      // Add Scrum Master
+      try {
+        const projectApiId = taskWithCreatedBy.projectId || projectId;
+        if (projectApiId) {
+          console.log('🔍 TASK NOTIFICATIONS: Fetching scrum master for project:', projectApiId);
+          
+          const scrumMasterResponse = await axios.get(`http://localhost:8083/api/projects/${projectApiId}/scrum_master_id`);
+          console.log('🔍 TASK NOTIFICATIONS: Scrum Master API response:', scrumMasterResponse.data);
+          
+          if (scrumMasterResponse.data?.status === "SUCCESS" && scrumMasterResponse.data?.data) {
+            const scrumMasterId = scrumMasterResponse.data.data;
+            
+            if (!userRoles.has(scrumMasterId)) {
+              userRoles.set(scrumMasterId, []);
+            }
+            userRoles.get(scrumMasterId)!.push('Scrum Master');
+            console.log('✅ TASK NOTIFICATIONS: Added scrum master role for user:', scrumMasterId);
+          } else {
+            console.log('❌ TASK NOTIFICATIONS: No scrum master found in API response');
+          }
+        } else {
+          console.log('❌ TASK NOTIFICATIONS: No project ID available for scrum master lookup');
+        }
+      } catch (projectError) {
+        console.warn('⚠️ TASK NOTIFICATIONS: Failed to fetch scrum master:', projectError);
+      }
+
+      // 3. For non-overdue notifications, remove actor (don't notify the person who made the change)
+      if (notificationType !== "TASK_OVERDUE" && userRoles.has(actorUserId)) {
+        console.log(`🚫 TASK NOTIFICATIONS: Removing actor (${actorUserId}) from notifications - don't notify the person who made the change`);
+        userRoles.delete(actorUserId);
+      }
+
+      console.log(`🎯 TASK NOTIFICATIONS: User roles after deduplication:`);
+      userRoles.forEach((roles, userId) => {
+        console.log(`  User ${userId}: ${roles.join(', ')}`);
+      });
+
+      // If no users to notify, skip
+      if (userRoles.size === 0) {
+        console.log('⚠️ TASK NOTIFICATIONS: No users to notify after removing actor and deduplication');
+        return;
+      }
+
+      // Generate notification message based on type
+      const getNotificationMessage = (type: string, roles: string[]): string => {
+        const roleText = roles.length > 1 
+          ? `${roles.slice(0, -1).join(', ')} and ${roles[roles.length - 1]}`
+          : roles[0];
+
+        if (customMessage) {
+          return `${customMessage} (You are the ${roleText})`;
+        }
+
+        switch (type) {
+          case "TASK_UPDATED":
+            return `${actorUserName} updated task "${taskWithCreatedBy.title}" (You are the ${roleText})`;
+          case "TASK_DELETED":
+            return `${actorUserName} deleted task "${taskWithCreatedBy.title}" (You are the ${roleText})`;
+          case "TASK_OVERDUE":
+            return `Task "${taskWithCreatedBy.title}" is now overdue (You are the ${roleText})`;
+          default:
+            return `Task "${taskWithCreatedBy.title}" has been modified (You are the ${roleText})`;
+        }
+      };
+
+      // Base notification data
+      const baseNotificationData = {
+        type: notificationType,
+        title: notificationType === "TASK_UPDATED" ? "Task updated" :
+               notificationType === "TASK_DELETED" ? "Task deleted" :
+               notificationType === "TASK_OVERDUE" ? "Task overdue" : "Task notification",
+        actorUserId: notificationType === "TASK_OVERDUE" ? "system" : actorUserId,
+        actorUserName: notificationType === "TASK_OVERDUE" ? "System" : actorUserName,
+        projectId: taskWithCreatedBy.projectId || projectId,
+        projectName: project?.name || "TaskFlow Project",
+        taskId: taskWithCreatedBy.id
+      };
+
+      // 4. CREATE NOTIFICATIONS - One per unique user with combined roles
+      const notifications: any[] = [];
+      
+      userRoles.forEach((roles, userId) => {
+        const notification = {
+          ...baseNotificationData,
+          recipientUserId: userId,
+          message: getNotificationMessage(notificationType, roles)
+        };
+        
+        notifications.push(notification);
+      });
+
+      console.log(`🎯 TASK NOTIFICATIONS: Prepared ${notifications.length} deduplicated ${notificationType} notifications:`);
+      notifications.forEach((notification, index) => {
+        const userRolesList = userRoles.get(notification.recipientUserId) || [];
+        console.log(`  ${index + 1}. User ${notification.recipientUserId}: ${userRolesList.join(' + ')}`);
+      });
+      
+      // 5. LOG ALL PAYLOADS BEFORE SENDING
+      console.log('');
+      console.log(`🔍 ===== ${notificationType} NOTIFICATION PAYLOADS =====`);
+      notifications.forEach((notification, index) => {
+        const userRolesList = userRoles.get(notification.recipientUserId) || [];
+        console.log(`📋 PAYLOAD ${index + 1}/${notifications.length} - USER (${userRolesList.join(' + ')}):`);
+        console.log(JSON.stringify(notification, null, 2));
+        console.log('');
+      });
+      console.log('🔍 ================================================');
+      console.log('');
+      
+      // 6. SEND ALL NOTIFICATIONS
+      console.log(`📤 TASK NOTIFICATIONS: Sending ${notifications.length} ${notificationType} notifications...`);
+      
+      const notificationPromises = notifications.map(async (notification, index) => {
+        const userRolesList = userRoles.get(notification.recipientUserId) || [];
+        const roleDisplay = userRolesList.join(' + ');
+        
+        console.log(`📤 TASK NOTIFICATIONS: Sending ${notificationType} notification ${index + 1}/${notifications.length} to ${roleDisplay}:`, notification.recipientUserId);
+        
+        try {
+          const response = await axios.post(`http://localhost:8089/api/notifications/create`, notification);
+          console.log(`✅ TASK NOTIFICATIONS: ${notificationType} notification ${index + 1} sent successfully to ${roleDisplay}`);
+          return { success: true, recipient: roleDisplay, userId: notification.recipientUserId };
+        } catch (error) {
+          console.error(`❌ TASK NOTIFICATIONS: Failed to send ${notificationType} notification ${index + 1} to ${roleDisplay}:`, error);
+          return { success: false, recipient: roleDisplay, userId: notification.recipientUserId, error };
+        }
+      });
+
+      const results = await Promise.allSettled(notificationPromises);
+      const successful = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+      const failed = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.success)).length;
+
+      console.log(`📊 TASK NOTIFICATIONS: ${notificationType} results summary:`);
+      console.log(`  ✅ Successful: ${successful}`);
+      console.log(`  ❌ Failed: ${failed}`);
+      console.log(`  🎯 Total unique users notified: ${successful}/${notifications.length}`);
+      
+      if (successful > 0) {
+        console.log(`🎉 TASK NOTIFICATIONS: Successfully sent ${successful} ${notificationType} notifications!`);
+      } else {
+        console.warn(`⚠️ TASK NOTIFICATIONS: No ${notificationType} notifications were sent successfully`);
+      }
+
+    } catch (error) {
+      console.error(`❌ TASK NOTIFICATIONS: Failed to send ${notificationType} notifications:`, error);
+    }
+  };
+
   // Debug searchResults khi nó thay đổi
   useEffect(() => {
     console.log("🔄 searchResults state changed:", searchResults);
@@ -944,24 +1161,10 @@ export default function ProjectBoardPage() {
         sprintId: latestSprintId,
       });
 
-      const tempTask: Task = {
-        id: `temp-${Date.now()}`,
-        title: title,
-        status: status,
-        shortKey: `T-${Math.floor(Math.random() * 1000)}`,
-        description: "",
-        storyPoint: 0,
-        assigneeId: null,
-        assigneeName: "Unassigned",
-        projectId: projectId,
-        sprintId: latestSprintId,
-      };
-
-      console.log("Thêm task tạm thời vào state:", tempTask);
-      setTasks((prev) => [...prev, tempTask]);
-      
+      // Clear input immediately for better UX
       setNewTasks((prev) => ({ ...prev, [status]: "" }));
 
+      // Create task via API first
       const res = await axios.post("http://localhost:8085/api/tasks", {
         title,
         content: title,
@@ -977,23 +1180,65 @@ export default function ProjectBoardPage() {
         tags: null,
       });
 
-      const newTask = res.data?.data;
-      console.log("✅ Task mới đã được tạo từ API:", newTask);
+      // DEBUG: Log the complete response to understand structure
+      console.log("🔍 DEBUG - Full API Response:", res);
+      console.log("🔍 DEBUG - Response Status:", res.status);
+      console.log("🔍 DEBUG - Response Data:", res.data);
+      console.log("🔍 DEBUG - Response Data Type:", typeof res.data);
+      console.log("🔍 DEBUG - Response Data Keys:", res.data ? Object.keys(res.data) : "No data");
 
-      if (newTask) {
+      const newTaskFromAPI = res.data?.data;
+      console.log("🔍 DEBUG - Extracted newTaskFromAPI:", newTaskFromAPI);
+      console.log("🔍 DEBUG - newTaskFromAPI Type:", typeof newTaskFromAPI);
+      if (newTaskFromAPI) {
+        console.log("🔍 DEBUG - newTaskFromAPI Keys:", Object.keys(newTaskFromAPI));
+        console.log("🔍 DEBUG - newTaskFromAPI.id:", newTaskFromAPI.id);
+      }
+      
+      console.log("✅ Task mới đã được tạo từ API:", newTaskFromAPI);
+
+      if (newTaskFromAPI && newTaskFromAPI.id) {
+        // Create properly formatted task object
+        const newTask: Task = {
+          id: newTaskFromAPI.id,
+          title: newTaskFromAPI.title || title,
+          description: newTaskFromAPI.description || "",
+          status: status,
+          storyPoint: newTaskFromAPI.storyPoint || 0,
+          assigneeId: newTaskFromAPI.assigneeId || null,
+          assigneeName: newTaskFromAPI.assigneeName || "Unassigned",
+          shortKey: newTaskFromAPI.shortKey || `T-${Math.floor(Math.random() * 1000)}`,
+          projectId: newTaskFromAPI.projectId || projectId,
+          sprintId: newTaskFromAPI.sprintId || latestSprintId,
+          dueDate: newTaskFromAPI.dueDate || null,
+          createdAt: newTaskFromAPI.createdAt || new Date().toISOString(),
+          completedAt: newTaskFromAPI.completedAt || null,
+          parentTaskId: newTaskFromAPI.parentTaskId || null,
+          tags: newTaskFromAPI.tags || null,
+          createdBy: newTaskFromAPI.createdBy || null
+        };
+
+        // Add to tasks state immediately
+        setTasks((prev) => [...prev, newTask]);
+        
         toast.success("Task created successfully");
         
+        // Refresh tasks after a short delay to ensure consistency
         setTimeout(async () => {
           if (projectId && latestSprintId) {
             console.log("🔄 Tải lại toàn bộ tasks sau khi tạo task mới");
             await fetchTasksForLatestSprint(projectId, latestSprintId);
           }
-        }, 2000);
+        }, 1000);
+      } else {
+        throw new Error("Task creation response missing ID or data");
       }
     } catch (err) {
       console.error("❌ Lỗi khi tạo task:", err);
       toast.error("Failed to create task");
-      setTasks((prev) => prev.filter(task => !task.id.startsWith('temp-')));
+      
+      // Restore input value on error
+      setNewTasks((prev) => ({ ...prev, [status]: title }));
     } finally {
       setLoading(false);
     }
@@ -1002,6 +1247,9 @@ export default function ProjectBoardPage() {
   const handleUpdateTask = async (updatedTask: TaskData) => {
     try {
       console.log("🔄 Đang cập nhật task:", updatedTask);
+      
+      // Store original task for comparison
+      const originalTask = selectedTask;
       
       // Update the selected task in the state first for immediate UI update
       setSelectedTask(updatedTask);
@@ -1017,6 +1265,14 @@ export default function ProjectBoardPage() {
             task.id === updatedTask.id ? { ...updatedTask as Task } : task
           )
         );
+
+        // Send TASK_UPDATED notifications using the shared function
+        try {
+          await sendTaskNotifications(updatedTask as Task, "TASK_UPDATED");
+        } catch (notificationError) {
+          console.error("Failed to send task update notifications:", notificationError);
+          // Don't fail the main operation if notification fails
+        }
         
         // Don't close the modal automatically to allow viewing the changes
         // setSelectedTask(null);
@@ -1490,6 +1746,18 @@ export default function ProjectBoardPage() {
       try {
         console.log("Assigning user:", userId || "none", userName);
         
+        // Validate task ID before proceeding - relaxed validation
+        if (!task?.id || 
+            task.id.startsWith('temp-') || 
+            task.id.includes('undefined') || 
+            task.id === 'new' ||
+            task.id === '' ||
+            task.id.length < 5) {  // Relaxed validation
+          console.warn('⚠️ Cannot assign user to invalid/temporary task ID:', task?.id);
+          toast.error("Cannot assign user to temporary task. Please save the task first.");
+          return;
+        }
+        
         // Set validAssignee state based on whether userId exists
         const isValid = !!userId && userId.trim().length > 0;
         setValidAssignee(isValid);
@@ -1497,6 +1765,8 @@ export default function ProjectBoardPage() {
         // Store previous assignee info for notification purposes
         const previousAssigneeId = task.assigneeId;
         const isReassignment = previousAssigneeId && previousAssigneeId !== userId;
+        
+        console.log(`🔄 Assigning task ${task.id} to user ${userId} (${userName})`);
         
         await axios.put(`http://localhost:8085/api/tasks/${task.id}`, {
           ...task,
@@ -1923,7 +2193,54 @@ export default function ProjectBoardPage() {
     };
   }, []);
 
-  
+  // Function to check for overdue tasks and send notifications
+  const checkAndSendOverdueNotifications = async () => {
+    if (!projectId) return;
+
+    console.log('🔔 CHECKING OVERDUE TASKS: Starting overdue tasks check...');
+    
+    try {
+      // 1. Fetch overdue tasks for current project
+      const response = await axios.get(`http://localhost:8085/api/tasks/project/${projectId}/overdue`);
+      
+      if (response.data?.status === "SUCCESS" && response.data?.data) {
+        const overdueTasks = response.data.data;
+        console.log(`🔔 OVERDUE CHECK: Found ${overdueTasks.length} overdue tasks`);
+        
+        // 2. Send notifications for each overdue task
+        for (const task of overdueTasks) {
+          try {
+            await sendTaskNotifications(task, "TASK_OVERDUE");
+            console.log(`✅ OVERDUE NOTIFICATION: Sent for task "${task.title}"`);
+          } catch (notificationError) {
+            console.error(`❌ OVERDUE NOTIFICATION: Failed for task "${task.title}":`, notificationError);
+          }
+        }
+        
+        if (overdueTasks.length > 0) {
+          toast.info(`Found ${overdueTasks.length} overdue task(s) - notifications sent`, {
+            description: "Check your notifications for details"
+          });
+        }
+      } else {
+        console.log('✅ OVERDUE CHECK: No overdue tasks found');
+      }
+    } catch (error) {
+      console.error('❌ OVERDUE CHECK: Failed to check overdue tasks:', error);
+    }
+  };
+
+  // Check for overdue tasks when component mounts or project changes
+  useEffect(() => {
+    if (projectId && project) {
+      // Check overdue tasks after a delay to ensure other data is loaded
+      const timeoutId = setTimeout(() => {
+        checkAndSendOverdueNotifications();
+      }, 3000); // 3 second delay
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [projectId, project]);
 
   return (
     <div className="flex h-screen bg-gray-50">

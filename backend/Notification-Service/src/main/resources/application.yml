@@ -9,9 +9,16 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
+  cloud:
+    discovery:
+      enabled: false
   
 server:
   port: ${PORT:8089}
+
+eureka:
+  client:
+    enabled: false
 
 logging:
   level:

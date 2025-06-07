@@ -306,10 +306,34 @@ public class TasksController {
 
     @GetMapping("/project/{projectId}/calendar/statuses")
     public ResponseEntity<ResponseDataAPI> getTaskStatusesForCalendar(@PathVariable UUID projectId) {
-        TaskValidator.validateProjectId(projectId);
-        
-        List<String> statuses = taskService.getTaskStatuses(projectId);
-        
-        return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(statuses));
+        try {
+            List<String> statuses = taskService.getTaskStatusesForCalendar(projectId);
+            return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(statuses));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ResponseDataAPI.error(e.getMessage()));
+        }
+    }
+
+    // Get overdue tasks for a project
+    @GetMapping("/project/{projectId}/overdue")
+    public ResponseEntity<ResponseDataAPI> getOverdueTasks(@PathVariable UUID projectId) {
+        try {
+            TaskValidator.validateProjectId(projectId);
+            List<Tasks> overdueTasks = taskService.getOverdueTasks(projectId);
+            return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(overdueTasks));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ResponseDataAPI.error(e.getMessage()));
+        }
+    }
+
+    // Get all overdue tasks (across all projects)
+    @GetMapping("/overdue")
+    public ResponseEntity<ResponseDataAPI> getAllOverdueTasks() {
+        try {
+            List<Tasks> overdueTasks = taskService.getAllOverdueTasks();
+            return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(overdueTasks));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ResponseDataAPI.error(e.getMessage()));
+        }
     }
 }

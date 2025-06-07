@@ -134,22 +134,10 @@ public class TaskServiceImpl implements TaskService {
                 throw new ResourceNotFoundException("Task not found with ID " + id);
             }
             
-            // Send notification before deleting
-            if (existingTask.getAssigneeId() != null) {
-                String projectName = getProjectName(existingTask.getProjectId());
-                
-                safeNotify(() -> notificationClient.sendTaskUpdatedNotification(
-                    existingTask.getAssigneeId().toString(),
-                    "SYSTEM",
-                    "System",
-                    existingTask.getId().toString(),
-                    existingTask.getTitle(),
-                    existingTask.getProjectId().toString(),
-                    projectName,
-                    "task",
-                    "deleted"
-                ));
-            }
+            // NOTE: Removed automatic notification sending - frontend will handle this
+            // Frontend will call notification API directly when needed for TASK_DELETED
+            System.out.println("🗑️ Task being deleted: " + existingTask.getTitle() + 
+                             " - Frontend should handle TASK_DELETED notification");
             
             tasksDAO.deleteTask(id);
         } catch (Exception e) {
@@ -687,6 +675,33 @@ public class TaskServiceImpl implements TaskService {
             // This requires Projects Service to have a members endpoint
         } catch (Exception e) {
             System.err.println("Failed to notify project members: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public List<Tasks> getOverdueTasks(UUID projectId) {
+        try {
+            return tasksDAO.getOverdueTasks(projectId);
+        } catch (Exception e) {
+            throw new DatabaseException("Error retrieving overdue tasks for project: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public List<Tasks> getAllOverdueTasks() {
+        try {
+            return tasksDAO.getAllOverdueTasks();
+        } catch (Exception e) {
+            throw new DatabaseException("Error retrieving all overdue tasks: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public List<String> getTaskStatusesForCalendar(UUID projectId) {
+        try {
+            return tasksDAO.getTaskStatuses(projectId);
+        } catch (Exception e) {
+            throw new DatabaseException("Error retrieving task statuses for calendar: " + e.getMessage());
         }
     }
 }

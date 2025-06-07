@@ -114,13 +114,34 @@ export default function TaskDetailModal({
   useEffect(() => {
     setEditedTask({ ...task });
     
-    // Force refresh all data from database every time modal opens
-    if (task?.id) {
-      fetchAttachments(task.id);
-      fetchChildWorkItems(task.id);
-      fetchWebLinks(task.id);
-      fetchLinkedWorkItems(task.id);
-      fetchComments(task.id);
+    // Only fetch data if task has a valid ID (not temporary or missing)
+    // Relaxed validation - only block obvious temporary/invalid tasks
+    if (task?.id && 
+        !task.id.startsWith('temp-') && 
+        !task.id.includes('undefined') &&
+        task.id !== 'new' &&
+        task.id !== '' &&
+        task.id.length > 5) {  // Relaxed from 10 to 5 characters
+      
+      console.log('✅ MODAL: Fetching data for valid task ID:', task.id);
+      
+      // Add small delay to ensure task is fully created in backend
+      setTimeout(() => {
+        fetchAttachments(task.id);
+        fetchChildWorkItems(task.id);
+        fetchWebLinks(task.id);
+        fetchLinkedWorkItems(task.id);
+        fetchComments(task.id);
+      }, 500);
+    } else {
+      console.log('⚠️ MODAL: Skipping fetch for invalid/temporary task ID:', task?.id);
+      
+      // Clear related data for temporary tasks
+      updateField("attachments", []);
+      setChildWorkItems([]);
+      setWebLinks([]);
+      setLinkedWorkItems([]);
+      setComments([]);
     }
   }, [task]);
 
@@ -162,6 +183,10 @@ export default function TaskDetailModal({
   const [isWatchingTask, setIsWatchingTask] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+
+  // ✅ State for delete confirmation modal
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteConfirmMessage, setDeleteConfirmMessage] = useState("");
 
   // State for Add dropdown
   const [isAddDropdownOpen, setIsAddDropdownOpen] = useState(false);
@@ -1238,14 +1263,9 @@ export default function TaskDetailModal({
   // Delete task
   const deleteTask = async () => {
     try {
-      // Fetch all tasks to check for subtasks
-      const allTasksResponse = await axios.get(`http://localhost:8085/api/tasks`);
-      const allTasks = allTasksResponse.data?.data || [];
-      
-      // Find subtasks of the current task
-      const subtasks = allTasks.filter(
-        (task: any) => task && task.parentTaskId === editedTask.id
-      );
+      setIsLoadingComments(true);
+
+      const subtasks = childWorkItems || [];
 
       // Prepare confirmation message
       let confirmMessage = "Are you sure you want to delete this task?";
@@ -1254,9 +1274,22 @@ export default function TaskDetailModal({
       }
       confirmMessage += " This action cannot be undone.";
 
-      if (!window.confirm(confirmMessage)) {
-        return;
-      }
+      // ✅ Show React modal instead of browser confirm
+      setDeleteConfirmMessage(confirmMessage);
+      setShowDeleteConfirm(true);
+    } catch (error) {
+      console.error("Error preparing task deletion:", error);
+      toast.error("Failed to prepare task deletion");
+    } finally {
+      setIsLoadingComments(false);
+    }
+  };
+
+  // ✅ Actual delete task execution
+  const executeTaskDelete = async () => {
+    try {
+      setIsLoadingComments(true);
+      const subtasks = childWorkItems || [];
 
       // Delete all subtasks first
       if (subtasks.length > 0) {
@@ -1280,14 +1313,12 @@ export default function TaskDetailModal({
       // Send notification before deleting the main task
       if (currentUser?.id && currentUser?.username && editedTask.projectId) {
         try {
-          await axios.post('http://localhost:8089/api/notifications/task-deleted', {
-            actorUserId: currentUser.id,
-            actorUserName: currentUser.username,
-            taskId: editedTask.id,
-            taskTitle: editedTask.title,
-            projectId: editedTask.projectId,
-            projectName: editedTask.projectName || "Unknown Project",
-            assigneeUserId: editedTask.assigneeId || null
+          await axios.post('http://localhost:8089/api/notifications/create', {
+            userId: editedTask.assigneeId || editedTask.createdBy, // Notify assignee or creator
+            type: 'TASK_DELETED',
+            message: `Task "${editedTask.title}" has been deleted by ${currentUser.username}`,
+            actionUrl: `/project/${editedTask.projectId}`,
+            isRead: false
           });
           console.log('Task deleted notification sent');
         } catch (notifError) {
@@ -1307,6 +1338,7 @@ export default function TaskDetailModal({
             ? `Task and ${subtasks.length} subtask(s) deleted successfully`
             : "Task deleted successfully"
         );
+        setShowDeleteConfirm(false); // Close modal
         onClose(); // Close modal
         // Optionally trigger a refresh of the task list in parent component
         window.location.reload(); // Simple way to refresh the board
@@ -1316,6 +1348,8 @@ export default function TaskDetailModal({
     } catch (error) {
       console.error("Error deleting task:", error);
       toast.error("Failed to delete task");
+    } finally {
+      setIsLoadingComments(false);
     }
   };
 
@@ -1417,39 +1451,38 @@ export default function TaskDetailModal({
 
   // Fetch comments for the task
   const fetchComments = async (taskId: string) => {
-    if (!taskId) return;
+    // Validate task ID before making API call - relaxed validation
+    if (!taskId || 
+        taskId.startsWith('temp-') || 
+        taskId.includes('undefined') || 
+        taskId === 'new' ||
+        taskId === '' ||
+        taskId.length < 5) {  // Relaxed validation
+      console.log('⚠️ MODAL: Skipping fetchComments for invalid task ID:', taskId);
+      setComments([]);
+      return;
+    }
 
+    setIsLoadingComments(true);
     try {
-      setIsLoadingComments(true);
-      console.log("Fetching comments for task:", taskId);
-
+      console.log("🔍 Fetching comments for task:", taskId);
       const response = await axios.get(
         `http://localhost:8085/api/comments/task/${taskId}`
       );
 
       if (response.data?.status === "SUCCESS") {
-        const fetchedComments = response.data.data || [];
-        setComments(fetchedComments);
-        console.log("Comments fetched:", fetchedComments);
-
-        // ✅ Fetch user info for all commenters to display avatars
-        const uniqueUserIds = [...new Set(fetchedComments.map((comment: CommentData) => comment.userId))];
-        console.log("Fetching user info for commenters:", uniqueUserIds);
+        const allComments = response.data.data || [];
+        console.log("✅ Comments fetched:", allComments);
         
-        // Fetch user info for all commenters in background
-        uniqueUserIds.forEach((userId) => {
-          if (userId && typeof userId === 'string' && !getUserById(userId)) {
-            fetchUserById(userId).catch(error => {
-              console.log("Failed to fetch user info for commenter:", userId);
-            });
-          }
-        });
+        // Organize comments into parent-child structure
+        const organizedComments = organizeComments(allComments);
+        setComments(organizedComments);
       } else {
-        console.error("Failed to fetch comments:", response.data);
+        console.warn("⚠️ Comments API returned non-SUCCESS status");
         setComments([]);
       }
     } catch (error) {
-      console.error("Error fetching comments:", error);
+      console.error("❌ Error fetching comments:", error);
       setComments([]);
     } finally {
       setIsLoadingComments(false);
@@ -1674,6 +1707,18 @@ export default function TaskDetailModal({
 
   // Fetch attachments from the File Service (attachments table) - chỉ lấy file và ảnh thật
   const fetchAttachments = async (taskId: string) => {
+    // Validate task ID before making API call - relaxed validation
+    if (!taskId || 
+        taskId.startsWith('temp-') || 
+        taskId.includes('undefined') || 
+        taskId === 'new' ||
+        taskId === '' ||
+        taskId.length < 5) {  // Relaxed from 10 to 5 characters
+      console.log('⚠️ MODAL: Skipping fetchAttachments for invalid task ID:', taskId);
+      updateField("attachments", []);
+      return;
+    }
+
     try {
       console.log("Fetching attachments (files/images only) for task:", taskId);
       const response = await axios.get(
@@ -1712,6 +1757,18 @@ export default function TaskDetailModal({
 
   // Fetch child work items (subtasks) - sử dụng API filter hiện có
   const fetchChildWorkItems = async (taskId: string) => {
+    // Validate task ID before making API call - relaxed validation
+    if (!taskId || 
+        taskId.startsWith('temp-') || 
+        taskId.includes('undefined') || 
+        taskId === 'new' ||
+        taskId === '' ||
+        taskId.length < 5) {  // Relaxed validation
+      console.log('⚠️ MODAL: Skipping fetchChildWorkItems for invalid task ID:', taskId);
+      setChildWorkItems([]);
+      return;
+    }
+
     try {
       console.log("Fetching child work items for task:", taskId);
       // Sử dụng getAllTasks và filter by parentTaskId ở frontend - API tasks ở port 8085
@@ -1746,6 +1803,18 @@ export default function TaskDetailModal({
 
   // Fetch web links từ attachments table với file_type = 'link'
   const fetchWebLinks = async (taskId: string) => {
+    // Validate task ID before making API call - relaxed validation
+    if (!taskId || 
+        taskId.startsWith('temp-') || 
+        taskId.includes('undefined') || 
+        taskId === 'new' ||
+        taskId === '' ||
+        taskId.length < 5) {  // Relaxed validation
+      console.log('⚠️ MODAL: Skipping fetchWebLinks for invalid task ID:', taskId);
+      setWebLinks([]);
+      return;
+    }
+
     try {
       console.log("🔗 Fetching web links for task:", taskId);
       // Sử dụng File-Service để lấy attachments có type = 'link' - API attachments ở port 8087
@@ -1790,6 +1859,18 @@ export default function TaskDetailModal({
 
   // Fetch linked work items từ attachments table với file_type = 'task_link'
   const fetchLinkedWorkItems = async (taskId: string) => {
+    // Validate task ID before making API call - relaxed validation
+    if (!taskId || 
+        taskId.startsWith('temp-') || 
+        taskId.includes('undefined') || 
+        taskId === 'new' ||
+        taskId === '' ||
+        taskId.length < 5) {  // Relaxed validation
+      console.log('⚠️ MODAL: Skipping fetchLinkedWorkItems for invalid task ID:', taskId);
+      setLinkedWorkItems([]);
+      return;
+    }
+
     try {
       console.log("🔗 Fetching linked work items for task:", taskId);
       // Sử dụng File-Service để lấy attachments có type = 'task_link' - API attachments ở port 8087
@@ -4396,6 +4477,61 @@ export default function TaskDetailModal({
           </div>
         </div>
       </div>
+
+      {/* ✅ Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1000]">
+          <div className="bg-white rounded-lg shadow-lg max-w-md w-full mx-4">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                  <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.863-.833-2.633 0L4.18 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Confirm Delete</h3>
+                  <p className="text-sm text-gray-500">This action cannot be undone</p>
+                </div>
+              </div>
+              
+              <div className="mb-6">
+                <p className="text-gray-700 leading-relaxed">
+                  {deleteConfirmMessage}
+                </p>
+              </div>
+              
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={executeTaskDelete}
+                  disabled={isLoadingComments}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {isLoadingComments ? (
+                    <>
+                      <div className="animate-spin h-4 w-4 border-2 border-white rounded-full border-t-transparent"></div>
+                      Deleting...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      Delete Task
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

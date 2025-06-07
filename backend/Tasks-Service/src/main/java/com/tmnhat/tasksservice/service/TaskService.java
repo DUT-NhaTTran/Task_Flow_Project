@@ -52,4 +52,11 @@ public interface TaskService {
     Object estimateStoryPoints(UUID taskId);
     Object trainAIModel();
     Object bulkEstimateStoryPoints(UUID projectId);
+
+    // Overdue Tasks Methods
+    List<Tasks> getOverdueTasks(UUID projectId);
+    List<Tasks> getAllOverdueTasks();
+    
+    // Calendar Status Method
+    List<String> getTaskStatusesForCalendar(UUID projectId);
     }

@@ -58,13 +58,4 @@ public interface NotificationService {
                                             String taskId, String taskTitle, 
                                             String projectId, String projectName,
                                             String assigneeUserId, String oldStatus, String newStatus);
-                                                   
-    void createTaskDeletedNotifications(String actorUserId, String actorUserName,
-                                       String taskId, String taskTitle, 
-                                       String projectId, String projectName,
-                                       String assigneeUserId);
-                                       
-    void createTaskOverdueNotifications(String taskId, String taskTitle,
-                                       String projectId, String projectName,
-                                       String assigneeUserId);
 } 
