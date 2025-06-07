@@ -29,18 +29,31 @@ public class TasksController {
 
     // Add task
     @PostMapping
-    public ResponseEntity<ResponseDataAPI> addTask(@RequestBody Tasks task) {
+    public ResponseEntity<ResponseDataAPI> addTask(@RequestBody Tasks task, @RequestHeader(value = "X-User-Id", required = false) String userId) {
         TaskValidator.validateTask(task);
+        
+        // Set createdBy if provided in header
+        if (userId != null && !userId.trim().isEmpty()) {
+            try {
+                task.setCreatedBy(UUID.fromString(userId));
+            } catch (IllegalArgumentException e) {
+                // If invalid UUID, log warning but continue
+                System.err.println("Invalid user ID in header: " + userId);
+            }
+        }
+        
         taskService.addTask(task);
         return ResponseEntity.ok(ResponseDataAPI.successWithoutMetaAndData());
     }
 
     // Update task
     @PutMapping("/{id}")
-    public ResponseEntity<ResponseDataAPI> updateTask(@PathVariable UUID id, @RequestBody Tasks task) {
+    public ResponseEntity<ResponseDataAPI> updateTask(@PathVariable UUID id, @RequestBody Tasks task, @RequestHeader(value = "X-User-Id", required = false) String userId) {
         TaskValidator.validateTaskId(id);
         TaskValidator.validateTask(task);
-        taskService.updateTask(id, task);
+        
+        // Pass the userId to service layer for notification
+        taskService.updateTask(id, task, userId);
         return ResponseEntity.ok(ResponseDataAPI.successWithoutMetaAndData());
     }
 
@@ -84,12 +97,12 @@ public class TasksController {
 
     // Change task status
     @PatchMapping("/{taskId}/status")
-    public ResponseEntity<ResponseDataAPI> changeTaskStatus(@PathVariable UUID taskId, @RequestParam String status) {
+    public ResponseEntity<ResponseDataAPI> changeTaskStatus(@PathVariable UUID taskId, @RequestParam String status, @RequestHeader(value = "X-User-Id", required = false) String userId) {
         TaskValidator.validateTaskId(taskId);
         if (status == null || status.isBlank()) {
             throw new BadRequestException("Status cannot be empty");
         }
-        taskService.changeTaskStatus(taskId, status);
+        taskService.changeTaskStatus(taskId, status, userId);
         return ResponseEntity.ok(ResponseDataAPI.successWithoutMetaAndData());
     }
 

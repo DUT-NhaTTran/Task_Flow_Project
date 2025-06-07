@@ -50,4 +50,6 @@ public interface ProjectService {
     
     String getRoleInProject(UUID projectId, UUID userId);
 
+    UUID getScrumMasterId(UUID projectId);
+
 }

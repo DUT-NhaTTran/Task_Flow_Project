@@ -4,6 +4,7 @@ import com.tmnhat.common.client.NotificationClient;
 import com.tmnhat.common.exception.DatabaseException;
 import com.tmnhat.common.exception.ResourceNotFoundException;
 import com.tmnhat.tasksservice.model.Tasks;
+import com.tmnhat.tasksservice.payload.enums.TaskStatus;
 import com.tmnhat.tasksservice.repository.TasksDAO;
 import com.tmnhat.tasksservice.service.TaskService;
 import com.tmnhat.tasksservice.validation.TaskValidator;
@@ -73,6 +74,11 @@ public class TaskServiceImpl implements TaskService {
 
     @Override
     public void updateTask(UUID id, Tasks task) {
+        updateTask(id, task, null); // Delegate to overloaded method
+    }
+
+    @Override
+    public void updateTask(UUID id, Tasks task, String actorUserId) {
         try {
             TaskValidator.validateTaskId(id);
             TaskValidator.validateTask(task);
@@ -80,6 +86,11 @@ public class TaskServiceImpl implements TaskService {
             if (existingTask == null) {
                 throw new ResourceNotFoundException("Task not found with ID " + id);
             }
+            
+            // Check if status changed for notification (but don't send here - let frontend handle it)
+            boolean statusChanged = existingTask.getStatus() != task.getStatus();
+            TaskStatus oldStatus = existingTask.getStatus();
+            TaskStatus newStatus = task.getStatus();
             
             // Set the ID on the task object to ensure it's not null
             task.setId(id);
@@ -94,53 +105,20 @@ public class TaskServiceImpl implements TaskService {
             if (task.getCreatedAt() == null) {
                 task.setCreatedAt(existingTask.getCreatedAt());
             }
+            // Preserve createdBy if not provided
+            if (task.getCreatedBy() == null) {
+                task.setCreatedBy(existingTask.getCreatedBy());
+            }
             
+            // Update the task
             tasksDAO.updateTask(id, task);
             
-            // ⚠️ NOTIFICATION LOGIC DISABLED TO PREVENT DUPLICATES:
-            // Frontend will handle notifications manually when needed.
-            // This prevents duplicate notifications when updating tasks from different UI components.
-            
-            /* 
-            // ORIGINAL NOTIFICATION LOGIC (COMMENTED OUT):
-            // 1. If task assignee changed, notify the NEW assignee (not the one who made the change)
-            if (task.getAssigneeId() != null && 
-                (existingTask.getAssigneeId() == null || !task.getAssigneeId().equals(existingTask.getAssigneeId()))) {
-                
-                String projectName = getProjectName(task.getProjectId());
-                
-                // Notify the NEW assignee about being assigned
-                safeNotify(() -> notificationClient.sendTaskAssignedNotification(
-                    task.getAssigneeId().toString(), // Send to NEW assignee
-                    "SYSTEM", // Actor - could be improved to get actual user
-                    "System",
-                    id.toString(),
-                    task.getTitle(),
-                    task.getProjectId().toString(),
-                    projectName
-                ));
-                
-                // TODO: Also notify all other project members about the assignment change
-                // notifyProjectMembers(task.getProjectId(), task.getAssigneeId(), "task_assigned", task);
+            // NOTE: Removed automatic notification sending - frontend will handle this
+            // Frontend will call notification API directly when needed
+            if (statusChanged) {
+                System.out.println("🔄 Task status changed from " + oldStatus + " to " + newStatus + 
+                                 " - Frontend should handle notification");
             }
-            
-            // 2. If other fields changed, notify assignee (if exists) about general update
-            else if (task.getAssigneeId() != null) {
-                String projectName = getProjectName(task.getProjectId());
-                
-                safeNotify(() -> notificationClient.sendTaskUpdatedNotification(
-                    task.getAssigneeId().toString(), // Send to assignee
-                    "SYSTEM", 
-                    "System",
-                    id.toString(),
-                    task.getTitle(),
-                    task.getProjectId().toString(),
-                    projectName,
-                    "task",
-                    "updated"
-                ));
-            }
-            */
             
         } catch (Exception e) {
             throw new DatabaseException("Error updating task: " + e.getMessage());
@@ -239,29 +217,28 @@ public class TaskServiceImpl implements TaskService {
 
     @Override
     public void changeTaskStatus(UUID taskId, String status) {
+        changeTaskStatus(taskId, status, null); // Delegate to overloaded method
+    }
+
+    @Override
+    public void changeTaskStatus(UUID taskId, String status, String actorUserId) {
         try {
             Tasks task = tasksDAO.getTaskById(taskId);
             if (task == null) {
                 throw new ResourceNotFoundException("Task not found with ID " + taskId);
             }
             
+            // Store old status for logging
+            TaskStatus oldStatus = task.getStatus();
+            TaskStatus newStatus = TaskStatus.valueOf(status);
+            
+            // Update status in database
             tasksDAO.changeTaskStatus(taskId, status);
             
-            // Send notification if task is assigned
-            if (task.getAssigneeId() != null) {
-                String projectName = getProjectName(task.getProjectId());
-                
-                safeNotify(() -> notificationClient.sendTaskStatusChangedNotification(
-                    task.getAssigneeId().toString(),
-                    "SYSTEM", // Or get from context
-                    "System",
-                    taskId.toString(),
-                    task.getTitle(),
-                    task.getProjectId().toString(),
-                    projectName,
-                    status
-                ));
-            }
+            // NOTE: Removed automatic notification sending - frontend will handle this
+            System.out.println("🔄 Task status changed from " + oldStatus + " to " + newStatus + 
+                             " - Frontend should handle notification");
+            
         } catch (Exception e) {
             throw new DatabaseException("Error changing task status: " + e.getMessage());
         }

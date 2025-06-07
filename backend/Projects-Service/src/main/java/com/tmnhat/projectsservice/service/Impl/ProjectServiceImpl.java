@@ -346,18 +346,19 @@ public class ProjectServiceImpl implements ProjectService {
     @Override
     public String getRoleInProject(UUID projectId, UUID userId) {
         try {
-            if (projectId == null || userId == null) {
-                throw new IllegalArgumentException("Project ID and User ID must not be null");
-            }
-            
-            Projects project = projectDAO.getProjectById(projectId);
-            if (project == null) {
-                throw new ResourceNotFoundException("Project not found with ID " + projectId);
-            }
-            
             return projectMemberDAO.getRoleInProject(projectId, userId);
         } catch (Exception e) {
-            throw new DatabaseException("Error retrieving role in project: " + e.getMessage());
+            throw new DatabaseException("Error getting role in project: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public UUID getScrumMasterId(UUID projectId) {
+        try {
+            ProjectValidator.validateProjectId(projectId);
+            return projectMemberDAO.getScrumMasterId(projectId);
+        } catch (Exception e) {
+            throw new DatabaseException("Error getting scrum master ID: " + e.getMessage());
         }
     }
 

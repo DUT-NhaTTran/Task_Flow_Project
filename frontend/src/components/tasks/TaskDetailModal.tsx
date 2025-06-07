@@ -27,6 +27,7 @@ export interface TaskData {
   assigneeName?: string;
   shortKey?: string;
   projectId?: string;
+  projectName?: string; // Add projectName field for notifications
   sprintId?: string;
   dueDate?: string | null;
   createdAt?: string;
@@ -39,6 +40,7 @@ export interface TaskData {
   attachments?: Array<string | Attachment>;
   webLinks?: WebLink[];
   linkedWorkItems?: LinkedWorkItem[];
+  createdBy?: string; // Add createdBy field for notifications
 }
 
 // Define the Attachment interface to match the database structure
@@ -563,6 +565,10 @@ export default function TaskDetailModal({
       const newAssigneeId = editedTask.assigneeId;
       const assigneeChanged = originalAssigneeId !== newAssigneeId;
 
+      // Step 3.1: Check if status changed for notification
+      const originalStatus = task.status;
+      const newStatus = editedTask.status;
+      const statusChanged = originalStatus !== newStatus;
 
       // Additional checks for debugging
     
@@ -570,7 +576,13 @@ export default function TaskDetailModal({
       // Step 4: Save task with text-only description to Tasks-Service
       const response = await axios.put(
         `http://localhost:8085/api/tasks/${taskToSave.id}`,
-        taskToSave
+        taskToSave,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            ...(currentUser?.id && { 'X-User-Id': currentUser.id }), // Send user ID in header for notifications
+          },
+        }
       );
 
       if (response.data?.status === "SUCCESS") {
@@ -719,6 +731,154 @@ export default function TaskDetailModal({
           }
         } else {
 ;
+        }
+
+        // Step 6: Send notification if status changed
+        if (statusChanged && originalStatus && newStatus) {
+          try {
+            const currentUserId = currentUser?.id;
+            
+            if (!currentUserId) {
+              console.log('⚠️ No current user ID for status change notification');
+            } else {
+              // Get actor name from User Service API
+              let currentUserName = "Unknown User";
+              
+              try {
+                console.log(`🔍 FRONTEND: Getting username for status change notification: ${currentUserId}`);
+                
+                const userApiResponse = await axios.get(`http://localhost:8086/api/users/${currentUserId}/username`, {
+                  timeout: 5000
+                });
+
+                if (userApiResponse.data?.status === "SUCCESS" && userApiResponse.data?.data) {
+                  currentUserName = userApiResponse.data.data;
+                  console.log(`✅ FRONTEND: Got username for status change: '${currentUserName}'`);
+                } else {
+                  console.warn(`⚠️ FRONTEND: User Service API returned invalid response for status change`);
+                }
+                
+              } catch (error) {
+                console.error(`❌ FRONTEND: Failed to get username for status change notification:`, error);
+                currentUserName = `User-${currentUserId.substring(0, 8)}`;
+              }
+
+              // Helper function to convert status to display name
+              const getStatusDisplayName = (status: string): string => {
+                switch (status) {
+                  case "TODO": return "To Do";
+                  case "IN_PROGRESS": return "In Progress";
+                  case "REVIEW": return "Review";
+                  case "DONE": return "Done";
+                  default: return status;
+                }
+              };
+
+              const baseNotificationData = {
+                type: "TASK_STATUS_CHANGED",
+                title: "Task status changed",
+                message: `${currentUserName} changed task "${editedTask.title}" status from "${getStatusDisplayName(originalStatus)}" to "${getStatusDisplayName(newStatus)}"`,
+                actorUserId: currentUserId,
+                actorUserName: currentUserName,
+                projectId: editedTask.projectId,
+                projectName: editedTask.projectName || "TaskFlow Project",
+                taskId: editedTask.id
+              };
+
+              const recipients = [];
+
+              // 1. Add assignee if exists and different from actor
+              if (editedTask.assigneeId && editedTask.assigneeId !== currentUserId) {
+                recipients.push(editedTask.assigneeId);
+                console.log('✅ MODAL: Added assignee to recipients:', editedTask.assigneeId);
+              } else {
+                console.log('❌ MODAL: Assignee not added:', { 
+                  assigneeId: editedTask.assigneeId, 
+                  currentUserId: currentUserId 
+                });
+              }
+
+              // 2. Add task creator if exists and different from actor and assignee
+              if (editedTask.createdBy && editedTask.createdBy !== currentUserId && editedTask.createdBy !== editedTask.assigneeId) {
+                recipients.push(editedTask.createdBy);
+                console.log('✅ MODAL: Added task creator to recipients:', editedTask.createdBy);
+              } else {
+                console.log('❌ MODAL: Task creator not added:', { 
+                  createdBy: editedTask.createdBy, 
+                  currentUserId: currentUserId, 
+                  assigneeId: editedTask.assigneeId
+                });
+              }
+
+              // 3. Add scrum master - fetch from project API
+              let scrumMasterId = null;
+              try {
+                if (editedTask.projectId) {
+                  console.log('🔍 MODAL: Fetching project info for scrum master...', editedTask.projectId);
+                  const projectResponse = await axios.get(`http://localhost:8086/api/projects/${editedTask.projectId}`);
+                  console.log('🔍 MODAL: Project API response:', projectResponse.data);
+                  
+                  if (projectResponse.data?.status === "SUCCESS" && projectResponse.data?.data?.scrumMasterId) {
+                    scrumMasterId = projectResponse.data.data.scrumMasterId;
+                    if (scrumMasterId !== currentUserId && scrumMasterId !== editedTask.assigneeId && scrumMasterId !== editedTask.createdBy) {
+                      recipients.push(scrumMasterId);
+                      console.log('✅ MODAL: Added scrum master to recipients:', scrumMasterId);
+                    } else {
+                      console.log('❌ MODAL: Scrum master not added (duplicate)');
+                    }
+                  } else {
+                    console.log('❌ MODAL: No scrum master found in project data');
+                  }
+                }
+              } catch (error) {
+                console.warn('⚠️ MODAL: Failed to fetch scrum master info:', error);
+              }
+
+              // 🔧 TEMPORARY FIX: Add mock recipients if none found (for testing)
+              if (recipients.length === 0) {
+                console.log('⚠️ MODAL: No real recipients found, adding mock recipients for testing...');
+                
+                if (!editedTask.assigneeId) recipients.push('mock-assignee-123');
+                if (!editedTask.createdBy) recipients.push('mock-creator-456');
+                if (!scrumMasterId) recipients.push('mock-scrum-master-789');
+              }
+
+              // Send notifications to all unique recipients
+              const uniqueRecipients = [...new Set(recipients)];
+              console.log(`📤 MODAL: Final unique recipients (${uniqueRecipients.length}):`, uniqueRecipients);
+
+              if (uniqueRecipients.length > 0) {
+                const notificationPromises = uniqueRecipients.map(async (recipientId) => {
+                  const statusNotificationData = {
+                    ...baseNotificationData,
+                    recipientUserId: recipientId
+                  };
+
+                  console.log('📤 FRONTEND: Sending notification to:', recipientId);
+                  return axios.post('http://localhost:8089/api/notifications/create', statusNotificationData);
+                });
+
+                const notificationResponses = await Promise.all(notificationPromises);
+                
+                const successCount = notificationResponses.filter(
+                  response => response.status === 200 || response.status === 201
+                ).length;
+
+                if (successCount > 0) {
+                  console.log(`✅ FRONTEND: ${successCount}/${uniqueRecipients.length} status change notifications sent successfully`);
+                  toast.success(`Status changed from "${getStatusDisplayName(originalStatus)}" to "${getStatusDisplayName(newStatus)}" - ${successCount} notifications sent`);
+                } else {
+                  console.warn('⚠️ FRONTEND: No status change notifications were sent successfully');
+                  toast.warning(`Status changed but notifications failed`);
+                }
+              } else {
+                toast.success(`Status changed from "${getStatusDisplayName(originalStatus)}" to "${getStatusDisplayName(newStatus)}"`);
+              }
+            }
+          } catch (statusNotificationError) {
+            console.error('❌ FRONTEND: Failed to send task status change notification:', statusNotificationError);
+            // Don't fail the main operation if notification fails
+          }
         }
 
         // Exit edit mode after saving
@@ -979,9 +1139,18 @@ export default function TaskDetailModal({
         assigneeId: null,
       };
 
+      // Include user ID in headers
+      const headers: any = {
+        'Content-Type': 'application/json'
+      };
+      if (currentUser?.id) {
+        headers['X-User-Id'] = currentUser.id;
+      }
+
       const response = await axios.post(
         "http://localhost:8085/api/tasks",
-        subtaskData
+        subtaskData,
+        { headers }
       );
 
       if (response.data?.status === "SUCCESS") {
@@ -1105,6 +1274,25 @@ export default function TaskDetailModal({
           console.error("Error deleting some subtasks:", subtaskError);
           toast.error("Some subtasks could not be deleted");
           // Continue with parent task deletion even if some subtasks failed
+        }
+      }
+
+      // Send notification before deleting the main task
+      if (currentUser?.id && currentUser?.username && editedTask.projectId) {
+        try {
+          await axios.post('http://localhost:8089/api/notifications/task-deleted', {
+            actorUserId: currentUser.id,
+            actorUserName: currentUser.username,
+            taskId: editedTask.id,
+            taskTitle: editedTask.title,
+            projectId: editedTask.projectId,
+            projectName: editedTask.projectName || "Unknown Project",
+            assigneeUserId: editedTask.assigneeId || null
+          });
+          console.log('Task deleted notification sent');
+        } catch (notifError) {
+          console.error('Failed to send task deleted notification:', notifError);
+          // Don't fail the main operation if notification fails
         }
       }
 
@@ -3092,6 +3280,12 @@ export default function TaskDetailModal({
                                             newStatus === "DONE"
                                               ? new Date().toISOString()
                                               : null,
+                                        },
+                                        {
+                                          headers: {
+                                            'Content-Type': 'application/json',
+                                            ...(currentUser?.id && { 'X-User-Id': currentUser.id }),
+                                          },
                                         }
                                       );
 

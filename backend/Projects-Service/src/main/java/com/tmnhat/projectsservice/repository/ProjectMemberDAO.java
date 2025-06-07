@@ -113,4 +113,16 @@ public class ProjectMemberDAO extends BaseDAO {
             return null;
         });
     }
+
+    public UUID getScrumMasterId(UUID projectId) throws SQLException {
+        String sql = "SELECT user_id FROM project_members WHERE project_id = ? AND role_in_project = 'SCRUM_MASTER' LIMIT 1";
+        return executeQuery(sql, stmt -> {
+            stmt.setObject(1, projectId);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                return UUID.fromString(rs.getString("user_id"));
+            }
+            return null;
+        });
+    }
 }

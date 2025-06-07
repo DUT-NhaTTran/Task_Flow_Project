@@ -247,11 +247,17 @@ public class NotificationController {
             }
             
             Notification notification = notificationService.createTaskUpdatedNotification(
-                recipientUserId, actorUserId, actorUserName, taskId, taskTitle, 
-                projectId, projectName, updateType, newValue
+                recipientUserId,
+                actorUserId,
+                actorUserName,
+                taskId,
+                taskTitle,
+                projectId,
+                projectName,
+                updateType,
+                newValue
             );
             
-            System.out.println("CONTROLLER: Task updated notification created for user " + recipientUserId);
             return ResponseEntity.ok(ApiResponse.success(notification, "Task updated notification created successfully"));
             
         } catch (Exception e) {
@@ -259,6 +265,120 @@ public class NotificationController {
             e.printStackTrace();
             return ResponseEntity.badRequest()
                 .body(ApiResponse.error("Failed to create task updated notification: " + e.getMessage()));
+        }
+    }
+    
+    // Task status changed notification endpoint
+    @PostMapping("/task-status-changed")
+    public ResponseEntity<ApiResponse<String>> createTaskStatusChangedNotifications(@RequestBody Map<String, Object> request) {
+        try {
+            String actorUserId = (String) request.get("actorUserId");
+            String actorUserName = (String) request.get("actorUserName");
+            String taskId = (String) request.get("taskId");
+            String taskTitle = (String) request.get("taskTitle");
+            String projectId = (String) request.get("projectId");
+            String projectName = (String) request.get("projectName");
+            String assigneeUserId = (String) request.get("assigneeUserId");
+            String oldStatus = (String) request.get("oldStatus");
+            String newStatus = (String) request.get("newStatus");
+            
+            // Validate required fields
+            if (actorUserId == null || taskId == null || projectId == null) {
+                return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Missing required fields: actorUserId, taskId, or projectId"));
+            }
+            
+            notificationService.createTaskStatusChangedNotifications(
+                actorUserId,
+                actorUserName,
+                taskId,
+                taskTitle,
+                projectId,
+                projectName,
+                assigneeUserId,
+                oldStatus,
+                newStatus
+            );
+            
+            return ResponseEntity.ok(ApiResponse.success("success", "Task status changed notifications created successfully"));
+            
+        } catch (Exception e) {
+            System.err.println("Error creating task status changed notifications: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.error("Failed to create task status changed notifications: " + e.getMessage()));
+        }
+    }
+    
+    // Task deleted notification endpoint
+    @PostMapping("/task-deleted")
+    public ResponseEntity<ApiResponse<String>> createTaskDeletedNotifications(@RequestBody Map<String, Object> request) {
+        try {
+            String actorUserId = (String) request.get("actorUserId");
+            String actorUserName = (String) request.get("actorUserName");
+            String taskId = (String) request.get("taskId");
+            String taskTitle = (String) request.get("taskTitle");
+            String projectId = (String) request.get("projectId");
+            String projectName = (String) request.get("projectName");
+            String assigneeUserId = (String) request.get("assigneeUserId");
+            
+            // Validate required fields
+            if (actorUserId == null || taskId == null || projectId == null) {
+                return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Missing required fields: actorUserId, taskId, or projectId"));
+            }
+            
+            notificationService.createTaskDeletedNotifications(
+                actorUserId,
+                actorUserName,
+                taskId,
+                taskTitle,
+                projectId,
+                projectName,
+                assigneeUserId
+            );
+            
+            return ResponseEntity.ok(ApiResponse.success("success", "Task deleted notifications created successfully"));
+            
+        } catch (Exception e) {
+            System.err.println("Error creating task deleted notifications: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.error("Failed to create task deleted notifications: " + e.getMessage()));
+        }
+    }
+    
+    // Task overdue notification endpoint
+    @PostMapping("/task-overdue")
+    public ResponseEntity<ApiResponse<String>> createTaskOverdueNotifications(@RequestBody Map<String, Object> request) {
+        try {
+            String taskId = (String) request.get("taskId");
+            String taskTitle = (String) request.get("taskTitle");
+            String projectId = (String) request.get("projectId");
+            String projectName = (String) request.get("projectName");
+            String assigneeUserId = (String) request.get("assigneeUserId");
+            
+            // Validate required fields
+            if (taskId == null || projectId == null) {
+                return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Missing required fields: taskId or projectId"));
+            }
+            
+            notificationService.createTaskOverdueNotifications(
+                taskId,
+                taskTitle,
+                projectId,
+                projectName,
+                assigneeUserId
+            );
+            
+            return ResponseEntity.ok(ApiResponse.success("success", "Task overdue notifications created successfully"));
+            
+        } catch (Exception e) {
+            System.err.println("Error creating task overdue notifications: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.error("Failed to create task overdue notifications: " + e.getMessage()));
         }
     }
     

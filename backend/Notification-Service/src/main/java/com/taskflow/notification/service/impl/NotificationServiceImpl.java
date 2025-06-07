@@ -10,6 +10,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.HashSet;
 
 @Service
 public class NotificationServiceImpl implements NotificationService {
@@ -169,5 +171,245 @@ public class NotificationServiceImpl implements NotificationService {
             null, // commentId
             String.format("/project/project_homescreen?projectId=%s&taskId=%s&from=notification", projectId, taskId)
         );
+    }
+    
+    @Override
+    public Notification createTaskStatusChangedNotification(String recipientUserId, String actorUserId,
+                                                          String actorUserName, String taskId,
+                                                          String taskTitle, String projectId, String projectName,
+                                                          String oldStatus, String newStatus) {
+        return createNotification(
+            NotificationType.TASK_STATUS_CHANGED,
+            "Task status changed",
+            String.format("%s moved \"%s\" from %s to %s", actorUserName, taskTitle, oldStatus, newStatus),
+            recipientUserId,
+            actorUserId,
+            actorUserName,
+            null, // actorUserAvatar
+            projectId,
+            projectName,
+            taskId,
+            null, // sprintId
+            null, // commentId
+            String.format("/project/project_homescreen?projectId=%s&taskId=%s&from=notification", projectId, taskId)
+        );
+    }
+    
+    @Override
+    public void createTaskDeletedNotifications(String actorUserId, String actorUserName,
+                                             String taskId, String taskTitle, 
+                                             String projectId, String projectName,
+                                             String assigneeUserId) {
+        // Get task creator
+        String taskCreatorId = getTaskCreator(taskId);
+        
+        // Get project scrum masters
+        List<String> scrumMasters = getProjectScrumMasters(projectId);
+        
+        // Create set of users to notify (avoid duplicates)
+        Set<String> usersToNotify = new HashSet<>();
+        
+        // Add assignee if exists and different from actor
+        if (assigneeUserId != null && !assigneeUserId.trim().isEmpty() && !assigneeUserId.equals(actorUserId)) {
+            usersToNotify.add(assigneeUserId);
+        }
+        
+        // Add task creator if exists and different from actor
+        if (taskCreatorId != null && !taskCreatorId.equals(actorUserId)) {
+            usersToNotify.add(taskCreatorId);
+        }
+        
+        // Add scrum masters (excluding actor)
+        scrumMasters.stream()
+            .filter(id -> !id.equals(actorUserId))
+            .forEach(usersToNotify::add);
+        
+        // Send notifications to all relevant users
+        for (String userId : usersToNotify) {
+            String message;
+            if (userId.equals(assigneeUserId)) {
+                message = String.format("%s deleted task \"%s\" that was assigned to you", actorUserName, taskTitle);
+            } else if (userId.equals(taskCreatorId)) {
+                message = String.format("%s deleted your task \"%s\"", actorUserName, taskTitle);
+            } else {
+                message = String.format("%s deleted task \"%s\" in project \"%s\"", actorUserName, taskTitle, projectName);
+            }
+            
+            createNotification(
+                NotificationType.TASK_DELETED,
+                "Task deleted",
+                message,
+                userId,
+                actorUserId,
+                actorUserName,
+                null, // actorUserAvatar
+                projectId,
+                projectName,
+                taskId,
+                null, // sprintId
+                null, // commentId
+                String.format("/project/project_homescreen?projectId=%s&from=notification", projectId)
+            );
+        }
+    }
+    
+    @Override
+    public void createTaskOverdueNotifications(String taskId, String taskTitle,
+                                             String projectId, String projectName,
+                                             String assigneeUserId) {
+        // Get task creator
+        String taskCreatorId = getTaskCreator(taskId);
+        
+        // Get project scrum masters
+        List<String> scrumMasters = getProjectScrumMasters(projectId);
+        
+        // Create set of users to notify (avoid duplicates)
+        Set<String> usersToNotify = new HashSet<>();
+        
+        // Add assignee if exists
+        if (assigneeUserId != null && !assigneeUserId.trim().isEmpty()) {
+            usersToNotify.add(assigneeUserId);
+        }
+        
+        // Add task creator if exists
+        if (taskCreatorId != null) {
+            usersToNotify.add(taskCreatorId);
+        }
+        
+        // Add scrum masters
+        usersToNotify.addAll(scrumMasters);
+        
+        // Send notifications to all relevant users
+        for (String userId : usersToNotify) {
+            String message;
+            if (userId.equals(assigneeUserId)) {
+                message = String.format("Task \"%s\" assigned to you is overdue", taskTitle);
+            } else if (userId.equals(taskCreatorId)) {
+                message = String.format("Your task \"%s\" is overdue", taskTitle);
+            } else {
+                message = String.format("Task \"%s\" is overdue in project \"%s\"", taskTitle, projectName);
+            }
+            
+            createNotification(
+                NotificationType.TASK_OVERDUE,
+                "Task overdue",
+                message,
+                userId,
+                "SYSTEM", // System notification
+                "System",
+                null, // actorUserAvatar
+                projectId,
+                projectName,
+                taskId,
+                null, // sprintId
+                null, // commentId
+                String.format("/project/project_homescreen?projectId=%s&taskId=%s&from=notification", projectId, taskId)
+            );
+        }
+    }
+    
+    @Override
+    public void createTaskStatusChangedNotifications(String actorUserId, String actorUserName,
+                                                   String taskId, String taskTitle, 
+                                                   String projectId, String projectName,
+                                                   String assigneeUserId, String oldStatus, String newStatus) {
+        // Get task creator
+        String taskCreatorId = getTaskCreator(taskId);
+        
+        // Get project scrum masters
+        List<String> scrumMasters = getProjectScrumMasters(projectId);
+        
+        // Create set of users to notify (avoid duplicates)
+        Set<String> usersToNotify = new HashSet<>();
+        
+        // Add assignee if exists and different from actor
+        if (assigneeUserId != null && !assigneeUserId.trim().isEmpty() && !assigneeUserId.equals(actorUserId)) {
+            usersToNotify.add(assigneeUserId);
+        }
+        
+        // Add task creator if exists and different from actor
+        if (taskCreatorId != null && !taskCreatorId.equals(actorUserId)) {
+            usersToNotify.add(taskCreatorId);
+        }
+        
+        // Add scrum masters (excluding actor)
+        scrumMasters.stream()
+            .filter(id -> !id.equals(actorUserId))
+            .forEach(usersToNotify::add);
+        
+        // Send notifications to all relevant users
+        for (String userId : usersToNotify) {
+            String message;
+            if (userId.equals(assigneeUserId)) {
+                message = String.format("%s moved \"%s\" assigned to you from %s to %s", actorUserName, taskTitle, oldStatus, newStatus);
+            } else if (userId.equals(taskCreatorId)) {
+                message = String.format("%s moved your task \"%s\" from %s to %s", actorUserName, taskTitle, oldStatus, newStatus);
+            } else {
+                message = String.format("%s moved task \"%s\" from %s to %s in project \"%s\"", actorUserName, taskTitle, oldStatus, newStatus, projectName);
+            }
+            
+            createNotification(
+                NotificationType.TASK_STATUS_CHANGED,
+                "Task status changed",
+                message,
+                userId,
+                actorUserId,
+                actorUserName,
+                null, // actorUserAvatar
+                projectId,
+                projectName,
+                taskId,
+                null, // sprintId
+                null, // commentId
+                String.format("/project/project_homescreen?projectId=%s&taskId=%s&from=notification", projectId, taskId)
+            );
+        }
+    }
+    
+    // Helper method to get task creator
+    private String getTaskCreator(String taskId) {
+        try {
+            org.springframework.web.client.RestTemplate restTemplate = new org.springframework.web.client.RestTemplate();
+            String url = "http://localhost:8085/api/tasks/" + taskId;
+            org.springframework.http.ResponseEntity<java.util.Map> response = restTemplate.getForEntity(url, java.util.Map.class);
+            
+            if (response.getBody() != null && response.getBody().get("data") != null) {
+                java.util.Map<String, Object> taskData = (java.util.Map<String, Object>) response.getBody().get("data");
+                return (String) taskData.get("createdBy"); // Use createdBy field
+            }
+            return null;
+        } catch (Exception e) {
+            System.err.println("Error getting task creator: " + e.getMessage());
+            return null;
+        }
+    }
+    
+    // Helper method to get project scrum masters only
+    private List<String> getProjectScrumMasters(String projectId) {
+        try {
+            org.springframework.web.client.RestTemplate restTemplate = new org.springframework.web.client.RestTemplate();
+            String url = "http://localhost:8083/api/projects/" + projectId + "/users";
+            org.springframework.http.ResponseEntity<java.util.Map> response = restTemplate.getForEntity(url, java.util.Map.class);
+            
+            java.util.List<String> scrumMasterIds = new java.util.ArrayList<>();
+            if (response.getBody() != null && response.getBody().get("data") != null) {
+                java.util.List<java.util.Map<String, Object>> members = (java.util.List<java.util.Map<String, Object>>) response.getBody().get("data");
+                for (java.util.Map<String, Object> member : members) {
+                    String role = (String) member.get("roleInProject");
+                    if ("scrum_master".equalsIgnoreCase(role)) {
+                        scrumMasterIds.add(member.get("id").toString());
+                    }
+                }
+            }
+            return scrumMasterIds;
+        } catch (Exception e) {
+            System.err.println("Error getting project scrum masters: " + e.getMessage());
+            return new java.util.ArrayList<>();
+        }
+    }
+    
+    // Update the old helper method to only get scrum masters
+    private List<String> getProjectLeaders(String projectId) {
+        return getProjectScrumMasters(projectId);
     }
 } 

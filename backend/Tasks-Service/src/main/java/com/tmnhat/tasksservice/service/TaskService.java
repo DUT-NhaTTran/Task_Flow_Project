@@ -11,11 +11,13 @@ import java.util.UUID;
 public interface TaskService {
     void addTask(Tasks task);
     void updateTask(UUID id, Tasks task);
+    void updateTask(UUID id, Tasks task, String actorUserId);
     void deleteTask(UUID id);
     Tasks getTaskById(UUID id);
     List<Tasks> getAllTasks();
     void assignTask(UUID taskId, UUID userId);
     void changeTaskStatus(UUID taskId, String status);
+    void changeTaskStatus(UUID taskId, String status, String actorUserId);
     void updateStoryPoint(UUID taskId, int storyPoint);
     void addSubtask(UUID parentTaskId, Tasks subtask);
     void linkTasks(UUID taskId, UUID relatedTaskId);

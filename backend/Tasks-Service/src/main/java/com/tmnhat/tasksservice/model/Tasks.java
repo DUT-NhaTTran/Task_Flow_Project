@@ -19,6 +19,7 @@ public class Tasks {
     private TaskStatus status;      // ✅ Enum
     private int storyPoint;
     private UUID assigneeId;
+    private UUID createdBy;         // ✅ New field for task creator
     private LocalDate dueDate;
     private LocalDateTime createdAt;
     private LocalDateTime completedAt;
@@ -39,6 +40,7 @@ public class Tasks {
         this.status = builder.status;
         this.storyPoint = builder.storyPoint;
         this.assigneeId = builder.assigneeId;
+        this.createdBy = builder.createdBy;
         this.dueDate = builder.dueDate;
         this.createdAt = builder.createdAt;
         this.completedAt = builder.completedAt;
@@ -114,6 +116,14 @@ public class Tasks {
         this.assigneeId = assigneeId;
     }
 
+    public UUID getCreatedBy() {
+        return createdBy;
+    }
+
+    public void setCreatedBy(UUID createdBy) {
+        this.createdBy = createdBy;
+    }
+
     public LocalDate getDueDate() {
         return dueDate;
     }
@@ -181,6 +191,7 @@ public class Tasks {
         private TaskStatus status;
         private int storyPoint;
         private UUID assigneeId;
+        private UUID createdBy;
         private LocalDate dueDate;
         private LocalDateTime createdAt;
         private LocalDateTime completedAt;
@@ -228,6 +239,11 @@ public class Tasks {
 
         public Builder assigneeId(UUID assigneeId) {
             this.assigneeId = assigneeId;
+            return this;
+        }
+
+        public Builder createdBy(UUID createdBy) {
+            this.createdBy = createdBy;
             return this;
         }
 

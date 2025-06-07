@@ -41,12 +41,22 @@ export interface LoggedInUserData {
 const USER_STORAGE_KEY = 'taskflow_logged_user';
 const USER_SESSION_KEY = 'taskflow_user_session';
 
+// Helper function to check if we're in browser environment
+const isBrowser = (): boolean => {
+  return typeof window !== 'undefined' && typeof window.sessionStorage !== 'undefined';
+};
+
 export class UserStorageService {
   
   /**
    * Lưu thông tin user vào sessionStorage khi login thành công
    */
   static saveLoggedInUser(accountData: AccountInfo, userProfile: UserProfile, sessionToken?: string): void {
+    if (!isBrowser()) {
+      console.warn('⚠️ sessionStorage not available (SSR environment)');
+      return;
+    }
+
     try {
       const loggedInData: LoggedInUserData = {
         account: {
@@ -83,6 +93,10 @@ export class UserStorageService {
    * Lấy thông tin user đã login từ sessionStorage
    */
   static getLoggedInUser(): LoggedInUserData | null {
+    if (!isBrowser()) {
+      return null;
+    }
+
     try {
       const userData = sessionStorage.getItem(USER_STORAGE_KEY);
       if (!userData) {
@@ -126,6 +140,9 @@ export class UserStorageService {
    * Lấy session token
    */
   static getSessionToken(): string | null {
+    if (!isBrowser()) {
+      return null;
+    }
     return sessionStorage.getItem(USER_SESSION_KEY);
   }
 
@@ -133,6 +150,11 @@ export class UserStorageService {
    * Update thông tin profile user
    */
   static updateUserProfile(updatedProfile: Partial<UserProfile>): void {
+    if (!isBrowser()) {
+      console.warn('⚠️ sessionStorage not available (SSR environment)');
+      return;
+    }
+
     try {
       const currentData = this.getLoggedInUser();
       if (!currentData) {
@@ -159,6 +181,11 @@ export class UserStorageService {
    * Xóa thông tin user khi logout
    */
   static clearLoggedInUser(): void {
+    if (!isBrowser()) {
+      console.warn('⚠️ sessionStorage not available (SSR environment)');
+      return;
+    }
+
     try {
       console.log("🧹 UserStorageService: Starting complete data cleanup...");
       
@@ -180,21 +207,23 @@ export class UserStorageService {
       });
       
       // Clear main user data from localStorage for migration/cleanup
-      localStorage.removeItem(USER_STORAGE_KEY);
-      localStorage.removeItem(USER_SESSION_KEY);
-      
-      // Clear all possible user-related keys from localStorage
-      const localKeysToRemove = [
-        'username', 'userId', 'userEmail', 'user_name', 'userName',
-        'ownerId', 'currentUserId', 'user_id', 'currentProjectId',
-        'token', 'authToken', 'sessionToken', 'accessToken',
-        'currentProjectName', 'currentProjectKey', 'projectId',
-        'taskflow_logged_user', 'taskflow_user_session'
-      ];
-      
-      localKeysToRemove.forEach(key => {
-        localStorage.removeItem(key);
-      });
+      if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
+        localStorage.removeItem(USER_STORAGE_KEY);
+        localStorage.removeItem(USER_SESSION_KEY);
+        
+        // Clear all possible user-related keys from localStorage
+        const localKeysToRemove = [
+          'username', 'userId', 'userEmail', 'user_name', 'userName',
+          'ownerId', 'currentUserId', 'user_id', 'currentProjectId',
+          'token', 'authToken', 'sessionToken', 'accessToken',
+          'currentProjectName', 'currentProjectKey', 'projectId',
+          'taskflow_logged_user', 'taskflow_user_session'
+        ];
+        
+        localKeysToRemove.forEach(key => {
+          localStorage.removeItem(key);
+        });
+      }
       
       console.log("✅ UserStorageService: All user data cleared from both sessionStorage and localStorage");
     } catch (error) {
@@ -246,6 +275,10 @@ export class UserStorageService {
    * Migration từ localStorage sang sessionStorage (một lần)
    */
   static migrateOldUserData(): void {
+    if (!isBrowser()) {
+      return; // No migration needed in SSR environment
+    }
+
     try {
       // Kiểm tra xem có data cũ trong localStorage không
       const oldUserData = localStorage.getItem(USER_STORAGE_KEY);
@@ -306,6 +339,39 @@ export class UserStorageService {
       .map(word => word.charAt(0).toUpperCase())
       .join('')
       .slice(0, 2);
+  }
+
+  /**
+   * Debug method to log current user data
+   */
+  static debugLogUserData(): void {
+    if (!isBrowser()) {
+      console.log('🔍 Debug: Running in SSR environment - no user data available');
+      return;
+    }
+
+    try {
+      const userData = this.getLoggedInUser();
+      const sessionToken = this.getSessionToken();
+      const isLoggedIn = this.isUserLoggedIn();
+      
+      console.log('🔍 UserStorageService Debug Info:');
+      console.log('- Is Logged In:', isLoggedIn);
+      console.log('- Session Token:', sessionToken ? '✅ Present' : '❌ Missing');
+      console.log('- User Data:', userData);
+      console.log('- Display Name:', this.getUserDisplayName());
+      console.log('- User Initials:', this.getUserInitials());
+      
+      if (userData) {
+        console.log('- Profile ID:', userData.profile.id);
+        console.log('- Username:', userData.profile.username);
+        console.log('- Email:', userData.account.email);
+        console.log('- Login Time:', userData.loginTime);
+        console.log('- Account Active:', userData.account.isActive);
+      }
+    } catch (error) {
+      console.error('❌ Error in debugLogUserData:', error);
+    }
   }
 
 }

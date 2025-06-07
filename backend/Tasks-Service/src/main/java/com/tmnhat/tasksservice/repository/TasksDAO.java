@@ -21,8 +21,8 @@ import java.util.HashMap;
 public class TasksDAO extends BaseDAO {
 
     public void addTask(Tasks task) throws SQLException {
-        String sql = "INSERT INTO tasks (sprint_id, project_id, title, description, status, story_point, assignee_id, due_date, created_at, completed_at, parent_task_id, label, priority, updated_at) " +
-                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, now(), ?, ?, ?, ?, now())";
+        String sql = "INSERT INTO tasks (sprint_id, project_id, title, description, status, story_point, assignee_id, created_by, due_date, created_at, completed_at, parent_task_id, label, priority, updated_at) " +
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, now(), ?, ?, ?, ?, now())";
 
         executeUpdate(sql, stmt -> {
             stmt.setObject(1, task.getSprintId());
@@ -32,16 +32,17 @@ public class TasksDAO extends BaseDAO {
             stmt.setString(5, task.getStatus().name());
             stmt.setObject(6, task.getStoryPoint());
             stmt.setObject(7, task.getAssigneeId());
-            stmt.setTimestamp(8, task.getDueDate() != null ? Timestamp.valueOf(task.getDueDate().atStartOfDay()) : null);
-            stmt.setTimestamp(9, task.getCompletedAt() != null ? Timestamp.valueOf(task.getCompletedAt()) : null);
-            stmt.setObject(10, task.getParentTaskId());
-            stmt.setString(11, task.getLabel());
-            stmt.setString(12, task.getPriority() != null ? task.getPriority().name() : TaskPriority.MEDIUM.name());
+            stmt.setObject(8, task.getCreatedBy());
+            stmt.setTimestamp(9, task.getDueDate() != null ? Timestamp.valueOf(task.getDueDate().atStartOfDay()) : null);
+            stmt.setTimestamp(10, task.getCompletedAt() != null ? Timestamp.valueOf(task.getCompletedAt()) : null);
+            stmt.setObject(11, task.getParentTaskId());
+            stmt.setString(12, task.getLabel());
+            stmt.setString(13, task.getPriority() != null ? task.getPriority().name() : TaskPriority.MEDIUM.name());
         });
     }
 
     public void updateTask(UUID id, Tasks task) throws SQLException {
-        String sql = "UPDATE tasks SET title = ?, description = ?, status = ?, story_point = ?, assignee_id = ?, due_date = ?, completed_at = ?, parent_task_id = ?, label = ?, priority = ?, updated_at = now() WHERE id = ?";
+        String sql = "UPDATE tasks SET title = ?, description = ?, status = ?, story_point = ?, assignee_id = ?, created_by = ?, due_date = ?, completed_at = ?, parent_task_id = ?, label = ?, priority = ?, updated_at = now() WHERE id = ?";
         
         executeUpdate(sql, stmt -> {
             stmt.setString(1, task.getTitle());
@@ -49,12 +50,13 @@ public class TasksDAO extends BaseDAO {
             stmt.setString(3, task.getStatus().name());
             stmt.setInt(4, task.getStoryPoint());
             stmt.setObject(5, task.getAssigneeId());
-            stmt.setTimestamp(6, task.getDueDate() != null ? Timestamp.valueOf(task.getDueDate().atStartOfDay()) : null);
-            stmt.setTimestamp(7, task.getCompletedAt() != null ? Timestamp.valueOf(task.getCompletedAt()) : null);
-            stmt.setObject(8, task.getParentTaskId());
-            stmt.setString(9, task.getLabel());
-            stmt.setString(10, task.getPriority() != null ? task.getPriority().name() : TaskPriority.MEDIUM.name());
-            stmt.setObject(11, id);
+            stmt.setObject(6, task.getCreatedBy());
+            stmt.setTimestamp(7, task.getDueDate() != null ? Timestamp.valueOf(task.getDueDate().atStartOfDay()) : null);
+            stmt.setTimestamp(8, task.getCompletedAt() != null ? Timestamp.valueOf(task.getCompletedAt()) : null);
+            stmt.setObject(9, task.getParentTaskId());
+            stmt.setString(10, task.getLabel());
+            stmt.setString(11, task.getPriority() != null ? task.getPriority().name() : TaskPriority.MEDIUM.name());
+            stmt.setObject(12, id);
         });
     }
 
@@ -496,6 +498,7 @@ public class TasksDAO extends BaseDAO {
                 .status(TaskStatus.valueOf(rs.getString("status")))
                 .storyPoint(rs.getInt("story_point"))
                 .assigneeId(rs.getObject("assignee_id", UUID.class))
+                .createdBy(rs.getObject("created_by", UUID.class))
                 .dueDate(rs.getTimestamp("due_date") != null ? rs.getTimestamp("due_date").toLocalDateTime().toLocalDate() : null)
                 .createdAt(rs.getTimestamp("created_at") != null ? rs.getTimestamp("created_at").toLocalDateTime() : null)
                 .completedAt(rs.getTimestamp("completed_at") != null ? rs.getTimestamp("completed_at").toLocalDateTime() : null)

@@ -6,11 +6,13 @@ import { Dropdown } from "@/components/ui/drop-down";
 import { Button } from "@/components/ui/button";
 import axios from "axios";
 import { toast } from "sonner";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { TopNavigation } from "@/components/ui/top-navigation";
 import { Sidebar } from "@/components/ui/sidebar";
 import { useNavigation } from "@/contexts/NavigationContext";
 import { Search, ChevronDown, MoreHorizontal, ChevronRight, Plus, Edit, Check, Calendar, ChevronUp, Trash2 } from "lucide-react";
+import { useUserStorage } from "@/hooks/useUserStorage";
+import TaskDetailModal, { TaskData, SprintOption } from "@/components/tasks/TaskDetailModal";
 
 // Define types for the task
 export interface TaskData {
@@ -61,7 +63,9 @@ type CheckboxNames = 'sprintHeader' | 'backlogHeader';
 
 export default function BacklogPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const { currentProjectId, setCurrentProjectId } = useNavigation();
+  const { userData } = useUserStorage();
   
   // Ưu tiên projectId từ context (từ board), sau đó mới lấy từ URL
   const urlProjectId = searchParams?.get("projectId");
@@ -209,7 +213,15 @@ export default function BacklogPage() {
         sprintId: expandedSprint !== 'backlog' && expandedSprint !== null ? expandedSprint : undefined
       };
       
-      const response = await axios.post("http://localhost:8085/api/tasks", newTask);
+      // Include user ID in headers
+      const headers: any = {
+        'Content-Type': 'application/json'
+      };
+      if (userData?.account?.id) {
+        headers['X-User-Id'] = userData.account.id;
+      }
+      
+      const response = await axios.post("http://localhost:8085/api/tasks", newTask, { headers });
       
       // Check if the response contains data (success)
       if (response.data) {
@@ -249,10 +261,20 @@ export default function BacklogPage() {
         return;
       }
       
+      const oldStatus = taskToUpdate.status;
+      
       // Update the task status
       const updatedTask = { ...taskToUpdate, status: newStatus };
       
-      const response = await axios.put(`http://localhost:8085/api/tasks/${taskId}`, updatedTask);
+      // Get user ID from userData
+      const userIdForHeader = userData?.profile?.id || userData?.account?.id || '';
+      
+      const response = await axios.put(`http://localhost:8085/api/tasks/${taskId}`, updatedTask, {
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-Id': userIdForHeader,
+        },
+      });
       
       // Check if the response contains data (success)
       if (response.data) {
@@ -268,6 +290,85 @@ export default function BacklogPage() {
             task.id === taskId ? { ...task, status: newStatus } : task
           );
           setBacklogTasks(updatedBacklogTasks);
+        }
+        
+        // Send status change notification if user data is available
+        if (userData && oldStatus !== newStatus) {
+          try {
+            const actorUserId = userData.profile?.id || userData.account?.id;
+            const actorUserName = userData.profile?.username || userData.profile?.firstName || 'User';
+            
+            // Helper function to convert status to display name
+            const getStatusDisplayName = (status: string): string => {
+              switch (status) {
+                case "TODO": return "To Do";
+                case "IN_PROGRESS": return "In Progress";
+                case "REVIEW": return "Review";
+                case "DONE": return "Done";
+                default: return status;
+              }
+            };
+
+            const baseNotificationData = {
+              type: "TASK_STATUS_CHANGED",
+              title: "Task status changed",
+              message: `${actorUserName} changed task "${taskToUpdate.title}" status from "${getStatusDisplayName(oldStatus)}" to "${getStatusDisplayName(newStatus)}"`,
+              actorUserId: actorUserId,
+              actorUserName: actorUserName,
+              projectId: taskToUpdate.projectId,
+              projectName: "TaskFlow Project", // You can enhance this to get actual project name
+              taskId: taskToUpdate.id
+            };
+
+            const recipients = [];
+
+            // 1. Add assignee if exists and different from actor
+            if (taskToUpdate.assigneeId && taskToUpdate.assigneeId !== actorUserId) {
+              recipients.push(taskToUpdate.assigneeId);
+            }
+
+            // 2. Add task creator if exists and different from actor and assignee
+            if (taskToUpdate.createdBy && taskToUpdate.createdBy !== actorUserId && taskToUpdate.createdBy !== taskToUpdate.assigneeId) {
+              recipients.push(taskToUpdate.createdBy);
+            }
+
+            // 3. Add scrum master - fetch from project API
+            try {
+              if (taskToUpdate.projectId) {
+                const projectResponse = await axios.get(`http://localhost:8086/api/projects/${taskToUpdate.projectId}`);
+                if (projectResponse.data?.status === "SUCCESS" && projectResponse.data?.data?.scrumMasterId) {
+                  const scrumMasterId = projectResponse.data.data.scrumMasterId;
+                  if (scrumMasterId !== actorUserId && scrumMasterId !== taskToUpdate.assigneeId && scrumMasterId !== taskToUpdate.createdBy) {
+                    recipients.push(scrumMasterId);
+                  }
+                }
+              }
+            } catch (error) {
+              console.warn('⚠️ Failed to fetch scrum master info:', error);
+            }
+
+            // Send notifications to all unique recipients
+            const uniqueRecipients = [...new Set(recipients)];
+            console.log(`📤 BACKLOG: Sending status change notifications to ${uniqueRecipients.length} recipients:`, uniqueRecipients);
+
+            if (uniqueRecipients.length > 0) {
+              const notificationPromises = uniqueRecipients.map(async (recipientId) => {
+                const statusNotificationData = {
+                  ...baseNotificationData,
+                  recipientUserId: recipientId
+                };
+
+                console.log('📤 BACKLOG: Sending notification to:', recipientId);
+                return axios.post('http://localhost:8089/api/notifications/create', statusNotificationData);
+              });
+
+              await Promise.all(notificationPromises);
+              console.log(`✅ BACKLOG: ${uniqueRecipients.length} status change notifications sent successfully`);
+            }
+          } catch (notificationError) {
+            console.error('❌ BACKLOG: Failed to send task status change notification:', notificationError);
+            // Don't fail the main operation if notification fails
+          }
         }
         
         toast.success("Task status updated");

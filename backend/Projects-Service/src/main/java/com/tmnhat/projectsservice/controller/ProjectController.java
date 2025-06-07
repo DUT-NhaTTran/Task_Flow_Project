@@ -164,4 +164,11 @@ public class ProjectController {
         return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(role));
     }
 
+    @GetMapping("/{projectId}/scrum_master_id")
+    public ResponseEntity<ResponseDataAPI> getScrumMasterId(@PathVariable UUID projectId) {
+        ProjectValidator.validateProjectId(projectId);
+        UUID scrumMasterId = projectService.getScrumMasterId(projectId);
+        return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(scrumMasterId));
+    }
+
 }

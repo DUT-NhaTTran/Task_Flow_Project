@@ -12,15 +12,17 @@ import { NavigationProgress } from "@/components/ui/LoadingScreen";
 import { useNavigation } from "@/contexts/NavigationContext";
 import TaskDetailModal, { TaskData, SprintOption } from "@/components/tasks/TaskDetailModal";
 import { FaSearch } from "react-icons/fa";
-import { 
-  DndContext, 
-  DragOverlay, 
+import {
+  DndContext,
+  DragOverlay,
   type DragStartEvent, 
   type DragEndEvent 
 } from '@dnd-kit/core';
 import { DraggableProjectTaskCard } from "@/components/ui/draggable-project-task-card";
 import { DroppableProjectColumn } from "@/components/ui/droppable-project-column";
 import { useProjectTasks } from "@/hooks/useProjectTasks";
+import { checkAndNotifyOverdueTasks } from "@/utils/taskNotifications";
+import { useUserStorage } from "@/hooks/useUserStorage"; // Add this import
 
 // Interface definitions
 interface Project {
@@ -52,6 +54,7 @@ interface Task {
   completedAt?: string | null;
   parentTaskId?: string | null;
   tags?: string[] | null;
+  createdBy?: string; // Add createdBy field for notifications
 }
 
 interface User {
@@ -84,6 +87,7 @@ export default function ProjectBoardPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { currentProjectId, setCurrentProjectId } = useNavigation();
+  const { userData } = useUserStorage(); // Add this line
   
   // Get projectId from URL or context
   const urlProjectId = searchParams?.get("projectId")
@@ -138,6 +142,7 @@ export default function ProjectBoardPage() {
 
     const task = active.data.current?.task as Task;
     const newStatus = over.id as Task["status"];
+    const oldStatus = task.status;
 
     // If dropping in same column and same position, do nothing
     if (task.status === newStatus && active.id === over.id) return;
@@ -169,17 +174,271 @@ export default function ProjectBoardPage() {
     // Optimistically update UI
     setTasks(updatedTasks);
 
-    // Update via API
-    const success = await updateTaskStatus(task, newStatus);
-    
-    if (success) {
-      toast.success(`Task moved to ${newStatus.replace('_', ' ')}`);
-    } else {
+    try {
+      // 1. Update task status in database first
+      console.log('🔄 DRAG&DROP: Updating task status in database...');
+      const response = await axios.put(`http://localhost:8085/api/tasks/${task.id}`, {
+        ...task,
+        status: newStatus,
+        completedAt: newStatus === "DONE" ? new Date().toISOString() : null
+      });
+
+      if (response.status === 200) {
+        console.log('✅ DRAG&DROP: Task status updated successfully');
+        
+        // 2. Now send 3 notifications - CRITICAL PART
+        await send3StatusChangeNotifications(task, oldStatus, newStatus);
+        
+        toast.success(`Task moved to ${newStatus.replace('_', ' ')}`);
+      } else {
+        throw new Error('Failed to update task status');
+      }
+    } catch (error) {
+      console.error('❌ DRAG&DROP: Failed to update task:', error);
+      
       // Revert optimistic update on failure
       setTasks(prev => prev.map(t => 
         t.id === task.id ? { ...t, status: task.status } : t
       ));
       toast.error('Failed to update task status');
+    }
+  };
+
+  // Helper function to send 3 notifications with different recipients
+  const send3StatusChangeNotifications = async (
+    task: Task, 
+    oldStatus: Task["status"], 
+    newStatus: Task["status"]
+  ) => {
+    console.log('🔔 DRAG&DROP: Starting to send notifications (with deduplication)...');
+    
+    try {
+      // Get current user info
+      const actorUserId = userData?.profile?.id || userData?.account?.id;
+      const actorUserName = userData?.profile?.username || userData?.profile?.firstName || 'User';
+
+      if (!actorUserId) {
+        console.warn('⚠️ DRAG&DROP: No current user ID found');
+        return;
+      }
+
+      console.log('🔍 DRAG&DROP: Current user:', { actorUserId, actorUserName });
+
+      // 1. FIRST: Fetch complete task details to get created_by
+      let taskWithCreatedBy = task;
+      try {
+        console.log('🔍 DRAG&DROP: Fetching complete task details for created_by...');
+        const taskDetailResponse = await axios.get(`http://localhost:8085/api/tasks/${task.id}`);
+        
+        if (taskDetailResponse.data?.status === "SUCCESS" && taskDetailResponse.data?.data) {
+          taskWithCreatedBy = {
+            ...task,
+            ...taskDetailResponse.data.data
+          };
+          console.log('✅ DRAG&DROP: Retrieved task with created_by:', {
+            taskId: taskWithCreatedBy.id,
+            createdBy: taskWithCreatedBy.createdBy,
+            assigneeId: taskWithCreatedBy.assigneeId
+          });
+        } else {
+          console.warn('⚠️ DRAG&DROP: Could not fetch task details, using original task data');
+        }
+      } catch (taskFetchError) {
+        console.warn('⚠️ DRAG&DROP: Failed to fetch task details:', taskFetchError);
+      }
+
+      console.log('🔍 DRAG&DROP: Final task info for notifications:', {
+        id: taskWithCreatedBy.id,
+        title: taskWithCreatedBy.title,
+        assigneeId: taskWithCreatedBy.assigneeId,
+        createdBy: taskWithCreatedBy.createdBy,
+        projectId: taskWithCreatedBy.projectId
+      });
+
+      // Helper function to get status display name
+      const getStatusDisplayName = (status: string): string => {
+        switch (status) {
+          case "TODO": return "To Do";
+          case "IN_PROGRESS": return "In Progress";
+          case "REVIEW": return "Review";
+          case "DONE": return "Done";
+          default: return status;
+        }
+      };
+
+      // 2. COLLECT USER ROLES - Map each user to their roles
+      const userRoles = new Map<string, string[]>();
+
+      // Add Assignee
+      let assigneeId = taskWithCreatedBy.assigneeId;
+      if (assigneeId && assigneeId.trim() !== '') {
+        if (!userRoles.has(assigneeId)) {
+          userRoles.set(assigneeId, []);
+        }
+        userRoles.get(assigneeId)!.push('Assignee');
+        console.log('✅ DRAG&DROP: Added assignee role for user:', assigneeId);
+      } else {
+        console.log('⚠️ DRAG&DROP: No assignee found');
+      }
+      
+      // Add Creator
+      let creatorId = taskWithCreatedBy.createdBy;
+      if (creatorId && creatorId.trim() !== '') {
+        if (!userRoles.has(creatorId)) {
+          userRoles.set(creatorId, []);
+        }
+        userRoles.get(creatorId)!.push('Creator');
+        console.log('✅ DRAG&DROP: Added creator role for user:', creatorId);
+      } else {
+        console.log('⚠️ DRAG&DROP: No creator found');
+      }
+
+      // Add Scrum Master
+      let scrumMasterId = null;
+      try {
+        const projectApiId = taskWithCreatedBy.projectId || projectId;
+        if (projectApiId) {
+          console.log('🔍 DRAG&DROP: Fetching scrum master for project:', projectApiId);
+          
+          const scrumMasterResponse = await axios.get(`http://localhost:8083/api/projects/${projectApiId}/scrum_master_id`);
+          console.log('🔍 DRAG&DROP: Scrum Master API response:', scrumMasterResponse.data);
+          
+          if (scrumMasterResponse.data?.status === "SUCCESS" && scrumMasterResponse.data?.data) {
+            scrumMasterId = scrumMasterResponse.data.data;
+            
+            if (!userRoles.has(scrumMasterId)) {
+              userRoles.set(scrumMasterId, []);
+            }
+            userRoles.get(scrumMasterId)!.push('Scrum Master');
+            console.log('✅ DRAG&DROP: Added scrum master role for user:', scrumMasterId);
+          } else {
+            console.log('❌ DRAG&DROP: No scrum master found in API response');
+          }
+        } else {
+          console.log('❌ DRAG&DROP: No project ID available for scrum master lookup');
+        }
+      } catch (projectError) {
+        console.warn('⚠️ DRAG&DROP: Failed to fetch scrum master:', projectError);
+      }
+
+      // 3. REMOVE ACTOR FROM NOTIFICATIONS (don't notify the person who made the change)
+      if (userRoles.has(actorUserId)) {
+        console.log(`🚫 DRAG&DROP: Removing actor (${actorUserId}) from notifications - don't notify the person who made the change`);
+        userRoles.delete(actorUserId);
+      }
+
+      console.log(`🎯 DRAG&DROP: User roles after deduplication:`);
+      userRoles.forEach((roles, userId) => {
+        console.log(`  User ${userId}: ${roles.join(', ')}`);
+      });
+
+      // If no users to notify, skip
+      if (userRoles.size === 0) {
+        console.log('⚠️ DRAG&DROP: No users to notify after removing actor and deduplication');
+        return;
+      }
+
+      // Base notification data
+      const baseNotificationData = {
+        type: "TASK_STATUS_CHANGED",
+        title: "Task status changed",
+        actorUserId: actorUserId,
+        actorUserName: actorUserName,
+        projectId: taskWithCreatedBy.projectId || projectId,
+        projectName: project?.name || "TaskFlow Project",
+        taskId: taskWithCreatedBy.id
+      };
+
+      // 4. CREATE NOTIFICATIONS - One per unique user with combined roles
+      const notifications: any[] = [];
+      
+      userRoles.forEach((roles, userId) => {
+        const roleText = roles.length > 1 
+          ? `${roles.slice(0, -1).join(', ')} and ${roles[roles.length - 1]}`
+          : roles[0];
+        
+        const notification = {
+          ...baseNotificationData,
+          recipientUserId: userId,
+          message: `${actorUserName} changed task "${taskWithCreatedBy.title}" status from "${getStatusDisplayName(oldStatus)}" to "${getStatusDisplayName(newStatus)}" (You are the ${roleText})`
+        };
+        
+        notifications.push(notification);
+      });
+
+      console.log(`🎯 DRAG&DROP: Prepared ${notifications.length} deduplicated notifications:`);
+      notifications.forEach((notification, index) => {
+        const userRolesList = userRoles.get(notification.recipientUserId) || [];
+        console.log(`  ${index + 1}. User ${notification.recipientUserId}: ${userRolesList.join(' + ')}`);
+      });
+      
+      // 5. LOG ALL PAYLOADS BEFORE SENDING
+      console.log('');
+      console.log('🔍 ===== DEDUPLICATED NOTIFICATION PAYLOADS =====');
+      notifications.forEach((notification, index) => {
+        const userRolesList = userRoles.get(notification.recipientUserId) || [];
+        console.log(`📋 PAYLOAD ${index + 1}/${notifications.length} - USER (${userRolesList.join(' + ')}):`);
+        console.log(JSON.stringify(notification, null, 2));
+        console.log('');
+      });
+      console.log('🔍 ================================================');
+      console.log('');
+      
+      // 6. SEND ALL NOTIFICATIONS
+      console.log(`📤 DRAG&DROP: Sending ${notifications.length} deduplicated notifications...`);
+      
+      const notificationPromises = notifications.map(async (notification, index) => {
+        const userRolesList = userRoles.get(notification.recipientUserId) || [];
+        const roleDisplay = userRolesList.join(' + ');
+        
+        console.log(`📤 DRAG&DROP: Sending notification ${index + 1}/${notifications.length} to ${roleDisplay}:`, notification.recipientUserId);
+        
+        try {
+          const response = await axios.post(`http://localhost:8089/api/notifications/create`, notification);
+          console.log(`✅ DRAG&DROP: Notification ${index + 1} sent successfully to ${roleDisplay}`);
+          console.log(`   Response status: ${response.status}`);
+          console.log(`   Response data:`, response.data);
+          return { success: true, recipient: roleDisplay, userId: notification.recipientUserId };
+        } catch (error) {
+          console.error(`❌ DRAG&DROP: Failed to send notification ${index + 1} to ${roleDisplay}:`, error);
+          if (axios.isAxiosError(error) && error.response) {
+            console.error(`   Error status: ${error.response.status}`);
+            console.error(`   Error data:`, error.response.data);
+          }
+          return { success: false, recipient: roleDisplay, userId: notification.recipientUserId, error };
+        }
+      });
+
+      const results = await Promise.allSettled(notificationPromises);
+      const successful = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+      const failed = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.success)).length;
+
+      console.log(`📊 DRAG&DROP: Notification results summary:`);
+      console.log(`  ✅ Successful: ${successful}`);
+      console.log(`  ❌ Failed: ${failed}`);
+      console.log(`  🎯 Total unique users notified: ${successful}/${notifications.length}`);
+      
+      // Log detailed results
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          if (result.value.success) {
+            console.log(`  ✅ ${index + 1}. ${result.value.recipient} (${result.value.userId}): SUCCESS`);
+          } else {
+            console.log(`  ❌ ${index + 1}. ${result.value.recipient} (${result.value.userId}): FAILED`);
+          }
+        } else {
+          console.log(`  ❌ ${index + 1}. Promise rejected:`, result.reason);
+        }
+      });
+      
+      if (successful > 0) {
+        console.log(`🎉 DRAG&DROP: Successfully sent ${successful} deduplicated notifications!`);
+      } else {
+        console.warn(`⚠️ DRAG&DROP: No notifications were sent successfully`);
+      }
+
+    } catch (error) {
+      console.error('❌ DRAG&DROP: Failed to send status change notifications:', error);
     }
   };
 
@@ -304,21 +563,15 @@ export default function ProjectBoardPage() {
 
   // Tìm kiếm project theo tên - chỉ hiển thị projects mà user hiện tại là member
   const searchBoardsByName = async (term: string) => {
+    console.log("🔍 ===== SEARCH BOARDS BY NAME =====");
+    console.log("🔍 Search term:", term);
+    
     try {
-      console.log("🔍 ===== STARTING SEARCH =====");
-      console.log("🔍 searchBoardsByName called with term:", term);
-      
-      // Lấy userId từ localStorage với nhiều cách khác nhau
-      let currentUserId = localStorage.getItem("userId") || 
-                         localStorage.getItem("currentUserId") || 
-                         localStorage.getItem("user_id") ||
-                         localStorage.getItem("ownerId");
-      
-      // Debug all localStorage keys to see what's available
-      console.log("🔍 All localStorage keys:", Object.keys(localStorage));
+      // Get user ID from user storage service instead of localStorage
+      let currentUserId = userData?.profile?.id || userData?.account?.id;
       
       if (!currentUserId) {
-        console.error("❌ No userId found in localStorage. Please ensure user is logged in.");
+        console.error("❌ No userId found in user storage. Please ensure user is logged in.");
         // TEMPORARY: Use hardcoded userId for testing
         currentUserId = "d90e8bd8-72e2-47cc-b9f0-edb92fe60c5a";
         console.log("🔧 TESTING: Using hardcoded userId:", currentUserId);
@@ -506,6 +759,19 @@ export default function ProjectBoardPage() {
         
         setTasks(formattedTasks);
         console.log("✅ Đã cập nhật state tasks");
+        
+        // Check for overdue tasks and send notifications
+        try {
+          const tasksWithProjectName = formattedTasks.map(task => ({
+            ...task,
+            projectName: project?.name || "Unknown Project"
+          }));
+          await checkAndNotifyOverdueTasks(tasksWithProjectName);
+          console.log("✅ Overdue tasks check completed");
+        } catch (overdueError) {
+          console.error("❌ Error checking overdue tasks:", overdueError);
+          // Don't fail the main operation if overdue check fails
+        }
       } catch (error) {
         console.error("❌ Lỗi khi tải tasks từ API:", error);
         toast.error("Error loading tasks from API");
@@ -1236,6 +1502,11 @@ export default function ProjectBoardPage() {
           ...task,
           assigneeId: userId || null,
           assigneeName: isValid ? userName : "Unassigned"
+        }, {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-User-Id': localStorage.getItem("ownerId") || localStorage.getItem("userId") || '',
+          },
         });
         
         if (isValid) {

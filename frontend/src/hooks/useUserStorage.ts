@@ -22,13 +22,26 @@ export interface UseUserStorageReturn {
   error: string | null;
 }
 
+// Helper function to check if we're on the client side
+const isClient = typeof window !== 'undefined';
+
 export const useUserStorage = (): UseUserStorageReturn => {
   const [userData, setUserData] = useState<LoggedInUserData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isClientSide, setIsClientSide] = useState(false);
 
-  // Load initial data from localStorage
+  // Set client side flag after component mounts
   useEffect(() => {
+    setIsClientSide(true);
+  }, []);
+
+  // Load initial data from sessionStorage only on client side
+  useEffect(() => {
+    if (!isClientSide) {
+      return;
+    }
+
     try {
       setIsLoading(true);
       setError(null);
@@ -41,7 +54,7 @@ export const useUserStorage = (): UseUserStorageReturn => {
       setUserData(currentUserData);
       
       if (currentUserData) {
-        console.log('✅ User data loaded from localStorage:', currentUserData.profile.username);
+        console.log('✅ User data loaded from sessionStorage:', currentUserData.profile.username);
       }
     } catch (err) {
       setError('Failed to load user data');
@@ -49,7 +62,7 @@ export const useUserStorage = (): UseUserStorageReturn => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [isClientSide]);
 
   // NOTE: Removed storage event listener for sessionStorage
   // sessionStorage doesn't sync between tabs which is what we want for independent sessions
@@ -117,13 +130,13 @@ export const useUserStorage = (): UseUserStorageReturn => {
     UserStorageService.debugLogUserData();
   };
 
-  // Computed values
+  // Computed values - use safe defaults during SSR
   const userProfile = userData?.profile || null;
   const accountInfo = userData?.account || null;
-  const isLoggedIn = UserStorageService.isUserLoggedIn();
-  const sessionToken = UserStorageService.getSessionToken();
-  const displayName = UserStorageService.getUserDisplayName();
-  const userInitials = UserStorageService.getUserInitials();
+  const isLoggedIn = isClientSide ? UserStorageService.isUserLoggedIn() : false;
+  const sessionToken = isClientSide ? UserStorageService.getSessionToken() : null;
+  const displayName = isClientSide ? UserStorageService.getUserDisplayName() : 'Unknown User';
+  const userInitials = isClientSide ? UserStorageService.getUserInitials() : '?';
 
   return {
     userData,
@@ -142,7 +155,7 @@ export const useUserStorage = (): UseUserStorageReturn => {
     debugLogData,
     
     // Status
-    isLoading,
+    isLoading: !isClientSide || isLoading, // Keep loading until client side is ready
     error
   };
 }; 

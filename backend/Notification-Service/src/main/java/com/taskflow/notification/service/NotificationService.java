@@ -47,4 +47,24 @@ public interface NotificationService {
                                              String actorUserName, String taskId,
                                              String taskTitle, String projectId, String projectName,
                                              String updateType, String newValue);
+                                             
+    // New notification methods
+    Notification createTaskStatusChangedNotification(String recipientUserId, String actorUserId,
+                                                   String actorUserName, String taskId,
+                                                   String taskTitle, String projectId, String projectName,
+                                                   String oldStatus, String newStatus);
+                                                   
+    void createTaskStatusChangedNotifications(String actorUserId, String actorUserName,
+                                            String taskId, String taskTitle, 
+                                            String projectId, String projectName,
+                                            String assigneeUserId, String oldStatus, String newStatus);
+                                                   
+    void createTaskDeletedNotifications(String actorUserId, String actorUserName,
+                                       String taskId, String taskTitle, 
+                                       String projectId, String projectName,
+                                       String assigneeUserId);
+                                       
+    void createTaskOverdueNotifications(String taskId, String taskTitle,
+                                       String projectId, String projectName,
+                                       String assigneeUserId);
 } 
