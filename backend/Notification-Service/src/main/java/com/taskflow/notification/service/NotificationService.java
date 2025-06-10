@@ -5,23 +5,24 @@ import com.taskflow.notification.payload.enums.NotificationType;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 public interface NotificationService {
     
     // Get all notifications for a user
-    List<Notification> getNotificationsByUserId(String userId);
+    List<Notification> getNotificationsByUserId(UUID userId);
     
     // Get unread notifications for a user
-    List<Notification> getUnreadNotificationsByUserId(String userId);
+    List<Notification> getUnreadNotificationsByUserId(UUID userId);
     
     // Get unread count for a user
-    long getUnreadCount(String userId);
+    long getUnreadCount(UUID userId);
     
     // Create a new notification
     Notification createNotification(NotificationType type, String title, String message,
-                                  String recipientUserId, String actorUserId, String actorUserName,
-                                  String actorUserAvatar, String projectId, String projectName,
-                                  String taskId, String sprintId, String commentId,
+                                  UUID recipientUserId, UUID actorUserId, String actorUserName,
+                                  String actorUserAvatar, UUID projectId, String projectName,
+                                  UUID taskId, UUID sprintId, Long commentId,
                                   String actionUrl);
     
     // Get notification by ID
@@ -34,28 +35,28 @@ public interface NotificationService {
     boolean deleteNotification(Long notificationId);
     
     // Helper methods for specific notification types
-    Notification createTaskAssignedNotification(String recipientUserId, String actorUserId, 
-                                              String actorUserName, String taskId, 
-                                              String taskTitle, String projectId, String projectName);
+    Notification createTaskAssignedNotification(UUID recipientUserId, UUID actorUserId, 
+                                              String actorUserName, UUID taskId, 
+                                              String taskTitle, UUID projectId, String projectName);
     
-    Notification createTaskCommentNotification(String recipientUserId, String actorUserId,
-                                             String actorUserName, String taskId,
-                                             String taskTitle, String projectId, String projectName,
-                                             String commentId);
+    Notification createTaskCommentNotification(UUID recipientUserId, UUID actorUserId,
+                                             String actorUserName, UUID taskId,
+                                             String taskTitle, UUID projectId, String projectName,
+                                             Long commentId);
     
-    Notification createTaskUpdatedNotification(String recipientUserId, String actorUserId,
-                                             String actorUserName, String taskId,
-                                             String taskTitle, String projectId, String projectName,
+    Notification createTaskUpdatedNotification(UUID recipientUserId, UUID actorUserId,
+                                             String actorUserName, UUID taskId,
+                                             String taskTitle, UUID projectId, String projectName,
                                              String updateType, String newValue);
                                              
     // New notification methods
-    Notification createTaskStatusChangedNotification(String recipientUserId, String actorUserId,
-                                                   String actorUserName, String taskId,
-                                                   String taskTitle, String projectId, String projectName,
+    Notification createTaskStatusChangedNotification(UUID recipientUserId, UUID actorUserId,
+                                                   String actorUserName, UUID taskId,
+                                                   String taskTitle, UUID projectId, String projectName,
                                                    String oldStatus, String newStatus);
                                                    
-    void createTaskStatusChangedNotifications(String actorUserId, String actorUserName,
-                                            String taskId, String taskTitle, 
-                                            String projectId, String projectName,
-                                            String assigneeUserId, String oldStatus, String newStatus);
+    void createTaskStatusChangedNotifications(UUID actorUserId, String actorUserName,
+                                            UUID taskId, String taskTitle, 
+                                            UUID projectId, String projectName,
+                                            UUID assigneeUserId, String oldStatus, String newStatus);
 } 

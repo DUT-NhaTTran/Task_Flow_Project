@@ -3,7 +3,8 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import axios from 'axios';
 
-interface User {
+// Export types for external usage
+export interface User {
   id: string;
   username: string;
   email: string;
@@ -11,7 +12,7 @@ interface User {
   avatar?: string;
 }
 
-interface UserContextType {
+export interface UserContextType {
   currentUser: User | null;
   isLoading: boolean;
   users: User[]; // Cache of all users
@@ -323,4 +324,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
   );
 };
 
-export default UserContext; 
+export default UserContext;
+
+// Also export the context explicitly for direct usage if needed
+export { UserContext }; 

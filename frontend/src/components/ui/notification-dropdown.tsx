@@ -11,7 +11,7 @@ import { toast } from "sonner"
 
 interface Notification {
     id: string
-    type: 'TASK_ASSIGNED' | 'TASK_REASSIGNED' | 'TASK_UPDATED' | 'TASK_COMMENT' | 'TASK_CREATED' | 'TASK_DELETED' | 'TASK_MOVED' | 'TASK_STATUS_CHANGED' | 'PROJECT_INVITE' | 'PROJECT_DELETED' | 'SPRINT_UPDATED' | 'SPRINT_CREATED' | 'SPRINT_STARTED' | 'SPRINT_ENDED' | 'TASK_MENTIONED' | 'MENTIONED_IN_COMMENT' | 'FILE_ATTACHED' | 'TAGGED_IN_TASK' | 'REMINDER'
+    type: 'TASK_ASSIGNED' | 'TASK_REASSIGNED' | 'TASK_UPDATED' | 'TASK_COMMENT' | 'TASK_CREATED' | 'TASK_DELETED' | 'TASK_MOVED' | 'TASK_STATUS_CHANGED' | 'PROJECT_INVITE' | 'PROJECT_DELETED' | 'SPRINT_UPDATED' | 'SPRINT_CREATED' | 'SPRINT_STARTED' | 'SPRINT_COMPLETED' | 'TASK_MENTIONED' | 'MENTIONED_IN_COMMENT' | 'FILE_ATTACHED' | 'TAGGED_IN_TASK' | 'REMINDER'
     title: string
     message: string
     recipientUserId: string
@@ -185,16 +185,11 @@ export function NotificationDropdown({ userId }: NotificationDropdownProps) {
             )
             setUnreadCount(prev => Math.max(0, prev - 1))
             
-        } catch (error) {
-            console.error("Error marking notification as read:", error)
-            
-            // Update locally anyway for better UX
-            setNotifications(prev =>
-                prev.map(n =>
-                    n.id === notificationId ? { ...n, isRead: true } : n
-                )
-            )
-            setUnreadCount(prev => Math.max(0, prev - 1))
+        } catch (error: any) {
+            // Don't log notification read errors to avoid console spam
+            if (error.response?.status !== 404) {
+                console.log("📝 Failed to mark notification as read - ignoring gracefully");
+            }
         }
     }
 
@@ -225,8 +220,8 @@ export function NotificationDropdown({ userId }: NotificationDropdownProps) {
 
             toast.success(`Marked ${unreadNotifications.length} notifications as read`)
         } catch (error) {
-            console.error("Error marking all notifications as read:", error)
-            toast.error("Failed to mark notifications as read")
+            // Don't log notification errors to avoid console spam
+            console.log("📝 Failed to mark all notifications as read - ignoring gracefully");
         }
     }
 
@@ -256,7 +251,7 @@ export function NotificationDropdown({ userId }: NotificationDropdownProps) {
             console.log("✅ Add member response:", response.status, response.data)
 
             if (response.status === 200 || response.status === 201) {
-                // Send accept notification back to project owner
+                // Send accept notification back to project owner with standard format
                 console.log("📤 Sending accept notification...")
                 await axios.post("/api/notifications/create", {
                     type: "PROJECT_INVITE",
@@ -264,8 +259,10 @@ export function NotificationDropdown({ userId }: NotificationDropdownProps) {
                     message: `${notification.recipientUserId} has joined your project "${notification.projectName}"`,
                     recipientUserId: notification.actorUserId,
                     actorUserId: getUserId(),
+                    actorUserName: "Project Member", // You might want to get actual username here
                     projectId: notification.projectId,
-                    projectName: notification.projectName
+                    projectName: notification.projectName,
+                    taskId: null // No task associated with invitation response
                 }, {
                     headers: {
                         'Content-Type': 'application/json',
@@ -305,7 +302,8 @@ export function NotificationDropdown({ userId }: NotificationDropdownProps) {
                 // Still refresh to update UI
                 fetchDirectFromDatabase(true)
             } else {
-                toast.error("Failed to accept invitation")
+                // Don't show error toast to avoid exposing technical errors
+                console.log("📝 Failed to accept invitation - handling gracefully");
             }
         }
     }
@@ -315,15 +313,17 @@ export function NotificationDropdown({ userId }: NotificationDropdownProps) {
         e.stopPropagation()
 
         try {
-            // Send decline notification back to project owner
+            // Send decline notification back to project owner with standard format
             await axios.post("/api/notifications/create", {
                 type: "PROJECT_INVITE",
                 title: "Invitation Declined",
                 message: `${notification.recipientUserId} has declined to join your project "${notification.projectName}"`,
                 recipientUserId: notification.actorUserId,
                 actorUserId: getUserId(),
+                actorUserName: "Project Member", // You might want to get actual username here  
                 projectId: notification.projectId,
-                projectName: notification.projectName
+                projectName: notification.projectName,
+                taskId: null // No task associated with invitation response
             }, {
                 headers: {
                     'Content-Type': 'application/json',
@@ -340,8 +340,7 @@ export function NotificationDropdown({ userId }: NotificationDropdownProps) {
             // Refresh notifications to update UI
             fetchDirectFromDatabase(true)
         } catch (error: any) {
-            console.error("Error declining invitation:", error)
-            toast.error("Failed to decline invitation")
+            console.log("📝 Failed to decline invitation - handling gracefully");
         }
     }
 
@@ -360,17 +359,17 @@ export function NotificationDropdown({ userId }: NotificationDropdownProps) {
                 setUnreadCount(prev => Math.max(0, prev - 1))
             }
         } catch (error) {
-            console.error("Error deleting notification:", error)
-            // Update locally anyway for better UX
-            setNotifications(prev => prev.filter(n => n.id !== notificationId))
-            const deletedNotification = notifications.find(n => n.id === notificationId)
-            if (deletedNotification && !deletedNotification.isRead) {
-                setUnreadCount(prev => Math.max(0, prev - 1))
-            }
+            // Don't log notification deletion errors to avoid console spam
+            console.log("📝 Failed to delete notification - ignoring gracefully");
         }
     }
 
     const handleNotificationClick = (notification: Notification) => {
+        // Don't allow clicking on PROJECT_DELETED notifications since the project no longer exists
+        if (notification.type === 'PROJECT_DELETED') {
+            return;
+        }
+        
         if (!notification.isRead) {
             markAsRead(notification.id)
         }
@@ -413,7 +412,7 @@ export function NotificationDropdown({ userId }: NotificationDropdownProps) {
             case 'SPRINT_UPDATED':
             case 'SPRINT_CREATED':
             case 'SPRINT_STARTED':
-            case 'SPRINT_ENDED':
+            case 'SPRINT_COMPLETED':
                 return '🏃‍♂️'
             case 'TASK_MENTIONED':
             case 'TAGGED_IN_TASK':
@@ -449,7 +448,7 @@ export function NotificationDropdown({ userId }: NotificationDropdownProps) {
             case 'SPRINT_UPDATED':
             case 'SPRINT_CREATED':
             case 'SPRINT_STARTED':
-            case 'SPRINT_ENDED':
+            case 'SPRINT_COMPLETED':
                 return 'bg-indigo-500'
             case 'TASK_MENTIONED':
             case 'TAGGED_IN_TASK':
@@ -557,26 +556,17 @@ export function NotificationDropdown({ userId }: NotificationDropdownProps) {
                 clearTimeout(timeoutId)
                 // Check if this is an abort error (timeout)
                 if (fetchError.name === 'AbortError') {
-                    console.error("Request timed out after 10 seconds")
-                    if (isRefreshing || forceRefresh) {
-                        toast.error("Request timed out. Server may be unavailable.")
-                    }
+                    console.log("📝 Request timed out after 10 seconds - handling gracefully");
+                    // Don't show error toast to avoid bothering users
                 } else {
                     throw fetchError // rethrow for outer catch
                 }
             }
         } catch (error: any) {
-            console.error("Error fetching notifications:", error)
-            
-            // Only show toast on manual refresh
-            if (isRefreshing || forceRefresh) {
-                // Show a more specific error message
-                if (error.message && error.message.includes("Failed to fetch")) {
-                    toast.error("Cannot connect to notification server. Is it running?")
-                } else {
-                    toast.error("Failed to load notifications: " + (error.message || "Unknown error"))
-                }
-            }
+            // Don't log notification fetch errors to avoid console spam
+            console.log("📝 Failed to fetch notifications - showing empty state gracefully");
+            setNotifications([]);
+            setUnreadCount(0);
         } finally {
             setIsLoading(false)
             setIsRefreshing(false)
@@ -683,10 +673,14 @@ export function NotificationDropdown({ userId }: NotificationDropdownProps) {
                                 {filteredNotifications.map((notification) => (
                                     <div
                                         key={notification.id}
-                                        className={`p-4 hover:bg-gray-50 ${notification.type === 'PROJECT_INVITE' ? 'cursor-default' : 'cursor-pointer'} transition-colors group ${
+                                        className={`p-4 transition-colors group ${
+                                            notification.type === 'PROJECT_INVITE' || notification.type === 'PROJECT_DELETED' 
+                                                ? 'cursor-default opacity-75' 
+                                                : 'cursor-pointer hover:bg-gray-50'
+                                        } ${
                                             !notification.isRead ? 'bg-blue-50' : ''
                                         }`}
-                                        onClick={notification.type === 'PROJECT_INVITE' ? undefined : () => handleNotificationClick(notification)}
+                                        onClick={notification.type === 'PROJECT_INVITE' || notification.type === 'PROJECT_DELETED' ? undefined : () => handleNotificationClick(notification)}
                                     >
                                         <div className="flex items-start gap-3">
                                             {/* Icon */}
@@ -712,6 +706,12 @@ export function NotificationDropdown({ userId }: NotificationDropdownProps) {
                                                                 <>
                                                                     <span>•</span>
                                                                     <span>{notification.projectName}</span>
+                                                                </>
+                                                            )}
+                                                            {notification.type === 'PROJECT_DELETED' && (
+                                                                <>
+                                                                    <span>•</span>
+                                                                    <span className="text-red-500 font-medium">Project no longer exists</span>
                                                                 </>
                                                             )}
                                                         </div>

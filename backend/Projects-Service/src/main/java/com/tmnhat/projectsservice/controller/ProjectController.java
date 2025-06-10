@@ -14,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -169,6 +170,39 @@ public class ProjectController {
         ProjectValidator.validateProjectId(projectId);
         UUID scrumMasterId = projectService.getScrumMasterId(projectId);
         return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(scrumMasterId));
+    }
+
+    @GetMapping("/{projectId}/members/{userId}/permissions")
+    public ResponseEntity<ResponseDataAPI> checkUserPermissions(
+            @PathVariable UUID projectId,
+            @PathVariable UUID userId) {
+        try {
+            String role = projectService.getRoleInProject(projectId, userId);
+            
+            if (role == null) {
+                return ResponseEntity.ok(ResponseDataAPI.error("User not found in project"));
+            }
+            
+            // Create permission summary based on role
+            Map<String, Object> permissions = new HashMap<>();
+            permissions.put("userId", userId);
+            permissions.put("projectId", projectId);
+            permissions.put("role", role);
+            permissions.put("isOwner", "project_owner".equalsIgnoreCase(role));
+            permissions.put("isScrumMaster", "scrum_master".equalsIgnoreCase(role));
+            permissions.put("canManageProject", "project_owner".equalsIgnoreCase(role));
+            permissions.put("canManageMembers", "project_owner".equalsIgnoreCase(role) || "scrum_master".equalsIgnoreCase(role));
+            permissions.put("canCreateSprint", "project_owner".equalsIgnoreCase(role) || "scrum_master".equalsIgnoreCase(role));
+            permissions.put("canManageSprints", "project_owner".equalsIgnoreCase(role) || "scrum_master".equalsIgnoreCase(role));
+            permissions.put("canManageAnyTask", "project_owner".equalsIgnoreCase(role) || "scrum_master".equalsIgnoreCase(role));
+            permissions.put("canAssignTasks", "project_owner".equalsIgnoreCase(role) || "scrum_master".equalsIgnoreCase(role));
+            permissions.put("canViewReports", "project_owner".equalsIgnoreCase(role) || "scrum_master".equalsIgnoreCase(role));
+            permissions.put("canTrainAI", "project_owner".equalsIgnoreCase(role) || "scrum_master".equalsIgnoreCase(role));
+            
+            return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(permissions));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(ResponseDataAPI.error("Error checking permissions: " + e.getMessage()));
+        }
     }
 
 }

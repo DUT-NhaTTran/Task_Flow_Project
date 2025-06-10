@@ -11,6 +11,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
 public class NotificationDAO extends BaseDAO {
@@ -42,15 +43,19 @@ public class NotificationDAO extends BaseDAO {
                 stmt.setString(1, notification.getType().name());
                 stmt.setString(2, notification.getTitle());
                 stmt.setString(3, notification.getMessage());
-                stmt.setString(4, notification.getRecipientUserId());
-                stmt.setString(5, notification.getActorUserId());
+                stmt.setObject(4, notification.getRecipientUserId());
+                stmt.setObject(5, notification.getActorUserId());
                 stmt.setString(6, notification.getActorUserName());
                 stmt.setString(7, notification.getActorUserAvatar());
-                stmt.setString(8, notification.getProjectId());
+                stmt.setObject(8, notification.getProjectId());
                 stmt.setString(9, notification.getProjectName());
-                stmt.setString(10, notification.getTaskId());
-                stmt.setString(11, notification.getSprintId());
-                stmt.setString(12, notification.getCommentId());
+                stmt.setObject(10, notification.getTaskId());
+                stmt.setObject(11, notification.getSprintId());
+                if (notification.getCommentId() != null) {
+                    stmt.setLong(12, notification.getCommentId());
+                } else {
+                    stmt.setNull(12, java.sql.Types.BIGINT);
+                }
                 stmt.setString(13, notification.getActionUrl());
                 stmt.setBoolean(14, notification.getIsRead());
                 stmt.setTimestamp(15, notification.getCreatedAt() != null ? Timestamp.valueOf(notification.getCreatedAt()) : null);
@@ -76,15 +81,19 @@ public class NotificationDAO extends BaseDAO {
                 stmt.setString(1, notification.getType().name());
                 stmt.setString(2, notification.getTitle());
                 stmt.setString(3, notification.getMessage());
-                stmt.setString(4, notification.getRecipientUserId());
-                stmt.setString(5, notification.getActorUserId());
+                stmt.setObject(4, notification.getRecipientUserId());
+                stmt.setObject(5, notification.getActorUserId());
                 stmt.setString(6, notification.getActorUserName());
                 stmt.setString(7, notification.getActorUserAvatar());
-                stmt.setString(8, notification.getProjectId());
+                stmt.setObject(8, notification.getProjectId());
                 stmt.setString(9, notification.getProjectName());
-                stmt.setString(10, notification.getTaskId());
-                stmt.setString(11, notification.getSprintId());
-                stmt.setString(12, notification.getCommentId());
+                stmt.setObject(10, notification.getTaskId());
+                stmt.setObject(11, notification.getSprintId());
+                if (notification.getCommentId() != null) {
+                    stmt.setLong(12, notification.getCommentId());
+                } else {
+                    stmt.setNull(12, java.sql.Types.BIGINT);
+                }
                 stmt.setString(13, notification.getActionUrl());
                 stmt.setBoolean(14, notification.getIsRead());
                 stmt.setTimestamp(15, notification.getReadAt() != null ? Timestamp.valueOf(notification.getReadAt()) : null);
@@ -117,7 +126,7 @@ public class NotificationDAO extends BaseDAO {
         }
     }
 
-    public List<Notification> findByRecipientUserIdOrderByCreatedAtDesc(String recipientUserId) {
+    public List<Notification> findByRecipientUserIdOrderByCreatedAtDesc(UUID recipientUserId) {
         String sql = """
             SELECT * FROM notifications 
             WHERE recipient_user_id = ? 
@@ -126,7 +135,7 @@ public class NotificationDAO extends BaseDAO {
 
         try {
             return executeQuery(sql, stmt -> {
-                stmt.setString(1, recipientUserId);
+                stmt.setObject(1, recipientUserId);
                 ResultSet rs = stmt.executeQuery();
                 List<Notification> notifications = new ArrayList<>();
                 while (rs.next()) {
@@ -139,7 +148,7 @@ public class NotificationDAO extends BaseDAO {
         }
     }
 
-    public List<Notification> findByRecipientUserIdAndIsReadFalseOrderByCreatedAtDesc(String recipientUserId) {
+    public List<Notification> findByRecipientUserIdAndIsReadFalseOrderByCreatedAtDesc(UUID recipientUserId) {
         String sql = """
             SELECT * FROM notifications 
             WHERE recipient_user_id = ? 
@@ -149,7 +158,7 @@ public class NotificationDAO extends BaseDAO {
 
         try {
             return executeQuery(sql, stmt -> {
-                stmt.setString(1, recipientUserId);
+                stmt.setObject(1, recipientUserId);
                 ResultSet rs = stmt.executeQuery();
                 List<Notification> notifications = new ArrayList<>();
                 while (rs.next()) {
@@ -162,12 +171,12 @@ public class NotificationDAO extends BaseDAO {
         }
     }
 
-    public long countByRecipientUserIdAndIsReadFalse(String recipientUserId) {
+    public long countByRecipientUserIdAndIsReadFalse(UUID recipientUserId) {
         String sql = "SELECT COUNT(*) FROM notifications WHERE recipient_user_id = ? AND is_read = false";
 
         try {
             return executeQuery(sql, stmt -> {
-                stmt.setString(1, recipientUserId);
+                stmt.setObject(1, recipientUserId);
                 ResultSet rs = stmt.executeQuery();
                 if (rs.next()) {
                     return rs.getLong(1);
@@ -212,19 +221,49 @@ public class NotificationDAO extends BaseDAO {
                 .type(NotificationType.valueOf(rs.getString("type")))
                 .title(rs.getString("title"))
                 .message(rs.getString("message"))
-                .recipientUserId(rs.getString("recipient_user_id"))
-                .actorUserId(rs.getString("actor_user_id"))
+                .recipientUserId(getUUIDFromResultSet(rs, "recipient_user_id"))
+                .actorUserId(getUUIDFromResultSet(rs, "actor_user_id"))
                 .actorUserName(rs.getString("actor_user_name"))
                 .actorUserAvatar(rs.getString("actor_user_avatar"))
-                .projectId(rs.getString("project_id"))
+                .projectId(getUUIDFromResultSet(rs, "project_id"))
                 .projectName(rs.getString("project_name"))
-                .taskId(rs.getString("task_id"))
-                .sprintId(rs.getString("sprint_id"))
-                .commentId(rs.getString("comment_id"))
+                .taskId(getUUIDFromResultSet(rs, "task_id"))
+                .sprintId(getUUIDFromResultSet(rs, "sprint_id"))
+                .commentId(getLongFromResultSet(rs, "comment_id"))
                 .actionUrl(rs.getString("action_url"))
                 .isRead(rs.getBoolean("is_read"))
                 .createdAt(rs.getTimestamp("created_at") != null ? rs.getTimestamp("created_at").toLocalDateTime() : null)
                 .readAt(rs.getTimestamp("read_at") != null ? rs.getTimestamp("read_at").toLocalDateTime() : null)
                 .build();
+    }
+    
+    // Helper method to safely extract UUID from ResultSet
+    private UUID getUUIDFromResultSet(ResultSet rs, String columnName) throws SQLException {
+        Object value = rs.getObject(columnName);
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof UUID) {
+            return (UUID) value;
+        } else {
+            // Handle string conversion to UUID if needed
+            return UUID.fromString(value.toString());
+        }
+    }
+    
+    // Helper method to safely extract Long from ResultSet
+    private Long getLongFromResultSet(ResultSet rs, String columnName) throws SQLException {
+        Object value = rs.getObject(columnName);
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Long) {
+            return (Long) value;
+        } else if (value instanceof Number) {
+            return ((Number) value).longValue();
+        } else {
+            // Handle string conversion to Long if needed
+            return Long.parseLong(value.toString());
+        }
     }
 } 

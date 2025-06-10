@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Service
 public class CommentService {
@@ -16,12 +17,12 @@ public class CommentService {
     private CommentRepository commentRepository;
     
     // Get all comments for a task
-    public List<Comment> getCommentsByTaskId(String taskId) {
+    public List<Comment> getCommentsByTaskId(UUID taskId) {
         return commentRepository.findByTaskIdAndNotDeleted(taskId);
     }
     
     // Add new comment
-    public Comment addComment(String taskId, String userId, String content) {
+    public Comment addComment(UUID taskId, String userId, String content) {
         Comment comment = new Comment();
         comment.setTaskId(taskId);
         comment.setUserId(userId);
@@ -86,7 +87,7 @@ public class CommentService {
     }
     
     // Get comment count for a task
-    public Long getCommentCount(String taskId) {
+    public Long getCommentCount(UUID taskId) {
         return commentRepository.countByTaskIdAndNotDeleted(taskId);
     }
     

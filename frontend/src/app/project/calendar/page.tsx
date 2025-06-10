@@ -13,7 +13,15 @@ import { Dropdown } from "@/components/ui/drop-down";
 import { toast } from "sonner";
 import { NavigationProgress } from "@/components/ui/LoadingScreen";
 import { useNavigation } from "@/contexts/NavigationContext";
+import { useUserStorage } from "@/hooks/useUserStorage";
 import { ChevronLeft, ChevronRight, Search, Calendar as CalendarIcon, Filter, ChevronDown, X, RotateCcw, Edit } from "lucide-react";
+import { safeValidateUUID, validateProjectId, validateSprintId, isValidUUID } from "@/utils/uuidUtils";
+import { 
+  getUserPermissions, 
+  canManageSprints,
+  canStartEndSprints,
+  UserPermissions
+} from "@/utils/permissions";
 
 // Custom debounce function
 const debounce = (func: (...args: any[]) => void, delay: number) => {
@@ -48,6 +56,14 @@ interface Sprint {
   projectId?: string;
 }
 
+interface User {
+  id: string;
+  username: string;
+  email: string;
+  role?: string;
+  avatar?: string;
+}
+
 interface CalendarWeek {
   days: Date[];
   sprints: SprintBar[];
@@ -68,12 +84,14 @@ const SprintDetailPopup = ({
   sprint, 
   position, 
   onClose,
-  onEdit
+  onEdit,
+  userPermissions
 }: { 
   sprint: Sprint, 
   position: { x: number, y: number }, 
   onClose: () => void,
-  onEdit: (sprint: Sprint) => void
+  onEdit: (sprint: Sprint) => void,
+  userPermissions: UserPermissions | null
 }) => {
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -193,19 +211,21 @@ const SprintDetailPopup = ({
           </div>
           <div className="flex items-center gap-2">
             <div className="relative" ref={menuRef}>
-              <button 
-                className={`${colors.accent} hover:opacity-80 p-1 rounded hover:bg-gray-100`}
-                onClick={() => setShowMenu(!showMenu)}
-              >
-                <span className="sr-only">Options</span>
-                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                  <circle cx="4" cy="10" r="2" />
-                  <circle cx="10" cy="10" r="2" />
-                  <circle cx="16" cy="10" r="2" />
-                </svg>
-              </button>
+              {userPermissions && canManageSprints(userPermissions) && (
+                <button 
+                  className={`${colors.accent} hover:opacity-80 p-1 rounded hover:bg-gray-100`}
+                  onClick={() => setShowMenu(!showMenu)}
+                >
+                  <span className="sr-only">Options</span>
+                  <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                    <circle cx="4" cy="10" r="2" />
+                    <circle cx="10" cy="10" r="2" />
+                    <circle cx="16" cy="10" r="2" />
+                  </svg>
+                </button>
+              )}
               
-              {showMenu && (
+              {showMenu && userPermissions && canManageSprints(userPermissions) && (
                 <div className="absolute right-0 top-full mt-1 w-32 bg-white border border-gray-200 rounded-md shadow-lg z-10">
                   <button
                     className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center gap-2"
@@ -589,13 +609,19 @@ const EditSprintModal = ({
   isOpen,
   onClose,
   onSave,
-  projectId
+  onStartSprint,
+  onEndSprint,
+  projectId,
+  userPermissions
 }: {
   sprint: Sprint | null,
   isOpen: boolean,
   onClose: () => void,
   onSave: (updatedSprint: Sprint) => void,
-  projectId: string | null
+  onStartSprint?: (sprint: Sprint) => void,
+  onEndSprint?: (sprint: Sprint) => void,
+  projectId: string | null,
+  userPermissions: UserPermissions | null
 }) => {
   const [formData, setFormData] = useState({
     name: '',
@@ -721,28 +747,70 @@ const EditSprintModal = ({
           </div>
           
           {/* Action Buttons */}
-          <div className="flex justify-end gap-3">
-            <Button 
-              variant="outline"
-              onClick={onClose}
-              disabled={isSaving}
-            >
-              Cancel
-            </Button>
-            <Button 
-              onClick={handleSave}
-              disabled={isSaving || !formData.name.trim()}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
-              {isSaving ? (
-                <>
-                  <div className="animate-spin h-4 w-4 border-2 border-white rounded-full border-t-transparent mr-2"></div>
-                  Updating...
-                </>
-              ) : (
-                'Update'
+          <div className="flex justify-between items-center">
+            {/* Sprint Status Actions */}
+            <div className="flex gap-2">
+              {canStartEndSprints(userPermissions) && sprint.status === "NOT_STARTED" && onStartSprint && (
+                <Button 
+                  onClick={() => onStartSprint(sprint)}
+                  disabled={isSaving}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  🚀 Start Sprint
+                </Button>
               )}
-            </Button>
+              
+              {canStartEndSprints(userPermissions) && sprint.status === "ACTIVE" && onEndSprint && (
+                <Button 
+                  onClick={() => onEndSprint(sprint)}
+                  disabled={isSaving}
+                  className="bg-orange-600 hover:bg-orange-700"
+                >
+                  🏁 Complete Sprint
+                </Button>
+              )}
+              
+              {sprint.status === "COMPLETED" && (
+                <Button 
+                  disabled
+                  className="bg-gray-400 cursor-not-allowed"
+                >
+                  ✅ Completed
+                </Button>
+              )}
+              
+              {/* Permission denied message for members */}
+              {!canStartEndSprints(userPermissions) && (sprint.status === "NOT_STARTED" || sprint.status === "ACTIVE") && (
+                <div className="text-sm text-gray-500 italic">
+                  Only project owners and scrum masters can {sprint.status === "NOT_STARTED" ? "start" : "complete"} sprints
+                </div>
+              )}
+            </div>
+            
+            {/* Save/Cancel Actions */}
+            <div className="flex gap-3">
+              <Button 
+                variant="outline"
+                onClick={onClose}
+                disabled={isSaving}
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleSave}
+                disabled={isSaving || !formData.name.trim()}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                {isSaving ? (
+                  <>
+                    <div className="animate-spin h-4 w-4 border-2 border-white rounded-full border-t-transparent mr-2"></div>
+                    Updating...
+                  </>
+                ) : (
+                  'Update'
+                )}
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -754,6 +822,7 @@ const EditSprintModal = ({
 export default function CalendarPage() {
   const searchParams = useSearchParams();
   const { currentProjectId, setCurrentProjectId } = useNavigation();
+  const { userData } = useUserStorage();
   
   // Ưu tiên projectId từ context (từ board), sau đó mới lấy từ URL
   const urlProjectId = searchParams?.get("projectId");
@@ -765,6 +834,38 @@ export default function CalendarPage() {
       setCurrentProjectId(urlProjectId);
     }
   }, [urlProjectId, currentProjectId, setCurrentProjectId]);
+
+  // Fetch user permissions
+  const [userPermissions, setUserPermissions] = useState<UserPermissions | null>(null);
+  const [permissionsLoading, setPermissionsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchPermissions = async () => {
+      if (userData?.account?.id && projectId) {
+        setPermissionsLoading(true);
+        try {
+          const permissions = await getUserPermissions(userData.account.id, projectId);
+          console.log('🔐 CALENDAR PERMISSION DEBUG:', {
+            userId: userData.account.id,
+            projectId,
+            permissions,
+            role: permissions?.role,
+            canManageSprints: permissions?.canManageSprints
+          });
+          setUserPermissions(permissions);
+        } catch (error) {
+          console.error('Error fetching permissions:', error);
+          setUserPermissions(null);
+        } finally {
+          setPermissionsLoading(false);
+        }
+      } else {
+        setPermissionsLoading(false);
+      }
+    };
+
+    fetchPermissions();
+  }, [userData?.account?.id, projectId]);
   
   // State variables
   const [sprints, setSprints] = useState<Sprint[]>([]);
@@ -783,6 +884,219 @@ export default function CalendarPage() {
   const [showEditSprintModal, setShowEditSprintModal] = useState(false);
   const [editingSprint, setEditingSprint] = useState<Sprint | null>(null);
   
+  // Fetch project members for notifications
+  const fetchProjectMembers = async (): Promise<User[]> => {
+    try {
+      if (!projectId) {
+        console.warn("No project ID available for fetching members");
+        return [];
+      }
+
+      const response = await axios.get(`http://localhost:8083/api/projects/${projectId}/users`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Cache-Control': 'no-cache'
+        }
+      });
+
+      if (response.data && response.data.status === "SUCCESS" && Array.isArray(response.data.data)) {
+        return response.data.data;
+      } else {
+        console.warn("Unexpected response format for project members:", response.data);
+        return [];
+      }
+    } catch (error) {
+      console.error("Error fetching project members:", error);
+      return [];
+    }
+  };
+
+  // Sprint notification function for calendar updates
+  const sendSprintNotificationToMembers = async (
+    notificationType: "SPRINT_UPDATED" | "SPRINT_GOAL_UPDATED" | "SPRINT_STARTED" | "SPRINT_ENDED" | "SPRINT_COMPLETED",
+    sprint: Sprint,
+    additionalInfo?: string
+  ) => {
+    try {
+      console.log(`🔔 CALENDAR NOTIFICATION: Starting ${notificationType} notification process...`);
+      
+      // Validate projectId before proceeding
+      if (!projectId) {
+        console.error('❌ CALENDAR NOTIFICATION: No project ID available');
+        return;
+      }
+      
+      let validatedProjectId: string;
+      let validatedSprintId: string | null = null;
+      
+      try {
+        validatedProjectId = validateProjectId(projectId);
+      } catch (error) {
+        console.error('❌ CALENDAR NOTIFICATION: Invalid project ID format:', error);
+        return;
+      }
+      
+      try {
+        validatedSprintId = validateSprintId(sprint.id);
+      } catch (error) {
+        console.error('❌ CALENDAR NOTIFICATION: Invalid sprint ID format:', error);
+        return;
+      }
+      
+      if (!validatedSprintId) {
+        console.error('❌ CALENDAR NOTIFICATION: Sprint ID is required for notifications');
+        return;
+      }
+      
+      // Get current user data
+      if (!userData?.account?.id && !userData?.profile?.id) {
+        console.warn("No current user data available for notifications");
+        return;
+      }
+      
+      const currentUserId = userData.account?.id || userData.profile?.id;
+      const currentUserName = userData.profile?.username || userData.profile?.firstName || userData.account?.email || 'User';
+
+      console.log(`🔔 CALENDAR NOTIFICATION: Starting ${notificationType} for sprint "${sprint.name}"`);
+
+      // Fetch project members
+      const projectMembers = await fetchProjectMembers();
+      console.log(`👥 CALENDAR NOTIFICATION: Found ${projectMembers.length} project members`);
+
+      // Fetch project details to get scrum master
+      let scrumMasterId: string | null = null;
+      let projectName = "TaskFlow Project";
+      
+      try {
+        const projectResponse = await axios.get(`http://localhost:8083/api/projects/${validatedProjectId}`);
+        if (projectResponse.data?.status === "SUCCESS" && projectResponse.data?.data) {
+          scrumMasterId = projectResponse.data.data.scrumMasterId;
+          projectName = projectResponse.data.data.name || projectName;
+          console.log(`📋 CALENDAR NOTIFICATION: Project details - Name: "${projectName}", Scrum Master: ${scrumMasterId}`);
+        }
+      } catch (error) {
+        console.warn('⚠️ CALENDAR NOTIFICATION: Failed to fetch project details:', error);
+      }
+
+      // Create comprehensive recipient list
+      const allRecipients = new Set<string>();
+      
+      // Add all project members
+      projectMembers.forEach(member => {
+        if (member.id !== currentUserId) { // Exclude current user
+          allRecipients.add(member.id);
+        }
+      });
+      
+      // Add scrum master if not already included and not current user
+      if (scrumMasterId && scrumMasterId !== currentUserId && !allRecipients.has(scrumMasterId)) {
+        allRecipients.add(scrumMasterId);
+        console.log(`➕ CALENDAR NOTIFICATION: Added scrum master ${scrumMasterId} to recipients`);
+      }
+
+      const recipientIds = Array.from(allRecipients);
+      console.log(`📝 CALENDAR NOTIFICATION: Total recipients (excluding current user): ${recipientIds.length}`);
+      console.log(`📋 CALENDAR NOTIFICATION: Recipients: ${recipientIds.join(', ')}`);
+
+      if (recipientIds.length === 0) {
+        console.log("No recipients to notify (current user is the only member or no members found)");
+        return;
+      }
+
+      // Determine notification title and message based on type
+      let notificationTitle = "";
+      let notificationMessage = "";
+      
+      switch (notificationType) {
+        case "SPRINT_UPDATED":
+          notificationTitle = "Sprint Updated";
+          notificationMessage = `${currentUserName} updated sprint "${sprint.name}" in calendar${additionalInfo ? `: ${additionalInfo}` : ''}`;
+          break;
+        case "SPRINT_GOAL_UPDATED":
+          notificationTitle = "Sprint Goal Updated";
+          notificationMessage = `${currentUserName} updated the goal for sprint "${sprint.name}" in calendar`;
+          break;
+        case "SPRINT_STARTED":
+          notificationTitle = "Sprint Started";
+          notificationMessage = `${currentUserName} started sprint "${sprint.name}"`;
+          break;
+        case "SPRINT_ENDED":
+          notificationTitle = "Sprint Ended";
+          notificationMessage = `Sprint "${sprint.name}" has ended`;
+          break;
+        case "SPRINT_COMPLETED":
+          notificationTitle = "Sprint Completed";
+          notificationMessage = `${currentUserName} completed sprint "${sprint.name}"`;
+          break;
+        default:
+          notificationTitle = "Sprint Notification";
+          notificationMessage = `Sprint "${sprint.name}" was updated in calendar`;
+      }
+
+      // Create notification data with all required fields
+      const baseNotificationData = {
+        type: notificationType,
+        title: notificationTitle,
+        message: notificationMessage,
+        actorUserId: currentUserId,
+        actorUserName: currentUserName,
+        projectId: validatedProjectId,
+        projectName: projectName,
+        sprintId: validatedSprintId,
+        actionUrl: `/project/calendar?projectId=${validatedProjectId}&highlightSprint=${validatedSprintId}`
+      };
+
+      console.log(`🔍 CALENDAR NOTIFICATION: Base notification data:`, baseNotificationData);
+
+      // Send notifications to all recipients
+      const notificationPromises = recipientIds.map(async (recipientId, index) => {
+        const notificationData = {
+          ...baseNotificationData,
+          recipientUserId: recipientId
+        };
+
+        console.log(`📤 CALENDAR NOTIFICATION: Sending ${notificationType} notification ${index + 1}/${recipientIds.length} to user: ${recipientId}`);
+
+        try {
+          const response = await axios.post('http://localhost:8089/api/notifications/create', notificationData, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Cache-Control': 'no-cache'
+            }
+          });
+          console.log(`✅ CALENDAR NOTIFICATION: Successfully sent to ${recipientId}`);
+          return response;
+        } catch (error) {
+          console.error(`❌ CALENDAR NOTIFICATION: Failed to send to ${recipientId}:`, error);
+          if (axios.isAxiosError(error) && error.response) {
+            console.error(`   Status: ${error.response.status}`);
+            console.error(`   Data:`, error.response.data);
+          }
+          throw error; // Re-throw to be handled by Promise.allSettled
+        }
+      });
+
+      const results = await Promise.allSettled(notificationPromises);
+      const successful = results.filter(r => r.status === 'fulfilled').length;
+      const failed = results.filter(r => r.status === 'rejected').length;
+
+      console.log(`📊 CALENDAR NOTIFICATION: Results - ${successful} successful, ${failed} failed out of ${recipientIds.length} total`);
+
+      if (successful > 0) {
+        console.log(`✅ CALENDAR NOTIFICATION: ${successful} ${notificationType} notifications sent successfully`);
+      }
+      if (failed > 0) {
+        console.warn(`❌ CALENDAR NOTIFICATION: ${failed} notifications failed to send`);
+      }
+
+    } catch (error) {
+      console.error(`❌ CALENDAR NOTIFICATION: Failed to send ${notificationType} notifications:`, error);
+      // Don't fail the main operation if notification fails
+    }
+  };
+
   // Debounced search function với cải thiện logic
   const debouncedSearch = useCallback(
     debounce(async (searchValue: string) => {
@@ -1049,6 +1363,9 @@ export default function CalendarPage() {
     }
 
     try {
+      // Get original sprint for comparison (to detect changes)
+      const originalSprint = sprints.find(s => s.id === updatedSprint.id) || allSprints.find(s => s.id === updatedSprint.id);
+
       const response = await axios.put(`http://localhost:8084/api/sprints/${updatedSprint.id}`, {
         name: updatedSprint.name,
         goal: updatedSprint.goal,
@@ -1072,6 +1389,67 @@ export default function CalendarPage() {
         );
         setAllSprints(updatedAllSprints);
         
+        // Send appropriate notification based on what was changed
+        try {
+          if (originalSprint) {
+            // Check for status changes first (highest priority)
+            if (originalSprint.status !== updatedSprint.status) {
+              console.log(`🔍 CALENDAR: Sprint status changed from "${originalSprint.status}" to "${updatedSprint.status}"`);
+              
+              // Handle specific status change notifications
+              if (originalSprint.status === "NOT_STARTED" && updatedSprint.status === "ACTIVE") {
+                await sendSprintNotificationToMembers("SPRINT_STARTED", updatedSprint);
+              } else if (originalSprint.status === "ACTIVE" && updatedSprint.status === "COMPLETED") {
+                await sendSprintNotificationToMembers("SPRINT_COMPLETED", updatedSprint);
+              } else if (updatedSprint.status === "COMPLETED") {
+                // Any status to COMPLETED
+                await sendSprintNotificationToMembers("SPRINT_COMPLETED", updatedSprint);
+              } else {
+                // Other status changes - send general update
+                await sendSprintNotificationToMembers("SPRINT_UPDATED", updatedSprint, `Status changed to ${updatedSprint.status}`);
+              }
+            }
+            // Check if goal was specifically updated (if no status change)
+            else if (originalSprint.goal !== updatedSprint.goal) {
+              await sendSprintNotificationToMembers(
+                "SPRINT_GOAL_UPDATED", 
+                updatedSprint,
+                updatedSprint.goal || "No goal set"
+              );
+            }
+            // Check for other significant changes (dates, name)
+            else if (
+              originalSprint.name !== updatedSprint.name ||
+              originalSprint.startDate !== updatedSprint.startDate ||
+              originalSprint.endDate !== updatedSprint.endDate
+            ) {
+              // Determine what changed
+              const changes = [];
+              if (originalSprint.name !== updatedSprint.name) changes.push("name");
+              if (originalSprint.startDate !== updatedSprint.startDate) changes.push("start date");
+              if (originalSprint.endDate !== updatedSprint.endDate) changes.push("end date");
+              
+              await sendSprintNotificationToMembers(
+                "SPRINT_UPDATED", 
+                updatedSprint, 
+                `Updated ${changes.join(', ')}`
+              );
+            }
+            // If only minor changes, might skip notification or send general update
+            else {
+              console.log("🔍 CALENDAR: Minor sprint changes detected, sending general update notification");
+              await sendSprintNotificationToMembers("SPRINT_UPDATED", updatedSprint);
+            }
+          } else {
+            // Fallback: send general update notification
+            await sendSprintNotificationToMembers("SPRINT_UPDATED", updatedSprint);
+          }
+        } catch (notificationError) {
+          console.error("Failed to send sprint update notifications:", notificationError);
+          // Don't fail the main operation if notification fails
+          toast.warning("Sprint updated successfully, but notifications may have failed");
+        }
+        
         setShowEditSprintModal(false);
         setEditingSprint(null);
       } else {
@@ -1080,6 +1458,146 @@ export default function CalendarPage() {
     } catch (error) {
       console.error("Error updating sprint:", error);
       toast.error("Failed to update sprint");
+    }
+  };
+
+  // Check for sprint end dates and send notifications
+  const checkSprintEndDates = async () => {
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // Reset time to start of day for accurate comparison
+      
+      for (const sprint of allSprints) {
+        if (sprint.endDate && sprint.status === "ACTIVE") {
+          const endDate = new Date(sprint.endDate);
+          endDate.setHours(0, 0, 0, 0);
+          
+          // Check if sprint ended today
+          if (endDate.getTime() === today.getTime()) {
+            console.log(`📅 CALENDAR: Sprint "${sprint.name}" ended today, sending notifications...`);
+            
+            // Send SPRINT_ENDED notification
+            await sendSprintNotificationToMembers(
+              "SPRINT_ENDED", 
+              sprint, 
+              "Sprint has reached its end date"
+            );
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error checking sprint end dates:", error);
+    }
+  };
+
+  // Auto-check sprint end dates when sprints data loads
+  useEffect(() => {
+    if (allSprints.length > 0) {
+      checkSprintEndDates();
+    }
+  }, [allSprints]);
+
+  // Handle manual sprint start
+  const handleStartSprint = async (sprint: Sprint) => {
+    if (!sprint.id) {
+      toast.error("Sprint ID is required");
+      return;
+    }
+
+    try {
+      const updatedSprint = { ...sprint, status: "ACTIVE" };
+      
+      const response = await axios.put(`http://localhost:8084/api/sprints/${sprint.id}`, {
+        name: sprint.name,
+        goal: sprint.goal,
+        startDate: sprint.startDate,
+        endDate: sprint.endDate,
+        status: "ACTIVE",
+        projectId: projectId
+      });
+
+      if (response.data && response.data.status === "SUCCESS") {
+        toast.success("Sprint started successfully");
+        
+        // Update local state
+        const updatedSprints = sprints.map(s => 
+          s.id === sprint.id ? updatedSprint : s
+        );
+        setSprints(updatedSprints);
+        
+        const updatedAllSprints = allSprints.map(s => 
+          s.id === sprint.id ? updatedSprint : s
+        );
+        setAllSprints(updatedAllSprints);
+        
+        // Send SPRINT_STARTED notification
+        try {
+          await sendSprintNotificationToMembers("SPRINT_STARTED", updatedSprint);
+        } catch (notificationError) {
+          console.error("Failed to send sprint start notifications:", notificationError);
+          toast.warning("Sprint started successfully, but notifications may have failed");
+        }
+        
+        setShowEditSprintModal(false);
+        setEditingSprint(null);
+      } else {
+        toast.error("Failed to start sprint");
+      }
+    } catch (error) {
+      console.error("Error starting sprint:", error);
+      toast.error("Failed to start sprint");
+    }
+  };
+
+  // Handle manual sprint end/completion
+  const handleEndSprint = async (sprint: Sprint) => {
+    if (!sprint.id) {
+      toast.error("Sprint ID is required");
+      return;
+    }
+
+    try {
+      const updatedSprint = { ...sprint, status: "COMPLETED" };
+      
+      const response = await axios.put(`http://localhost:8084/api/sprints/${sprint.id}`, {
+        name: sprint.name,
+        goal: sprint.goal,
+        startDate: sprint.startDate,
+        endDate: sprint.endDate,
+        status: "COMPLETED",
+        projectId: projectId
+      });
+
+      if (response.data && response.data.status === "SUCCESS") {
+        toast.success("Sprint completed successfully");
+        
+        // Update local state
+        const updatedSprints = sprints.map(s => 
+          s.id === sprint.id ? updatedSprint : s
+        );
+        setSprints(updatedSprints);
+        
+        const updatedAllSprints = allSprints.map(s => 
+          s.id === sprint.id ? updatedSprint : s
+        );
+        setAllSprints(updatedAllSprints);
+        
+        // Send SPRINT_COMPLETED notification
+        try {
+          await sendSprintNotificationToMembers("SPRINT_COMPLETED", updatedSprint);
+        } catch (notificationError) {
+          console.error("Failed to send sprint completion notifications:", notificationError);
+          toast.warning("Sprint completed successfully, but notifications may have failed");
+        }
+        
+        setShowEditSprintModal(false);
+        setEditingSprint(null);
+      } else {
+        toast.error("Failed to complete sprint");
+      }
+    } catch (error) {
+      console.error("Error completing sprint:", error);
+      toast.error("Failed to complete sprint");
     }
   };
 
@@ -1150,6 +1668,7 @@ export default function CalendarPage() {
               position={modalPosition} 
               onClose={() => setShowSprintModal(false)}
               onEdit={handleEditSprint}
+              userPermissions={userPermissions}
             />
           )}
           
@@ -1163,7 +1682,10 @@ export default function CalendarPage() {
                 setEditingSprint(null);
               }}
               onSave={handleUpdateSprint}
+              onStartSprint={handleStartSprint}
+              onEndSprint={handleEndSprint}
               projectId={projectId || null}
+              userPermissions={userPermissions}
             />
           )}
         </div>

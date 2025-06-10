@@ -49,6 +49,7 @@ import {
     Pie
 } from 'recharts'
 import { DropdownMenu } from "@/components/ui/dropdown-menu"
+import { toast } from "sonner"
 
 interface Project {
     id: string;
@@ -147,6 +148,7 @@ export default function ProjectSummaryPage() {
     const [isLoadingProjects, setIsLoadingProjects] = useState(false)
     const [recentProjects, setRecentProjects] = useState<string[]>([])
     const [selectedIndex, setSelectedIndex] = useState(-1)
+    const [errorState, setErrorState] = useState<{ type: string; title: string; message: string; showProjectSelector: boolean } | null>(null)
 
     useEffect(() => {
         // Get current user from localStorage with multiple fallbacks
@@ -278,19 +280,74 @@ export default function ProjectSummaryPage() {
     const fetchProjectData = async () => {
         try {
             const response = await axios.get(`http://localhost:8083/api/projects/${projectId}`)
-            setProject(response.data.data || response.data)
-        } catch (error) {
-            console.error("Error fetching project:", error)
-            setProject({
-                id: projectId || '',
-                name: 'Project',
-                key: 'PROJ',
-                description: 'Project Description',
-                projectType: 'Scrum',
-                access: 'Private'
-            })
+            if (response.data?.status === "SUCCESS" && response.data?.data) {
+                setProject(response.data.data)
+            } else {
+                console.error('❌ Failed to fetch project:', response.data);
+                handleProjectNotFound();
+            }
+        } catch (error: any) {
+            console.error('❌ Error fetching project:', error);
+            
+            // Handle different error types gracefully
+            if (axios.isAxiosError(error)) {
+                const status = error.response?.status;
+                
+                if (status === 404) {
+                    console.log('📝 Project not found (404) - showing project selection UI');
+                    handleProjectNotFound();
+                } else if (status === 500) {
+                    console.log('📝 Server error (500) - showing project selection UI');
+                    handleServerError();
+                } else if (status === 403) {
+                    console.log('📝 Access denied (403) - showing project selection UI');
+                    handleAccessDenied();
+                } else {
+                    console.log('📝 Network or other error - showing project selection UI');
+                    handleNetworkError();
+                }
+            } else {
+                console.log('📝 Unknown error - showing project selection UI');
+                handleUnknownError();
+            }
         }
-    }
+    };
+
+    // Handle different error scenarios with appropriate UI
+    const handleProjectNotFound = () => {
+        console.log('📝 Project not found - redirecting to project homescreen');
+        setTimeout(() => {
+            window.location.href = '/project/project_homescreen';
+        }, 1000);
+    };
+
+    const handleServerError = () => {
+        console.log('📝 Server error - redirecting to project homescreen');
+        setTimeout(() => {
+            window.location.href = '/project/project_homescreen';
+        }, 1000);
+    };
+
+    const handleAccessDenied = () => {
+        console.log('📝 Access denied - redirecting to project homescreen');
+        setTimeout(() => {
+            window.location.href = '/project/project_homescreen';
+        }, 1000);
+    };
+
+    const handleNetworkError = () => {
+        console.log('📝 Network error - redirecting to project homescreen');
+        setTimeout(() => {
+            window.location.href = '/project/project_homescreen';
+        }, 1000);
+    };
+
+    const handleUnknownError = () => {
+        console.log('📝 Unknown error - redirecting to project homescreen');
+        setTimeout(() => {
+            window.location.href = '/project/project_homescreen';
+        }, 1000);
+    };
 
     const fetchProjectMembers = async () => {
         try {
@@ -838,6 +895,106 @@ export default function ProjectSummaryPage() {
                             <div className="flex flex-col items-center gap-4">
                                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                                 <p className="text-gray-600">Loading project summary...</p>
+                            </div>
+                        </div>
+                    </main>
+                </div>
+            </div>
+        )
+    }
+
+    // Show error state if there's an error
+    if (errorState) {
+        return (
+            <div className="min-h-screen bg-gray-50 flex">
+                <NavigationProgress />
+                <Sidebar projectId={projectId || undefined} />
+                
+                <div className="flex-1 flex flex-col">
+                    <TopNavigation />
+                    
+                    <main className="flex-1 p-6 overflow-y-auto">
+                        <div className="flex items-center justify-center h-64">
+                            <div className="text-center max-w-lg p-6">
+                                <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center bg-red-100 rounded-full text-red-500">
+                                    {errorState.type === 'not-found' && (
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M10 3H3V10H10V3Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                            <path d="M21 3H14V10H21V3Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                            <path d="M21 14H14V21H21V14Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                            <path d="M10 14H3V21H10V14Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                        </svg>
+                                    )}
+                                    {errorState.type === 'server-error' && (
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M12 8V12M12 16H12.01M22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                        </svg>
+                                    )}
+                                    {(errorState.type === 'access-denied' || errorState.type === 'network-error' || errorState.type === 'unknown-error') && (
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M12 9V13M12 17H12.01M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                        </svg>
+                                    )}
+                                </div>
+                                <h3 className="text-lg font-medium text-gray-900 mb-2">{errorState.title}</h3>
+                                <p className="text-gray-500 mb-4">{errorState.message}</p>
+                                
+                                {errorState.showProjectSelector && (
+                                    <div className="mt-6">
+                                        <div className="mb-4">
+                                            <h4 className="text-sm font-medium text-gray-700 mb-2">Select another project:</h4>
+                                            {userProjects.length > 0 ? (
+                                                <div className="max-h-32 overflow-y-auto bg-white border rounded-md">
+                                                    {userProjects.map((proj) => (
+                                                        <div
+                                                            key={proj.id}
+                                                            className="p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                                                            onClick={() => handleProjectChange(proj)}
+                                                        >
+                                                            <div className="flex items-center">
+                                                                <div className="w-8 h-8 bg-blue-100 rounded flex items-center justify-center text-blue-600 font-semibold mr-3">
+                                                                    {proj.name.substring(0, 2).toUpperCase()}
+                                                                </div>
+                                                                <div>
+                                                                    <div className="font-medium text-sm">{proj.name}</div>
+                                                                    <div className="text-xs text-gray-500">{proj.projectType || 'Software'}</div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <div className="text-center py-4">
+                                                    <p className="text-sm text-gray-500 mb-3">No other projects found</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                        
+                                        <div className="flex gap-2 justify-center">
+                                            <Button 
+                                                className="bg-blue-600 text-white hover:bg-blue-700"
+                                                onClick={() => {
+                                                    window.location.href = '/project/view_all_projects';
+                                                }}
+                                            >
+                                                Browse All Projects
+                                            </Button>
+                                            <Button 
+                                                variant="outline"
+                                                onClick={() => {
+                                                    setErrorState(null);
+                                                    setIsLoading(true);
+                                                    // Retry loading current project
+                                                    if (projectId) {
+                                                        fetchProjectData();
+                                                    }
+                                                }}
+                                            >
+                                                Retry
+                                            </Button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </main>

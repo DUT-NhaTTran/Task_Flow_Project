@@ -4,7 +4,6 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 
-
 public abstract class BaseDAO {
     protected Connection getConnection() throws SQLException {
         return DatabaseConnection.getConnection();
@@ -18,7 +17,6 @@ public abstract class BaseDAO {
         }
     }
 
-
     protected <T> T executeQuery(String query, SQLFunction<PreparedStatement, T> function) throws SQLException {
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(query)) {
@@ -26,11 +24,11 @@ public abstract class BaseDAO {
         }
     }
 
-
     @FunctionalInterface
     public interface SQLConsumer<T> {
         void accept(T t) throws SQLException;
     }
+    
     @FunctionalInterface
     public interface SQLFunction<T, R> {
         R apply(T t) throws SQLException;

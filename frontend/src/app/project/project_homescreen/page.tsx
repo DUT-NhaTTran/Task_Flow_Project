@@ -22,7 +22,15 @@ import { DraggableProjectTaskCard } from "@/components/ui/draggable-project-task
 import { DroppableProjectColumn } from "@/components/ui/droppable-project-column";
 import { useProjectTasks } from "@/hooks/useProjectTasks";
 import { checkAndNotifyOverdueTasks } from "@/utils/taskNotifications";
-import { useUserStorage } from "@/hooks/useUserStorage"; // Add this import
+import { useUserStorage } from "@/hooks/useUserStorage";
+import { 
+  getUserPermissions, 
+  canManageProject, 
+  canDeleteProject, 
+  isProjectOwner,
+  UserPermissions 
+} from "@/utils/permissions";
+import { Edit } from "lucide-react";
 
 // Interface definitions
 interface Project {
@@ -35,7 +43,10 @@ interface Project {
   access?: string;
   createdAt?: string;
   ownerId?: string;
+  ownerName?: string;  // Add owner name
+  scrumMasterId?: string;  // Add scrum master ID
   deadline?: string;
+  deletedAt?: string | null;  // Add deleted_at field
 }
 
 interface Task {
@@ -106,6 +117,7 @@ export default function ProjectBoardPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [latestSprintId, setLatestSprintId] = useState<string | null>(null);
+  const [currentSprint, setCurrentSprint] = useState<Sprint | null>(null);
   const [sprints, setSprints] = useState<SprintOption[]>([]);
   const [projectUsers, setProjectUsers] = useState<ProjectUser[]>([]);
   const [newTasks, setNewTasks] = useState({
@@ -128,6 +140,283 @@ export default function ProjectBoardPage() {
   // Drag and drop state and handlers
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const { updateTaskStatus, loading: apiLoading } = useProjectTasks();
+
+  // Permission state
+  const [userPermissions, setUserPermissions] = useState<UserPermissions | null>(null);
+  const [permissionsLoading, setPermissionsLoading] = useState(true);
+  const [isOwner, setIsOwner] = useState(false);
+  const [canEdit, setCanEdit] = useState(false);
+  const [canDelete, setCanDelete] = useState(false);
+
+  // Error handling and project selection state
+  const [errorState, setErrorState] = useState<{
+    type: string;
+    title: string;
+    message: string;
+    showProjectSelector: boolean;
+  } | null>(null);
+  const [userProjects, setUserProjects] = useState<Project[]>([]);
+  const [loadingProjects, setLoadingProjects] = useState(false);
+
+  // Recent projects tracking
+  const saveRecentProject = (projectData: Project) => {
+    try {
+      const recentProjects = getRecentProjects();
+      const updatedRecent = [
+        projectData,
+        ...recentProjects.filter(p => p.id !== projectData.id)
+      ].slice(0, 5); // Keep only 5 most recent
+      
+      localStorage.setItem('recentProjects', JSON.stringify(updatedRecent));
+      console.log('📝 Saved recent project:', projectData.name);
+    } catch (error) {
+      console.log('📝 Failed to save recent project - ignoring gracefully');
+    }
+  };
+
+  const getRecentProjects = (): Project[] => {
+    try {
+      const stored = localStorage.getItem('recentProjects');
+      return stored ? JSON.parse(stored) : [];
+    } catch (error) {
+      console.log('📝 Failed to get recent projects - returning empty array');
+      return [];
+    }
+  };
+
+  const redirectToMostRecentProject = () => {
+    const recentProjects = getRecentProjects();
+    if (recentProjects.length > 0) {
+      const mostRecent = recentProjects[0];
+      console.log('🔄 Redirecting to most recent project:', mostRecent.name);
+      window.location.href = `/project/project_homescreen?projectId=${mostRecent.id}`;
+    } else {
+      console.log('🔄 No recent projects found, redirecting to projects page');
+      window.location.href = '/project/view_all_projects';
+    }
+  };
+
+  // Fetch project data using the provided API
+  const fetchProject = async (projectId: string) => {
+    try {
+      console.log('🔍 Fetching project data for ID:', projectId);
+      const response = await axios.get(`http://localhost:8083/api/projects/${projectId}`);
+      
+      if (response.data?.status === "SUCCESS" && response.data?.data) {
+        const projectData = response.data.data;
+        
+        // Check if project is deleted (deletedAt is not null)
+        if (projectData.deletedAt && projectData.deletedAt !== null) {
+          console.log('🗑️ Project is deleted, showing project selector:', projectData.deletedAt);
+          handleProjectDeleted(projectData);
+          return null;
+        }
+        
+        setProject(projectData);
+        
+        // Save to recent projects only if not deleted
+        saveRecentProject(projectData);
+        
+        console.log('✅ Project data loaded:', projectData);
+        return projectData;
+      } else {
+        console.log('📝 Project data not found - redirecting to recent project');
+        setTimeout(() => redirectToMostRecentProject(), 2000);
+        handleProjectNotFound();
+        return null;
+      }
+    } catch (error: any) {
+      console.log('📝 Request failed - redirecting to recent project');
+      
+      // Handle different error types gracefully without exposing technical details
+      if (axios.isAxiosError(error)) {
+        const status = error.response?.status;
+        
+        // For any error, show friendly UI briefly then redirect to recent project
+        if (status === 404) {
+          console.log('📝 Project not found (404) - will redirect to recent project');
+          handleProjectNotFound();
+        } else if (status === 500) {
+          console.log('📝 Server error (500) - will redirect to recent project');
+          handleServerError();
+        } else if (status === 403) {
+          console.log('📝 Access denied (403) - will redirect to recent project');
+          handleAccessDenied();
+        } else if (status === 400) {
+          console.log('📝 Bad request (400) - will redirect to recent project');
+          handleNetworkError();
+        } else {
+          console.log('📝 Network or other error - will redirect to recent project');
+          handleNetworkError();
+        }
+      } else {
+        console.log('📝 Unknown error - will redirect to recent project');
+        handleUnknownError();
+      }
+      
+      // Auto redirect to recent project after showing error briefly
+      setTimeout(() => redirectToMostRecentProject(), 2000);
+      
+      return null;
+    }
+  };
+
+  // Handle different error scenarios with appropriate UI
+  const handleProjectNotFound = () => {
+    console.log('📝 Project not found - redirecting to project homescreen');
+    setTimeout(() => {
+      window.location.href = '/project/project_homescreen';
+    }, 1000);
+  };
+
+  const handleServerError = () => {
+    console.log('📝 Server error - redirecting to project homescreen');
+    setTimeout(() => {
+      window.location.href = '/project/project_homescreen';
+    }, 1000);
+  };
+
+  const handleAccessDenied = () => {
+    console.log('📝 Access denied - redirecting to project homescreen');
+    setTimeout(() => {
+      window.location.href = '/project/project_homescreen';
+    }, 1000);
+  };
+
+  const handleNetworkError = () => {
+    console.log('📝 Network error - redirecting to project homescreen');
+    setTimeout(() => {
+      window.location.href = '/project/project_homescreen';
+    }, 1000);
+  };
+
+  const handleUnknownError = () => {
+    console.log('📝 Unknown error - redirecting to project homescreen');
+    setTimeout(() => {
+      window.location.href = '/project/project_homescreen';
+    }, 1000);
+  };
+
+  // Handle deleted projects
+  const handleProjectDeleted = (projectData: Project) => {
+    console.log('📝 Project deleted - redirecting to project homescreen');
+    setTimeout(() => {
+      window.location.href = '/project/project_homescreen';
+    }, 1000);
+  };
+
+  // Fetch user's projects for project selector
+  const fetchUserProjects = async () => {
+    if (!userData?.account?.id && !userData?.profile?.id) {
+      console.log('No user ID available for fetching projects');
+      return;
+    }
+
+    setLoadingProjects(true);
+    try {
+      const userId = userData?.account?.id || userData?.profile?.id;
+      console.log('🔍 Fetching user projects for:', userId);
+      
+      const response = await axios.get(`http://localhost:8083/api/projects/search/member?keyword=&userId=${userId}`);
+      
+      let projectsData = [];
+      if (response.data?.status === "SUCCESS" && response.data?.data) {
+        projectsData = response.data.data;
+      } else if (Array.isArray(response.data?.data)) {
+        projectsData = response.data.data;
+      } else if (Array.isArray(response.data)) {
+        projectsData = response.data;
+      }
+      
+      // Merge with recent projects for better options and filter out deleted projects
+      const recentProjects = getRecentProjects().filter(p => !p.deletedAt);
+      const filteredProjectsData = projectsData.filter((p: any) => !p.deletedAt);
+      const combinedProjects = [
+        ...recentProjects,
+        ...filteredProjectsData.filter((p: any) => !recentProjects.some((r: Project) => r.id === p.id))
+      ];
+      
+      setUserProjects(combinedProjects);
+      console.log('✅ User projects loaded:', combinedProjects.length);
+    } catch (error) {
+      console.log('📝 Failed to fetch user projects - using recent projects only');
+      setUserProjects(getRecentProjects());
+    } finally {
+      setLoadingProjects(false);
+    }
+  };
+
+  // Handle project selection from error UI
+  const handleSelectProjectFromError = (selectedProjectId: string) => {
+    setErrorState(null);
+    router.push(`/project/project_homescreen?projectId=${selectedProjectId}`);
+  };
+
+  // Fetch user permissions for the project
+  const fetchUserPermissions = async (userId: string, projectId: string) => {
+    try {
+      console.log('🔐 Fetching user permissions for:', { userId, projectId });
+      const permissions = await getUserPermissions(userId, projectId);
+      
+      if (permissions) {
+        setUserPermissions(permissions);
+        setIsOwner(isProjectOwner(permissions));
+        setCanEdit(canManageProject(permissions));
+        setCanDelete(canDeleteProject(permissions));
+        
+        console.log('🔐 User permissions loaded:', {
+          role: permissions.role,
+          isOwner: isProjectOwner(permissions),
+          canEdit: canManageProject(permissions),
+          canDelete: canDeleteProject(permissions)
+        });
+      }
+    } catch (error) {
+      console.log('📝 Error fetching permissions - handling gracefully:', error);
+      setUserPermissions(null);
+      setIsOwner(false);
+      setCanEdit(false);
+      setCanDelete(false);
+    } finally {
+      setPermissionsLoading(false);
+    }
+  };
+
+  // Handle project deletion (only for owners)
+  const handleDeleteProject = async () => {
+    if (!project || !projectId || !canDelete) {
+      toast.error("You don't have permission to delete this project");
+      return;
+    }
+
+    try {
+      console.log('🗑️ Deleting project:', projectId);
+      
+      // First, remove the current project from recent projects and localStorage
+      const recentProjects = getRecentProjects().filter(p => p.id !== projectId);
+      localStorage.setItem('recentProjects', JSON.stringify(recentProjects));
+      
+      const response = await axios.delete(`http://localhost:8083/api/projects/${projectId}`);
+      
+      if (response.data?.status === "SUCCESS") {
+        toast.success("Project deleted successfully");
+        
+        // Clear current project from navigation context
+        setCurrentProjectId('');
+        
+        // Use window.location.href for guaranteed redirect with small delay
+        console.log('🔄 Redirecting to project homescreen for user to select project');
+        setTimeout(() => {
+          window.location.href = '/project/project_homescreen';
+        }, 1000); // 1 second delay to show notification
+      } else {
+        toast.error("Failed to delete project");
+      }
+    } catch (error) {
+      console.log('📝 Error deleting project - handling gracefully:', error);
+      toast.error("Failed to delete project");
+    }
+  };
 
   const handleDragStart = (event: DragStartEvent) => {
     const task = event.active.data.current?.task as Task;
@@ -194,7 +483,7 @@ export default function ProjectBoardPage() {
         throw new Error('Failed to update task status');
       }
     } catch (error) {
-      console.error('❌ DRAG&DROP: Failed to update task:', error);
+      console.log('📝 Failed to update task via drag and drop - handling gracefully:', error);
       
       // Revert optimistic update on failure
       setTasks(prev => prev.map(t => 
@@ -400,11 +689,7 @@ export default function ProjectBoardPage() {
           console.log(`   Response data:`, response.data);
           return { success: true, recipient: roleDisplay, userId: notification.recipientUserId };
         } catch (error) {
-          console.error(`❌ DRAG&DROP: Failed to send notification ${index + 1} to ${roleDisplay}:`, error);
-          if (axios.isAxiosError(error) && error.response) {
-            console.error(`   Error status: ${error.response.status}`);
-            console.error(`   Error data:`, error.response.data);
-          }
+          console.log(`📝 Failed to send notification ${index + 1} to ${roleDisplay} - handling gracefully:`, error);
           return { success: false, recipient: roleDisplay, userId: notification.recipientUserId, error };
         }
       });
@@ -634,7 +919,7 @@ export default function ProjectBoardPage() {
           console.log(`✅ TASK NOTIFICATIONS: ${notificationType} notification ${index + 1} sent successfully to ${roleDisplay}`);
           return { success: true, recipient: roleDisplay, userId: notification.recipientUserId };
         } catch (error) {
-          console.error(`❌ TASK NOTIFICATIONS: Failed to send ${notificationType} notification ${index + 1} to ${roleDisplay}:`, error);
+          console.log(`📝 Failed to send ${notificationType} notification ${index + 1} to ${roleDisplay} - handling gracefully:`, error);
           return { success: false, recipient: roleDisplay, userId: notification.recipientUserId, error };
         }
       });
@@ -1061,11 +1346,12 @@ export default function ProjectBoardPage() {
     axios
       .get(`http://localhost:8084/api/sprints/project/${projectId}/active`)
       .then((res) => {
-        const sprint = res.data;
-        console.log("Active sprint:", sprint);
+        // Handle new API response format with ResponseDataAPI
+        const sprint = res.data?.data;
+        console.log("Active sprint response:", res.data);
 
         if (!sprint || !sprint.id) {
-          console.log("No active sprint found or invalid sprint data");
+          console.log("No active sprint found, checking other sprints...");
           fetchLatestNonCompletedSprint();
           return;
         }
@@ -1073,6 +1359,7 @@ export default function ProjectBoardPage() {
         const sprintId = sprint.id;
         console.log("Using active sprint ID:", sprintId);
         setLatestSprintId(sprintId);
+        setCurrentSprint(sprint); // Store the complete sprint info
 
         fetchTasksForLatestSprint(projectId, sprintId);
       })
@@ -1094,48 +1381,93 @@ export default function ProjectBoardPage() {
         const sprintsData = res.data?.data || [];
         console.log("All sprints:", sprintsData);
         
-        // Tìm sprint chưa hoàn thành
-        const nonCompletedSprints = sprintsData.filter(
-          (sprint: any) => sprint.status === "NOT_STARTED"
+        // 🎯 Priority 1: Find ACTIVE sprints first (highest priority)
+        const activeSprints = sprintsData.filter(
+          (sprint: any) => sprint.status === "ACTIVE"
         );
         
-        if (nonCompletedSprints.length > 0) {
-          nonCompletedSprints.sort((a: any, b: any) => 
+        if (activeSprints.length > 0) {
+          // Sort by most recent start date if multiple active sprints
+          activeSprints.sort((a: any, b: any) => 
             new Date(b.startDate).getTime() - new Date(a.startDate).getTime()
           );
           
-          const latestSprint = nonCompletedSprints[0];
-          console.log("Using latest non-completed sprint:", latestSprint);
+          const activeSprint = activeSprints[0];
+          console.log("🚀 Using ACTIVE sprint:", activeSprint);
           
-          if (latestSprint && latestSprint.id) {
-            setLatestSprintId(latestSprint.id);
-            fetchTasksForLatestSprint(projectId, latestSprint.id);
+          if (activeSprint && activeSprint.id) {
+            setLatestSprintId(activeSprint.id);
+            setCurrentSprint(activeSprint); // Store complete sprint info
+            fetchTasksForLatestSprint(projectId, activeSprint.id);
+            
+            // Show informative message about active sprint
+            toast.success("🚀 Active Sprint", {
+              description: `Viewing "${activeSprint.name}" - currently in progress`
+            });
             return;
           }
         }
         
-        // Nếu không tìm thấy sprint chưa hoàn thành, tìm sprint gần đây nhất theo ngày
+        // 🎯 Priority 2: Find NOT_STARTED sprints (ready to start)
+        const notStartedSprints = sprintsData.filter(
+          (sprint: any) => sprint.status === "NOT_STARTED"
+        );
+        
+        if (notStartedSprints.length > 0) {
+          notStartedSprints.sort((a: any, b: any) => 
+            new Date(b.startDate).getTime() - new Date(a.startDate).getTime()
+          );
+          
+          const latestSprint = notStartedSprints[0];
+          console.log("📅 Using latest NOT_STARTED sprint:", latestSprint);
+          
+          if (latestSprint && latestSprint.id) {
+            setLatestSprintId(latestSprint.id);
+            setCurrentSprint(latestSprint); // Store complete sprint info
+            fetchTasksForLatestSprint(projectId, latestSprint.id);
+            
+            // Show informative message about not started sprint
+            toast.info("📅 Ready to Start", {
+              description: `Sprint "${latestSprint.name}" is ready to begin. Start it from the Backlog.`
+            });
+            return;
+          }
+        }
+        
+        // 🎯 Priority 3: Fall back to most recent sprint (any status)
         if (sprintsData.length > 0) {
-          // Sắp xếp tất cả sprint theo ngày gần nhất
           sprintsData.sort((a: any, b: any) => 
             new Date(b.startDate).getTime() - new Date(a.startDate).getTime()
           );
           
           const mostRecentSprint = sprintsData[0];
-          console.log("Using most recent sprint:", mostRecentSprint);
+          console.log("📋 Using most recent sprint:", mostRecentSprint);
           
           if (mostRecentSprint && mostRecentSprint.id) {
             setLatestSprintId(mostRecentSprint.id);
+            setCurrentSprint(mostRecentSprint); // Store complete sprint info
             fetchTasksForLatestSprint(projectId, mostRecentSprint.id);
+            
+            // Show informative message based on sprint status
+            if (mostRecentSprint.status === "COMPLETED") {
+              toast.info("📋 Completed Sprint", {
+                description: `Sprint "${mostRecentSprint.name}" is completed. Consider creating a new sprint for new tasks.`
+              });
+            } else if (mostRecentSprint.status === "ARCHIVED") {
+              toast.info("📦 Archived Sprint", {
+                description: `Viewing archived sprint "${mostRecentSprint.name}". Create a new sprint for active development.`
+              });
+            }
             return;
           }
         }
         
-        console.log("No sprints found at all. Showing empty board.");
+        // 🎯 No sprints at all - show empty state with helpful guidance
+        console.log("No sprints found at all. Showing empty board with guidance.");
         setTasks([]);
         setLoading(false);
-        toast.info("No active sprint found. Board is empty.", {
-          description: "You can create tasks that will be added to the backlog."
+        toast.info("🚀 Welcome to your project board!", {
+          description: "No sprints found. Go to Backlog to create your first sprint and start organizing tasks."
         });
       })
       .catch((err) => {
@@ -1325,24 +1657,10 @@ export default function ProjectBoardPage() {
         }
       }
     } catch (err) {
-      console.error("❌ Lỗi khi tạo task:", err);
+      console.log("📝 Error creating task - handling gracefully:", err);
       
-      // Provide more specific error messages
-      if (axios.isAxiosError(err)) {
-        if (err.response?.status === 400) {
-          toast.error("Invalid task data. Please check your input.");
-        } else if (err.response?.status === 401) {
-          toast.error("Authentication required. Please login again.");
-        } else if (err.response?.status === 403) {
-          toast.error("You don't have permission to create tasks in this project.");
-        } else if (err.response?.status === 500) {
-          toast.error("Server error. Please try again later.");
-        } else {
-          toast.error(`Failed to create task: ${err.response?.status || 'Network error'}`);
-        }
-      } else {
-        toast.error("Failed to create task");
-      }
+      // Don't show technical error details to users
+      toast.error("Failed to create task. Please try again.");
       
       // Restore input value on error
       setNewTasks((prev) => ({ ...prev, [status]: title }));
@@ -1392,8 +1710,8 @@ export default function ProjectBoardPage() {
         }, 2000);
       }
     } catch (err) {
-      console.error("❌ Lỗi khi cập nhật task:", err);
-      toast.error("Failed to update task");
+      console.log("📝 Error updating task - handling gracefully:", err);
+      toast.error("Failed to update task. Please try again.");
     }
   };
 
@@ -1915,6 +2233,7 @@ export default function ProjectBoardPage() {
                 previousAssignee: previousAssigneeId
               });
               
+              // Standard payload format - only essential fields
               const notificationData = {
                 type: isReassignment ? "TASK_REASSIGNED" : "TASK_ASSIGNED",
                 title: isReassignment ? "Task reassigned" : "Task assigned",
@@ -1923,11 +2242,11 @@ export default function ProjectBoardPage() {
                 actorUserId: currentUserId,
                 actorUserName: currentUserName,
                 projectId: task.projectId || projectId,
-                taskId: task.id,
-                actionUrl: `/project/board?projectId=${task.projectId || projectId}&taskId=${task.id}`
+                projectName: project?.name || "Unknown Project",
+                taskId: task.id
               };
               
-              console.log("📤 Notification data to be sent:", notificationData);
+              console.log("📤 Standard notification data to be sent:", notificationData);
               
               try {
                 const notificationResponse = await axios.post(
@@ -2328,6 +2647,58 @@ export default function ProjectBoardPage() {
     }
   }, [projectId, project]);
 
+  // Main useEffect to fetch project data and permissions
+  useEffect(() => {
+    const loadProjectData = async () => {
+      if (!projectId) {
+        setLoading(false);
+        return;
+      }
+
+      if (!userData?.account?.id) {
+        console.log('⏳ Waiting for user data...');
+        return;
+      }
+
+      setLoading(true);
+      console.log('🚀 Loading project data for:', projectId);
+
+      try {
+        // Fetch project data and permissions in parallel
+        const [projectData] = await Promise.all([
+          fetchProject(projectId),
+          fetchUserPermissions(userData.account.id, projectId)
+        ]);
+
+        if (projectData) {
+          // Fetch additional data only if project is loaded
+          fetchLatestNonCompletedSprint();
+        }
+      } catch (error) {
+        console.error('❌ Error loading project data:', error);
+        toast.error('Failed to load project data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadProjectData();
+  }, [projectId, userData?.account?.id]);
+
+  // Fetch user projects when error state shows project selector OR when no projectId
+  useEffect(() => {
+    if ((errorState?.showProjectSelector || !projectId) && !loadingProjects && userProjects.length === 0 && userData?.account?.id) {
+      fetchUserProjects();
+    }
+  }, [errorState?.showProjectSelector, projectId, loadingProjects, userProjects.length, userData?.account?.id]);
+
+  // Add mounted state to fix hydration mismatch
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   return (
     <div className="flex h-screen bg-gray-50">
       <NavigationProgress />
@@ -2340,10 +2711,73 @@ export default function ProjectBoardPage() {
               <h1 className="text-2xl font-bold">
                 {project?.name || "Project"} Board
               </h1>
-              <p className="text-sm text-gray-500">
-                {latestSprintId ? (
+              <div className="text-sm text-gray-500">
+                {latestSprintId && currentSprint ? (
                   <>
-                    Active sprint: {sprints.find(s => s.id === latestSprintId)?.name || `Sprint #${latestSprintId.substring(0, 4)}`}
+                    {(() => {
+                      const sprintName = currentSprint.name || `Sprint #${latestSprintId.substring(0, 4)}`;
+                      const status = currentSprint.status;
+                      
+                      // Get appropriate styling based on sprint status
+                      const getSprintStatusStyle = () => {
+                        switch (status) {
+                          case "ACTIVE":
+                            return {
+                              textColor: "text-green-600",
+                              bgColor: "bg-green-50",
+                              borderColor: "border-green-200",
+                              icon: "🚀",
+                              label: "Active Sprint"
+                            };
+                          case "NOT_STARTED":
+                            return {
+                              textColor: "text-blue-600", 
+                              bgColor: "bg-blue-50",
+                              borderColor: "border-blue-200",
+                              icon: "📅",
+                              label: "Ready to Start"
+                            };
+                          case "COMPLETED":
+                            return {
+                              textColor: "text-gray-600",
+                              bgColor: "bg-gray-50", 
+                              borderColor: "border-gray-200",
+                              icon: "✅",
+                              label: "Completed"
+                            };
+                          case "ARCHIVED":
+                            return {
+                              textColor: "text-purple-600",
+                              bgColor: "bg-purple-50",
+                              borderColor: "border-purple-200", 
+                              icon: "📦",
+                              label: "Archived"
+                            };
+                          default:
+                            return {
+                              textColor: "text-gray-600",
+                              bgColor: "bg-gray-50",
+                              borderColor: "border-gray-200",
+                              icon: "📋",
+                              label: "Sprint"
+                            };
+                        }
+                      };
+                      
+                      const style = getSprintStatusStyle();
+                      
+                      return (
+                        <div className={`inline-flex items-center px-3 py-1.5 rounded-lg border ${style.bgColor} ${style.borderColor}`}>
+                          <span className="mr-2">{style.icon}</span>
+                          <span className={`font-medium ${style.textColor}`}>
+                            {style.label}: {sprintName}
+                          </span>
+                          {status === "ACTIVE" && (
+                            <span className="ml-2 w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </>
                 ) : (
                   <span className="flex items-center text-amber-600">
@@ -2351,9 +2785,74 @@ export default function ProjectBoardPage() {
                       <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                     </svg>
                     No active sprint found
+                    <button 
+                      onClick={() => window.location.href = `/project/backlog?projectId=${projectId}`}
+                      className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded hover:bg-amber-200 transition-colors"
+                    >
+                      Create Sprint
+                    </button>
                   </span>
                 )}
-              </p>
+              </div>
+              
+              {/* Project info and owner controls */}
+              {project && (
+                <div className="mt-2 flex items-center gap-4">
+                  {/* Project type and access info */}
+                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                    <span className="bg-gray-100 px-2 py-1 rounded">{project.projectType || 'Software'}</span>
+                    <span className="bg-gray-100 px-2 py-1 rounded">{project.access || 'Private'}</span>
+                    {project.ownerName && (
+                      <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded">
+                        Owner: {project.ownerName}
+                      </span>
+                    )}
+                  </div>
+                  
+                  {/* Owner/Admin controls */}
+                  {!permissionsLoading && (isOwner || canEdit) && (
+                    <div className="flex items-center gap-2">
+                      {canEdit && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            // Navigate to project settings/edit page
+                            router.push(`/project/settings?projectId=${projectId}`);
+                          }}
+                          className="text-xs"
+                        >
+                          <Edit className="w-3 h-3 mr-1" />
+                          Edit Project
+                        </Button>
+                      )}
+                      
+                      {canDelete && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            // Show delete confirmation
+                            if (confirm(`Are you sure you want to delete project "${project.name}"? This action cannot be undone.`)) {
+                              handleDeleteProject();
+                            }
+                          }}
+                          className="text-xs text-red-600 hover:text-red-700 border-red-300 hover:border-red-400"
+                        >
+                          Delete Project
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* Show role for non-owners */}
+                  {!permissionsLoading && userPermissions && !isOwner && (
+                    <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                      Role: {userPermissions.role.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <div className="flex gap-2 items-center">
               <div ref={searchRef} className="relative">
@@ -2460,42 +2959,90 @@ export default function ProjectBoardPage() {
           </div>
 
           {!projectId ? (
-            <div className="flex items-center justify-center h-64 bg-gray-50 border border-gray-200 rounded-md">
-              <div className="text-center max-w-md p-6">
-                <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center bg-gray-200 rounded-full text-gray-400">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M12 4V4.01M12 8V20M4.93 10C4.97 7.57 6.18 6.63 8.83 6.5H15.17C17.8 6.5 19.03 7.57 19.07 10C19.11 12.43 17.89 13.5 15.17 13.5H8.83C6.17 13.5 4.96 14.43 4.93 16.86C4.9 19.29 6.11 20.36 8.83 20.36H15.17C17.84 20.36 19.1 19.29 19.07 16.86" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <div className="flex items-center justify-center min-h-[60vh] bg-gray-50 border border-gray-200 rounded-lg mx-4">
+              <div className="text-center max-w-lg p-8 bg-white rounded-lg shadow-sm border border-gray-100">
+                <div className="w-20 h-20 mx-auto mb-6 flex items-center justify-center bg-blue-50 rounded-full text-blue-500">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M9 12L11 14L15 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                 </div>
-                <h3 className="text-lg font-medium text-gray-900 mb-1">No project selected</h3>
-                <p className="text-gray-500 mb-4">Please select a project from the search box or sidebar to view its board.</p>
-                <Button 
-                  className="bg-blue-600 text-white hover:bg-blue-700"
-                  onClick={() => window.location.href = '/project/all_projects'}
-                >
-                  Browse Projects
-                </Button>
+                <h3 className="text-xl font-semibold text-gray-900 mb-3">Select a Project</h3>
+                <p className="text-gray-600 mb-6 leading-relaxed">Choose a project from your recent projects or browse all available projects to continue.</p>
+                
+                <div className="mt-6">
+                  <div className="mb-6">
+                    <h4 className="text-sm font-medium text-gray-700 mb-3">Your projects:</h4>
+                    {loadingProjects ? (
+                      <div className="flex items-center justify-center py-6">
+                        <div className="animate-spin h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full mr-3"></div>
+                        <span className="text-sm text-gray-500">Loading your projects...</span>
+                      </div>
+                    ) : userProjects.length > 0 ? (
+                      <div className="max-h-48 overflow-y-auto bg-gray-50 border border-gray-200 rounded-lg">
+                        {userProjects.map((proj, index) => {
+                          const isRecent = isMounted && getRecentProjects().some(r => r.id === proj.id);
+                          return (
+                            <div
+                              key={proj.id}
+                              className="p-3 hover:bg-blue-50 cursor-pointer border-b border-gray-200 last:border-b-0 transition-colors duration-150"
+                              onClick={() => router.push(`/project/project_homescreen?projectId=${proj.id}`)}
+                            >
+                              <div className="flex items-center">
+                                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center text-blue-600 font-semibold mr-3 text-sm">
+                                  {proj.name.substring(0, 2).toUpperCase()}
+                                </div>
+                                <div className="text-left flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <div className="font-medium text-sm text-gray-900">{proj.name}</div>
+                                    {isRecent && (
+                                      <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
+                                        Recent
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-xs text-gray-500">{proj.projectType || 'Software'}</div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="text-center py-6 bg-gray-50 rounded-lg border border-gray-200">
+                        <p className="text-sm text-gray-500">No projects found</p>
+                        <p className="text-xs text-gray-400 mt-1">You may need to create a new project</p>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="flex gap-3 justify-center">
+                    {isMounted && getRecentProjects().length > 0 && (
+                      <Button 
+                        className="bg-green-600 text-white hover:bg-green-700 px-6 py-2 text-sm font-medium"
+                        onClick={() => redirectToMostRecentProject()}
+                      >
+                        Go to Recent Project
+                      </Button>
+                    )}
+                    <Button 
+                      className="bg-blue-600 text-white hover:bg-blue-700 px-6 py-2 text-sm font-medium"
+                      onClick={() => {
+                        window.location.href = '/project/view_all_projects';
+                      }}
+                    >
+                      Browse All Projects
+                    </Button>
+                  </div>
+                </div>
               </div>
             </div>
           ) : !project ? (
-            <div className="flex items-center justify-center h-64 bg-gray-50 border border-gray-200 rounded-md">
-              <div className="text-center max-w-md p-6">
-                <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center bg-gray-200 rounded-full text-gray-400">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M10 3H3V10H10V3Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M21 3H14V10H21V3Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M21 14H14V21H21V14Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M10 14H3V21H10V14Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </div>
-                <h3 className="text-lg font-medium text-gray-900 mb-1">Project not found</h3>
-                <p className="text-gray-500 mb-4">The project with ID {projectId} could not be found or you don't have access to it.</p>
-                <Button 
-                  className="bg-blue-600 text-white hover:bg-blue-700"
-                  onClick={() => window.location.href = '/project/all_projects'}
-                >
-                  Browse Projects
-                </Button>
+            // Loading state when no project
+            <div className="flex items-center justify-center h-64">
+              <div className="flex items-center space-x-2">
+                <div className="animate-spin h-6 w-6 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+                <span className="text-gray-600">Loading project...</span>
               </div>
             </div>
           ) : (

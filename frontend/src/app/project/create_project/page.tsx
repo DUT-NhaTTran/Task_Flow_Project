@@ -81,6 +81,13 @@ export default function CreateProjectPage() {
     
     const router = useRouter();
 
+    // ✅ Get tomorrow's date in YYYY-MM-DD format
+    const getTomorrowDate = () => {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        return tomorrow.toISOString().split('T')[0];
+    };
+
     // ✅ Simplified useEffect with UserContext
     useEffect(() => {
         if (!userLoading && currentUser) {
@@ -142,6 +149,7 @@ export default function CreateProjectPage() {
             const ownerName = currentUser?.username || 'Project Owner';
 
             const invitationPromises = selectedUsers.map(async (user) => {
+                // Standard payload format - only essential fields
                 const notificationData = {
                     type: 'PROJECT_INVITE',
                     title: 'Project Invitation',
@@ -151,10 +159,10 @@ export default function CreateProjectPage() {
                     actorUserName: ownerName,
                     projectId: projectId,
                     projectName: projectName,
-                    actionUrl: `/project/invitations?projectId=${projectId}`
+                    taskId: null // No task associated with project invitation
                 };
 
-                console.log(`📤 PROJECT: Sending invitation to ${user.username}:`, notificationData);
+                console.log(`📤 PROJECT: Sending standard invitation to ${user.username}:`, notificationData);
                 return axios.post('http://localhost:8089/api/notifications/create', notificationData);
             });
 
@@ -330,7 +338,12 @@ export default function CreateProjectPage() {
                             <label className="block text-sm font-semibold mb-1">
                                 Deadline <span className="text-red-500">*</span>
                             </label>
-                            <Input type="date" value={deadline} onChange={e => setDeadline(e.target.value)} />
+                            <Input 
+                                type="date" 
+                                value={deadline} 
+                                onChange={e => setDeadline(e.target.value)}
+                                min={getTomorrowDate()}
+                            />
                         </div>
                         
                         {/* ✅ User Invitation Section */}

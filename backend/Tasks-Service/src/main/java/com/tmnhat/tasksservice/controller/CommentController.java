@@ -1,6 +1,5 @@
 package com.tmnhat.tasksservice.controller;
 
-import com.tmnhat.common.client.NotificationClient;
 import com.tmnhat.common.payload.ResponseDataAPI;
 import com.tmnhat.tasksservice.model.Comment;
 import com.tmnhat.tasksservice.model.Tasks;
@@ -9,10 +8,10 @@ import com.tmnhat.tasksservice.service.TaskService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.client.RestTemplate;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/comments")
@@ -24,13 +23,10 @@ public class CommentController {
     
     @Autowired
     private TaskService taskService;
-    
-    @Autowired
-    private NotificationClient notificationClient;
-    
+
     // Get all comments for a task
     @GetMapping("/task/{taskId}")
-    public ResponseEntity<ResponseDataAPI> getCommentsByTask(@PathVariable String taskId) {
+    public ResponseEntity<ResponseDataAPI> getCommentsByTask(@PathVariable UUID taskId) {
         try {
             List<Comment> comments = commentService.getCommentsByTaskId(taskId);
             return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(comments));
@@ -41,37 +37,66 @@ public class CommentController {
     
     // Add new comment
     @PostMapping
-    public ResponseEntity<ResponseDataAPI> addComment(@RequestBody AddCommentRequest request) {
+    public ResponseEntity<ResponseDataAPI> addComment(@RequestBody Map<String, Object> request) {
         try {
-            Comment comment = commentService.addComment(
-                request.getTaskId(),
-                request.getUserId(),
-                request.getContent()
-            );
+            // Extract and validate required fields
+            Object taskIdObj = request.get("taskId");
+            String userId = (String) request.get("userId");
+            String content = (String) request.get("content");
             
-            // Send notification about new comment
-            sendCommentNotification(request.getTaskId(), request.getUserId(), comment.getId());
+            if (taskIdObj == null || userId == null || content == null) {
+                return ResponseEntity.badRequest().body(ResponseDataAPI.error("taskId, userId, and content are required"));
+            }
             
-            return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(comment));
+            // Convert taskId to UUID
+            UUID taskId;
+            try {
+                if (taskIdObj instanceof String) {
+                    taskId = UUID.fromString((String) taskIdObj);
+                } else if (taskIdObj instanceof UUID) {
+                    taskId = (UUID) taskIdObj;
+                } else {
+                    return ResponseEntity.badRequest().body(ResponseDataAPI.error("Invalid taskId format. Must be a valid UUID."));
+                }
+            } catch (IllegalArgumentException e) {
+                return ResponseEntity.badRequest().body(ResponseDataAPI.error("Invalid taskId format. Must be a valid UUID."));
+            }
+            
+            // Validate that the task exists
+            Tasks task = taskService.getTaskById(taskId);
+            if (task == null) {
+                return ResponseEntity.badRequest().body(ResponseDataAPI.error("Task not found with ID: " + taskId));
+            }
+            
+            // Add the comment
+            Comment newComment = commentService.addComment(taskId, userId, content);
+            
+            // NOTE: Removed notification logic - frontend will handle this
+            System.out.println("🔄 New comment added to task: " + taskId + " - Frontend should handle notification");
+            
+            return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(newComment));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(ResponseDataAPI.error("Error adding comment: " + e.getMessage()));
         }
     }
     
-    // Add reply to comment
-    @PostMapping("/{commentId}/replies")
+    // Add reply to a comment
+    @PostMapping("/{commentId}/reply")
     public ResponseEntity<ResponseDataAPI> addReply(
-            @PathVariable Long commentId, 
-            @RequestBody AddReplyRequest request) {
+            @PathVariable Long commentId,
+            @RequestBody Map<String, String> request) {
         try {
-            Comment reply = commentService.addReply(
-                commentId,
-                request.getUserId(),
-                request.getContent()
-            );
+            String userId = request.get("userId");
+            String content = request.get("content");
             
-            // Send notification about comment reply
-            sendCommentReplyNotification(reply.getTaskId(), request.getUserId(), reply.getId(), commentId);
+            if (userId == null || content == null) {
+                return ResponseEntity.badRequest().body(ResponseDataAPI.error("userId and content are required"));
+            }
+            
+            Comment reply = commentService.addReply(commentId, userId, content);
+            
+            // NOTE: Removed notification logic - frontend will handle this
+            System.out.println("🔄 New reply added to comment: " + commentId + " - Frontend should handle notification");
             
             return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(reply));
         } catch (Exception e) {
@@ -83,13 +108,16 @@ public class CommentController {
     @PutMapping("/{commentId}")
     public ResponseEntity<ResponseDataAPI> updateComment(
             @PathVariable Long commentId,
-            @RequestBody UpdateCommentRequest request) {
+            @RequestBody Map<String, String> request) {
         try {
-            Comment updatedComment = commentService.updateComment(
-                commentId,
-                request.getUserId(),
-                request.getContent()
-            );
+            String userId = request.get("userId");
+            String newContent = request.get("content");
+            
+            if (userId == null || newContent == null) {
+                return ResponseEntity.badRequest().body(ResponseDataAPI.error("userId and content are required"));
+            }
+            
+            Comment updatedComment = commentService.updateComment(commentId, userId, newContent);
             return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(updatedComment));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(ResponseDataAPI.error("Error updating comment: " + e.getMessage()));
@@ -103,205 +131,20 @@ public class CommentController {
             @RequestParam String userId) {
         try {
             commentService.deleteComment(commentId, userId);
-            return ResponseEntity.ok(ResponseDataAPI.successWithoutMetaAndData());
+            return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta("Comment deleted successfully"));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(ResponseDataAPI.error("Error deleting comment: " + e.getMessage()));
         }
     }
     
-    // Get comment count for task
+    // Get comment count for a task
     @GetMapping("/task/{taskId}/count")
-    public ResponseEntity<ResponseDataAPI> getCommentCount(@PathVariable String taskId) {
+    public ResponseEntity<ResponseDataAPI> getCommentCount(@PathVariable UUID taskId) {
         try {
             Long count = commentService.getCommentCount(taskId);
             return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(count));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(ResponseDataAPI.error("Error getting comment count: " + e.getMessage()));
         }
-    }
-    
-    // Helper method to send comment notification
-    private void sendCommentNotification(String taskId, String commenterId, Long commentId) {
-        try {
-            System.out.println("🔍 BACKEND: === COMMENT NOTIFICATION DEBUG ===");
-            System.out.println("🔍 BACKEND: taskId: " + taskId);
-            System.out.println("🔍 BACKEND: commenterId: " + commenterId);
-            System.out.println("🔍 BACKEND: commentId: " + commentId);
-            
-            // Get task details
-            Tasks task = taskService.getTaskById(java.util.UUID.fromString(taskId));
-            String projectName = getProjectName(task.getProjectId());
-            String commenterName = getUserName(commenterId);
-            
-            System.out.println("🔍 BACKEND: task.getAssigneeId(): " + task.getAssigneeId());
-            System.out.println("🔍 BACKEND: commenterName from getUserName(): '" + commenterName + "'");
-            System.out.println("🔍 BACKEND: projectName: " + projectName);
-            
-            // Send notification to task assignee (if different from commenter)
-            if (task.getAssigneeId() != null && !task.getAssigneeId().toString().equals(commenterId)) {
-                System.out.println("🔍 BACKEND: Sending notification to assignee: " + task.getAssigneeId());
-                System.out.println("🔍 BACKEND: Notification payload:");
-                System.out.println("🔍 BACKEND:   recipientUserId: " + task.getAssigneeId().toString());
-                System.out.println("🔍 BACKEND:   actorUserId: " + commenterId);
-                System.out.println("🔍 BACKEND:   actorUserName: '" + commenterName + "'");
-                System.out.println("🔍 BACKEND:   taskId: " + task.getId().toString());
-                System.out.println("🔍 BACKEND:   taskTitle: " + task.getTitle());
-                
-                notificationClient.sendTaskCommentNotification(
-                    task.getAssigneeId().toString(),
-                    commenterId,
-                    commenterName,
-                    task.getId().toString(),
-                    task.getTitle(),
-                    task.getProjectId().toString(),
-                    projectName,
-                    commentId.toString()
-                );
-                
-                System.out.println("✅ BACKEND: Comment notification sent successfully");
-            } else {
-                System.out.println("⏭️ BACKEND: Skipping notification - assignee is null or same as commenter");
-            }
-            System.out.println("🔍 BACKEND: ================================");
-            
-            // Also send notification to other project members who are watching this task
-            // (You might want to implement a "watchers" feature)
-            
-        } catch (Exception e) {
-            System.err.println("❌ BACKEND: Failed to send comment notification: " + e.getMessage());
-            e.printStackTrace();
-        }
-    }
-    
-    // Helper method to send comment reply notification
-    private void sendCommentReplyNotification(String taskId, String replierId, Long replyId, Long parentCommentId) {
-        try {
-            // Get task details
-            Tasks task = taskService.getTaskById(java.util.UUID.fromString(taskId));
-            String projectName = getProjectName(task.getProjectId());
-            String replierName = getUserName(replierId);
-            
-            // Get parent comment to notify original commenter
-            Comment parentComment = commentService.getCommentById(parentCommentId);
-            
-            if (parentComment != null && !parentComment.getUserId().equals(replierId)) {
-                // Send notification to original commenter
-                Map<String, Object> request = new java.util.HashMap<>();
-                request.put("type", "COMMENT_REPLY");
-                request.put("title", "Reply to your comment");
-                request.put("message", String.format("%s replied to your comment on task \"%s\"", replierName, task.getTitle()));
-                request.put("recipientUserId", parentComment.getUserId());
-                request.put("actorUserId", replierId);
-                request.put("actorUserName", replierName);
-                request.put("projectId", task.getProjectId().toString());
-                request.put("projectName", projectName);
-                request.put("taskId", task.getId().toString());
-                request.put("commentId", replyId.toString());
-                request.put("actionUrl", String.format("/project/board?projectId=%s&taskId=%s&comment=%s", 
-                    task.getProjectId(), task.getId(), replyId));
-                
-                // Call notification service directly since we don't have a specific method for comment replies
-                sendNotificationDirect(request);
-            }
-            
-        } catch (Exception e) {
-            System.err.println("Failed to send comment reply notification: " + e.getMessage());
-        }
-    }
-    
-    // Helper methods
-    private String getProjectName(java.util.UUID projectId) {
-        try {
-            RestTemplate restTemplate = new RestTemplate();
-            String url = "http://localhost:8083/api/projects/" + projectId;
-            ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
-            
-            if (response.getBody() != null && response.getBody().get("data") != null) {
-                Map<String, Object> projectData = (Map<String, Object>) response.getBody().get("data");
-                return (String) projectData.get("name");
-            }
-            return "Unknown Project";
-        } catch (Exception e) {
-            return "Unknown Project";
-        }
-    }
-    
-    private String getUserName(String userId) {
-        try {
-            RestTemplate restTemplate = new RestTemplate();
-            String url = "http://localhost:8086/api/users/" + userId + "/username";
-            ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
-            
-            if (response.getBody() != null && 
-                "SUCCESS".equals(response.getBody().get("status")) &&
-                response.getBody().get("data") != null) {
-                return (String) response.getBody().get("data");
-            }
-            
-            System.err.println("⚠️ BACKEND: User Service API returned invalid response for userId: " + userId);
-            System.err.println("⚠️ BACKEND: Response: " + response.getBody());
-            return "User-" + userId.substring(0, Math.min(8, userId.length()));
-        } catch (Exception e) {
-            System.err.println("❌ BACKEND: Failed to get username for userId: " + userId + ", error: " + e.getMessage());
-            return "User-" + userId.substring(0, Math.min(8, userId.length()));
-        }
-    }
-    
-    private void sendNotificationDirect(Map<String, Object> notificationData) {
-        try {
-            RestTemplate restTemplate = new RestTemplate();
-            String url = "http://localhost:8089/api/notifications/create";
-            
-            org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
-            headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
-            
-            org.springframework.http.HttpEntity<Map<String, Object>> request = 
-                new org.springframework.http.HttpEntity<>(notificationData, headers);
-            
-            restTemplate.exchange(url, org.springframework.http.HttpMethod.POST, request, String.class);
-        } catch (Exception e) {
-            System.err.println("Failed to send notification: " + e.getMessage());
-        }
-    }
-    
-    // DTOs
-    public static class AddCommentRequest {
-        private String taskId;
-        private String userId;
-        private String content;
-        
-        // Getters and setters
-        public String getTaskId() { return taskId; }
-        public void setTaskId(String taskId) { this.taskId = taskId; }
-        
-        public String getUserId() { return userId; }
-        public void setUserId(String userId) { this.userId = userId; }
-        
-        public String getContent() { return content; }
-        public void setContent(String content) { this.content = content; }
-    }
-    
-    public static class AddReplyRequest {
-        private String userId;
-        private String content;
-        
-        // Getters and setters
-        public String getUserId() { return userId; }
-        public void setUserId(String userId) { this.userId = userId; }
-        
-        public String getContent() { return content; }
-        public void setContent(String content) { this.content = content; }
-    }
-    
-    public static class UpdateCommentRequest {
-        private String userId;
-        private String content;
-        
-        // Getters and setters
-        public String getUserId() { return userId; }
-        public void setUserId(String userId) { this.userId = userId; }
-        
-        public String getContent() { return content; }
-        public void setContent(String content) { this.content = content; }
     }
 } 

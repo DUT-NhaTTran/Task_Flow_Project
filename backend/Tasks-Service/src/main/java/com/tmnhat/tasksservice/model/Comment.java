@@ -1,11 +1,12 @@
 package com.tmnhat.tasksservice.model;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 public class Comment {
     
     private Long id;
-    private String taskId;
+    private UUID taskId;
     private String userId;
     private String content;
     private LocalDateTime createdAt;
@@ -18,7 +19,7 @@ public class Comment {
     }
     
     // Constructor for all fields
-    public Comment(Long id, String taskId, String userId, String content, 
+    public Comment(Long id, UUID taskId, String userId, String content, 
                   LocalDateTime createdAt, LocalDateTime updatedAt, 
                   Long parentCommentId, Boolean isDeleted) {
         this.id = id;
@@ -32,7 +33,7 @@ public class Comment {
     }
     
     // Constructor without id for new comments
-    public Comment(String taskId, String userId, String content) {
+    public Comment(UUID taskId, String userId, String content) {
         this.taskId = taskId;
         this.userId = userId;
         this.content = content;
@@ -50,11 +51,11 @@ public class Comment {
         this.id = id;
     }
 
-    public String getTaskId() {
+    public UUID getTaskId() {
         return taskId;
     }
 
-    public void setTaskId(String taskId) {
+    public void setTaskId(UUID taskId) {
         this.taskId = taskId;
     }
 
@@ -110,7 +111,7 @@ public class Comment {
     public String toString() {
         return "Comment{" +
                 "id=" + id +
-                ", taskId='" + taskId + '\'' +
+                ", taskId=" + taskId +
                 ", userId='" + userId + '\'' +
                 ", content='" + content + '\'' +
                 ", createdAt=" + createdAt +

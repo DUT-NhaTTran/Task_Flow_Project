@@ -6,7 +6,9 @@ import com.tmnhat.tasksservice.model.Tasks;
 import com.tmnhat.tasksservice.service.TaskService;
 import com.tmnhat.tasksservice.service.Impl.TaskServiceImpl;
 import com.tmnhat.tasksservice.validation.TaskValidator;
+import com.tmnhat.tasksservice.utils.PermissionUtil;
 import com.tmnhat.common.exception.BadRequestException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -22,6 +24,9 @@ import java.util.UUID;
 public class TasksController {
 
     private final TaskService taskService;
+    
+    @Autowired
+    private PermissionUtil permissionUtil;
 
     public TasksController() {
         this.taskService = new TaskServiceImpl();
@@ -31,6 +36,18 @@ public class TasksController {
     @PostMapping
     public ResponseEntity<ResponseDataAPI> addTask(@RequestBody Tasks task, @RequestHeader(value = "X-User-Id", required = false) String userId) {
         TaskValidator.validateTask(task);
+        
+        // Permission check: User must be project member and have CREATE_TASK permission
+        if (userId != null && !userId.trim().isEmpty() && task.getProjectId() != null) {
+            try {
+                UUID userUUID = UUID.fromString(userId);
+                if (!permissionUtil.hasTaskPermission(userUUID, task.getProjectId(), PermissionUtil.TaskPermission.CREATE_TASK)) {
+                    return ResponseEntity.status(403).body(ResponseDataAPI.error("Insufficient permissions to create task"));
+                }
+            } catch (IllegalArgumentException e) {
+                return ResponseEntity.status(400).body(ResponseDataAPI.error("Invalid user ID format"));
+            }
+        }
         
         // Set createdBy if provided in header
         if (userId != null && !userId.trim().isEmpty()) {
@@ -52,6 +69,26 @@ public class TasksController {
         TaskValidator.validateTaskId(id);
         TaskValidator.validateTask(task);
         
+        // Permission check: User must have UPDATE_ANY_TASK or UPDATE_ASSIGNED_TASK permission
+        if (userId != null && !userId.trim().isEmpty() && task.getProjectId() != null) {
+            try {
+                UUID userUUID = UUID.fromString(userId);
+                
+                // Get existing task to check assignee and creator
+                Tasks existingTask = taskService.getTaskById(id);
+                if (existingTask == null) {
+                    return ResponseEntity.status(404).body(ResponseDataAPI.error("Task not found"));
+                }
+                
+                // Check if user can update this specific task (creator, assignee, or admin)
+                if (!permissionUtil.canUpdateTask(userUUID, task.getProjectId(), existingTask.getAssigneeId(), existingTask.getCreatedBy())) {
+                    return ResponseEntity.status(403).body(ResponseDataAPI.error("Insufficient permissions to update this task. You can only edit tasks you created or are assigned to."));
+                }
+            } catch (IllegalArgumentException e) {
+                return ResponseEntity.status(400).body(ResponseDataAPI.error("Invalid user ID format"));
+            }
+        }
+        
         // Pass the userId to service layer for notification
         taskService.updateTask(id, task, userId);
         return ResponseEntity.ok(ResponseDataAPI.successWithoutMetaAndData());
@@ -59,26 +96,78 @@ public class TasksController {
 
     // Delete task
     @DeleteMapping("/{id}")
-    public ResponseEntity<ResponseDataAPI> deleteTask(@PathVariable UUID id) {
+    public ResponseEntity<ResponseDataAPI> deleteTask(@PathVariable UUID id, @RequestHeader(value = "X-User-Id", required = false) String userId) {
         TaskValidator.validateTaskId(id);
+        
+        // Get existing task to check permissions
+        Tasks existingTask = taskService.getTaskById(id);
+        if (existingTask == null) {
+            return ResponseEntity.status(404).body(ResponseDataAPI.error("Task not found"));
+        }
+        
+        // Permission check: User must be task creator OR have admin DELETE_TASK permission
+        if (userId != null && !userId.trim().isEmpty() && existingTask.getProjectId() != null) {
+            try {
+                UUID userUUID = UUID.fromString(userId);
+                if (!permissionUtil.canDeleteTask(userUUID, existingTask.getProjectId(), existingTask.getCreatedBy())) {
+                    return ResponseEntity.status(403).body(ResponseDataAPI.error("Insufficient permissions to delete this task. You can only delete tasks you created or have admin privileges."));
+                }
+            } catch (IllegalArgumentException e) {
+                return ResponseEntity.status(400).body(ResponseDataAPI.error("Invalid user ID format"));
+            }
+        }
+        
         taskService.deleteTask(id);
         return ResponseEntity.ok(ResponseDataAPI.successWithoutMetaAndData());
     }
 
     @GetMapping("/get-by-id/{id}")
-    public ResponseEntity<ResponseDataAPI> getTaskById(@PathVariable UUID id) {
+    public ResponseEntity<ResponseDataAPI> getTaskById(@PathVariable UUID id, @RequestHeader(value = "X-User-Id", required = false) String userId) {
         TaskValidator.validateTaskId(id);
+        
         Tasks task = taskService.getTaskById(id);
+        if (task == null) {
+            return ResponseEntity.status(404).body(ResponseDataAPI.error("Task not found"));
+        }
+        
+        // Permission check: User must have VIEW_TASK permission (all project members)
+        if (userId != null && !userId.trim().isEmpty() && task.getProjectId() != null) {
+            try {
+                UUID userUUID = UUID.fromString(userId);
+                if (!permissionUtil.hasTaskPermission(userUUID, task.getProjectId(), PermissionUtil.TaskPermission.VIEW_TASK)) {
+                    return ResponseEntity.status(403).body(ResponseDataAPI.error("Insufficient permissions to view this task"));
+                }
+            } catch (IllegalArgumentException e) {
+                return ResponseEntity.status(400).body(ResponseDataAPI.error("Invalid user ID format"));
+            }
+        }
+        
         return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(task));
     }
+    
     @GetMapping("/filter_details")
     public ResponseEntity<ResponseDataAPI> getTasksByStatusProjectSprint(
             @RequestParam String status,
             @RequestParam UUID projectId,
-            @RequestParam UUID sprintId) {
-            List<Tasks> tasks = taskService.getTasksByStatusAndProjectAndSprint(status, projectId, sprintId);
-            return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(tasks));
+            @RequestParam UUID sprintId,
+            @RequestHeader(value = "X-User-Id", required = false) String userId) {
+            
+        // Permission check: User must have VIEW_TASK permission
+        if (userId != null && !userId.trim().isEmpty()) {
+            try {
+                UUID userUUID = UUID.fromString(userId);
+                if (!permissionUtil.hasTaskPermission(userUUID, projectId, PermissionUtil.TaskPermission.VIEW_TASK)) {
+                    return ResponseEntity.status(403).body(ResponseDataAPI.error("Insufficient permissions to view tasks"));
+                }
+            } catch (IllegalArgumentException e) {
+                return ResponseEntity.status(400).body(ResponseDataAPI.error("Invalid user ID format"));
+            }
+        }
+        
+        List<Tasks> tasks = taskService.getTasksByStatusAndProjectAndSprint(status, projectId, sprintId);
+        return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(tasks));
     }
+    
     // Get all tasks
     @GetMapping
     public ResponseEntity<ResponseDataAPI> getAllTasks() {
@@ -88,9 +177,28 @@ public class TasksController {
 
     // Assign task
     @PatchMapping("/{taskId}/assign")
-    public ResponseEntity<ResponseDataAPI> assignTask(@PathVariable UUID taskId, @RequestParam UUID userId) {
+    public ResponseEntity<ResponseDataAPI> assignTask(@PathVariable UUID taskId, @RequestParam UUID userId, @RequestHeader(value = "X-User-Id", required = false) String requesterId) {
         TaskValidator.validateTaskId(taskId);
         TaskValidator.validateUserId(userId);
+        
+        // Get existing task to check permissions
+        Tasks existingTask = taskService.getTaskById(taskId);
+        if (existingTask == null) {
+            return ResponseEntity.status(404).body(ResponseDataAPI.error("Task not found"));
+        }
+        
+        // Permission check: User must have ASSIGN_TASK permission (admin only)
+        if (requesterId != null && !requesterId.trim().isEmpty() && existingTask.getProjectId() != null) {
+            try {
+                UUID requesterUUID = UUID.fromString(requesterId);
+                if (!permissionUtil.hasTaskPermission(requesterUUID, existingTask.getProjectId(), PermissionUtil.TaskPermission.ASSIGN_TASK)) {
+                    return ResponseEntity.status(403).body(ResponseDataAPI.error("Insufficient permissions to assign task"));
+                }
+            } catch (IllegalArgumentException e) {
+                return ResponseEntity.status(400).body(ResponseDataAPI.error("Invalid user ID format"));
+            }
+        }
+        
         taskService.assignTask(taskId, userId);
         return ResponseEntity.ok(ResponseDataAPI.successWithoutMetaAndData());
     }
@@ -102,23 +210,80 @@ public class TasksController {
         if (status == null || status.isBlank()) {
             throw new BadRequestException("Status cannot be empty");
         }
+        
+        // Get existing task to check permissions
+        Tasks existingTask = taskService.getTaskById(taskId);
+        if (existingTask == null) {
+            return ResponseEntity.status(404).body(ResponseDataAPI.error("Task not found"));
+        }
+        
+        // Permission check: User must be assigned to task OR created the task OR have admin privileges
+        if (userId != null && !userId.trim().isEmpty() && existingTask.getProjectId() != null) {
+            try {
+                UUID userUUID = UUID.fromString(userId);
+                if (!permissionUtil.canUpdateTask(userUUID, existingTask.getProjectId(), existingTask.getAssigneeId(), existingTask.getCreatedBy())) {
+                    return ResponseEntity.status(403).body(ResponseDataAPI.error("Insufficient permissions to change task status. You can only update tasks you created or are assigned to."));
+                }
+            } catch (IllegalArgumentException e) {
+                return ResponseEntity.status(400).body(ResponseDataAPI.error("Invalid user ID format"));
+            }
+        }
+        
         taskService.changeTaskStatus(taskId, status, userId);
         return ResponseEntity.ok(ResponseDataAPI.successWithoutMetaAndData());
     }
 
     // Update story point
     @PatchMapping("/{taskId}/story-point")
-    public ResponseEntity<ResponseDataAPI> updateStoryPoint(@PathVariable UUID taskId, @RequestParam int storyPoint) {
+    public ResponseEntity<ResponseDataAPI> updateStoryPoint(@PathVariable UUID taskId, @RequestParam int storyPoint, @RequestHeader(value = "X-User-Id", required = false) String userId) {
         TaskValidator.validateTaskId(taskId);
+        
+        // Get existing task to check permissions
+        Tasks existingTask = taskService.getTaskById(taskId);
+        if (existingTask == null) {
+            return ResponseEntity.status(404).body(ResponseDataAPI.error("Task not found"));
+        }
+        
+        // Permission check: User must have ESTIMATE_TASK permission (all project members)
+        if (userId != null && !userId.trim().isEmpty() && existingTask.getProjectId() != null) {
+            try {
+                UUID userUUID = UUID.fromString(userId);
+                if (!permissionUtil.hasTaskPermission(userUUID, existingTask.getProjectId(), PermissionUtil.TaskPermission.ESTIMATE_TASK)) {
+                    return ResponseEntity.status(403).body(ResponseDataAPI.error("Insufficient permissions to estimate task"));
+                }
+            } catch (IllegalArgumentException e) {
+                return ResponseEntity.status(400).body(ResponseDataAPI.error("Invalid user ID format"));
+            }
+        }
+        
         taskService.updateStoryPoint(taskId, storyPoint);
         return ResponseEntity.ok(ResponseDataAPI.successWithoutMetaAndData());
     }
 
     // Add subtask
     @PostMapping("/{parentTaskId}/subtasks")
-    public ResponseEntity<ResponseDataAPI> addSubtask(@PathVariable UUID parentTaskId, @RequestBody Tasks subtask) {
+    public ResponseEntity<ResponseDataAPI> addSubtask(@PathVariable UUID parentTaskId, @RequestBody Tasks subtask, @RequestHeader(value = "X-User-Id", required = false) String userId) {
         TaskValidator.validateTaskId(parentTaskId);
         TaskValidator.validateTask(subtask);
+        
+        // Get parent task to check permissions
+        Tasks parentTask = taskService.getTaskById(parentTaskId);
+        if (parentTask == null) {
+            return ResponseEntity.status(404).body(ResponseDataAPI.error("Parent task not found"));
+        }
+        
+        // Permission check: User must have CREATE_TASK permission
+        if (userId != null && !userId.trim().isEmpty() && parentTask.getProjectId() != null) {
+            try {
+                UUID userUUID = UUID.fromString(userId);
+                if (!permissionUtil.hasTaskPermission(userUUID, parentTask.getProjectId(), PermissionUtil.TaskPermission.CREATE_TASK)) {
+                    return ResponseEntity.status(403).body(ResponseDataAPI.error("Insufficient permissions to create subtask"));
+                }
+            } catch (IllegalArgumentException e) {
+                return ResponseEntity.status(400).body(ResponseDataAPI.error("Invalid user ID format"));
+            }
+        }
+        
         taskService.addSubtask(parentTaskId, subtask);
         return ResponseEntity.ok(ResponseDataAPI.successWithoutMetaAndData());
     }

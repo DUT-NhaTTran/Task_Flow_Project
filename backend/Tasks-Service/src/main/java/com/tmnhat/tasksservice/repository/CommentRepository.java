@@ -17,6 +17,7 @@ import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
 public class CommentRepository {
@@ -30,7 +31,18 @@ public class CommentRepository {
         public Comment mapRow(ResultSet rs, int rowNum) throws SQLException {
             Comment comment = new Comment();
             comment.setId(rs.getLong("id"));
-            comment.setTaskId(rs.getString("task_id"));
+            
+            // Handle UUID conversion for task_id
+            Object taskIdObj = rs.getObject("task_id");
+            if (taskIdObj != null) {
+                if (taskIdObj instanceof UUID) {
+                    comment.setTaskId((UUID) taskIdObj);
+                } else {
+                    // Handle string conversion to UUID if needed
+                    comment.setTaskId(UUID.fromString(taskIdObj.toString()));
+                }
+            }
+            
             comment.setUserId(rs.getString("user_id"));
             comment.setContent(rs.getString("content"));
             
@@ -52,7 +64,7 @@ public class CommentRepository {
     };
     
     // Find all comments for a specific task (not deleted)
-    public List<Comment> findByTaskIdAndNotDeleted(String taskId) {
+    public List<Comment> findByTaskIdAndNotDeleted(UUID taskId) {
         String sql = "SELECT * FROM comments WHERE task_id = ? AND is_deleted = false ORDER BY created_at ASC";
         return jdbcTemplate.query(sql, commentRowMapper, taskId);
     }
@@ -70,7 +82,7 @@ public class CommentRepository {
     }
     
     // Count comments for a task
-    public Long countByTaskIdAndNotDeleted(String taskId) {
+    public Long countByTaskIdAndNotDeleted(UUID taskId) {
         String sql = "SELECT COUNT(*) FROM comments WHERE task_id = ? AND is_deleted = false";
         return jdbcTemplate.queryForObject(sql, Long.class, taskId);
     }
@@ -92,7 +104,7 @@ public class CommentRepository {
         
         jdbcTemplate.update(connection -> {
             PreparedStatement ps = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
-            ps.setString(1, comment.getTaskId());
+            ps.setObject(1, comment.getTaskId()); // UUID will be handled automatically
             ps.setString(2, comment.getUserId());
             ps.setString(3, comment.getContent());
             ps.setTimestamp(4, Timestamp.valueOf(comment.getCreatedAt() != null ? comment.getCreatedAt() : LocalDateTime.now()));
@@ -124,7 +136,7 @@ public class CommentRepository {
         String sql = "UPDATE comments SET task_id = ?, user_id = ?, content = ?, updated_at = ?, parent_comment_id = ?, is_deleted = ? WHERE id = ?";
         
         jdbcTemplate.update(sql,
-            comment.getTaskId(),
+            comment.getTaskId(), // UUID will be handled automatically
             comment.getUserId(),
             comment.getContent(),
             Timestamp.valueOf(LocalDateTime.now()),

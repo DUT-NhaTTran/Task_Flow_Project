@@ -24,8 +24,13 @@ done
 # Start AI-Service (Python FastAPI)
 echo "Starting AI-Service..."
 cd AI-Service
-chmod +x start.sh
-./start.sh &
+if [ -d "venv" ]; then
+  echo "Using virtual environment for AI-Service..."
+  source venv/bin/activate && python test_simple.py &
+else
+  echo "Virtual environment not found, running without venv..."
+  python test_simple.py &
+fi
 cd ..
 
 echo "All services are starting..."

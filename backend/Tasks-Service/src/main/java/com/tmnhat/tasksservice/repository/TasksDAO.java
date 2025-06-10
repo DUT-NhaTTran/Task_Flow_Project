@@ -194,12 +194,13 @@ public class TasksDAO extends BaseDAO {
     }
 
     public void addCommentToTask(UUID taskId, String comment) throws SQLException {
-        // (Future) Cần bảng task_comments (id, task_id, content, created_at)
-        String sql = "INSERT INTO task_comments (id, task_id, content, created_at) VALUES (?, ?, ?, now())";
+        // Updated to use the actual 'comments' table with proper structure
+        String sql = "INSERT INTO comments (task_id, user_id, user_name, content, created_at, updated_at, is_deleted) VALUES (?, ?, ?, ?, now(), now(), false)";
         executeUpdate(sql, stmt -> {
-            stmt.setObject(1, UUID.randomUUID());
-            stmt.setObject(2, taskId);
-            stmt.setString(3, comment);
+            stmt.setObject(1, taskId);
+            stmt.setString(2, "SYSTEM"); // Default user ID - should be passed from service layer
+            stmt.setString(3, "System User"); // Default user name - should be passed from service layer
+            stmt.setString(4, comment);
         });
     }
 
@@ -274,6 +275,7 @@ public class TasksDAO extends BaseDAO {
             case "priority":
                 // Use CASE statement to convert priority enum to numeric values for proper sorting
                 orderByColumn = "CASE priority " +
+                    "WHEN 'BLOCKER' THEN 6 " +
                     "WHEN 'HIGHEST' THEN 5 " +
                     "WHEN 'HIGH' THEN 4 " +
                     "WHEN 'MEDIUM' THEN 3 " +

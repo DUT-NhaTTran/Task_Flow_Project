@@ -31,7 +31,7 @@ public class ProjectMemberDAO extends BaseDAO {
     }
 
     public void changeProjectOwner(UUID projectId, UUID newOwnerId) throws SQLException {
-        String sql = "UPDATE projects SET owner_id = ? WHERE id = ?";
+        String sql = "UPDATE projects SET owner_id = ? WHERE id = ? AND deleted_at IS NULL";
         executeUpdate(sql, stmt -> {
             stmt.setObject(1, newOwnerId);
             stmt.setObject(2, projectId);
@@ -65,7 +65,7 @@ public class ProjectMemberDAO extends BaseDAO {
 
     public List<Projects> filterProjectsByStatus(String status) throws SQLException {
         boolean isArchived = "archived".equalsIgnoreCase(status);
-        String sql = "SELECT * FROM projects WHERE is_archived = ?";
+        String sql = "SELECT * FROM projects WHERE is_archived = ? AND deleted_at IS NULL";
         return executeQuery(sql, stmt -> {
             stmt.setBoolean(1, isArchived);
             List<Projects> projects = new ArrayList<>();

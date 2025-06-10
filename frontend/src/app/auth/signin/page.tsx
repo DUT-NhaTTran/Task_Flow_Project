@@ -122,7 +122,7 @@ export default function SignInPage() {
                 </div>
 
                 {/* OAuth buttons */}
-                <div className="space-y-3">
+                {/* <div className="space-y-3">
                     <button className="flex items-center justify-center w-full py-2 px-4 bg-gray-100 hover:bg-gray-200 text-sm font-medium rounded-md transition">
             <span className="flex items-center gap-2">
               <Image src="/google-color-svgrepo-com.svg" alt="Google" width={18} height={18} />
@@ -136,14 +136,14 @@ export default function SignInPage() {
               Sign in with GitHub
             </span>
                     </button>
-                </div>
+                </div> */}
 
                 {/* Divider */}
-                <div className="flex items-center gap-2 text-gray-400 text-xs">
+                {/* <div className="flex items-center gap-2 text-gray-400 text-xs">
                     <div className="flex-1 h-px bg-gray-300" />
                     or
                     <div className="flex-1 h-px bg-gray-300" />
-                </div>
+                </div> */}
 
                 {/* Form */}
                 <form onSubmit={handleSubmit} className="space-y-4">

@@ -12,34 +12,23 @@ import { Sidebar } from "@/components/ui/sidebar";
 import { useNavigation } from "@/contexts/NavigationContext";
 import { Search, ChevronDown, MoreHorizontal, ChevronRight, Plus, Edit, Check, Calendar, ChevronUp, Trash2 } from "lucide-react";
 import { useUserStorage } from "@/hooks/useUserStorage";
-
-// Define types for the task
-interface TaskData {
-  id: string;
-  title: string;
-  description?: string;
-  status: "TODO" | "IN_PROGRESS" | "REVIEW" | "DONE";
-  storyPoint?: number;
-  assigneeId?: string | null;
-  assigneeName?: string;
-  shortKey?: string;
-  projectId?: string;
-  sprintId?: string | null;
-  dueDate?: string | null;
-  createdAt?: string;
-  completedAt?: string | null;
-  parentTaskId?: string | null;
-  tags?: string[] | null;
-  team?: string;
-  label?: string;
-  priority?: "LOWEST" | "LOW" | "MEDIUM" | "HIGH" | "HIGHEST";
-  // AI Estimation fields
-  estimatedStoryPoints?: number;
-  estimationConfidence?: number;
-  isAiEstimated?: boolean;
-  estimationCreatedAt?: string;
-  createdBy?: string; // Add this field for notifications
-}
+import { sendTaskOverdueNotification } from "@/utils/taskNotifications";
+import { safeValidateUUID, validateProjectId, validateSprintId, generateMockUUID, isValidUUID } from "@/utils/uuidUtils";
+import { 
+  getUserPermissions, 
+  canCreateSprint, 
+  canManageSprints, 
+  canStartEndSprints,
+  canDeleteTask,
+  canAssignTasks,
+  canManageAnyTask,
+  canEditTask,
+  canTrainAI,
+  UserPermissions,
+  getRoleDisplayName
+} from "@/utils/permissions";
+import TaskDetailModal, { TaskData } from "@/components/tasks/TaskDetailModal";
+import { useProjectValidation } from "@/hooks/useProjectValidation";
 
 interface SprintOption {
   id: string;
@@ -78,6 +67,10 @@ export default function BacklogPage() {
     }
   }, [urlProjectId, currentProjectId, setCurrentProjectId]);
 
+  // Permission state
+  const [userPermissions, setUserPermissions] = useState<UserPermissions | null>(null);
+  const [permissionsLoading, setPermissionsLoading] = useState(true);
+
   const [tasks, setTasks] = useState<TaskData[]>([]);
   const [sprints, setSprints] = useState<SprintOption[]>([]);
   const [newTaskTitle, setNewTaskTitle] = useState("");
@@ -98,6 +91,45 @@ export default function BacklogPage() {
   const statusDropdownRef = useRef<HTMLDivElement>(null);
   const sprintMenuRef = useRef<HTMLDivElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
+
+  // Validate project exists and handle redirection if not
+  useProjectValidation({ 
+    projectId: projectId || null,
+    onProjectNotFound: () => {
+      setIsLoading(false); // Stop loading if project doesn't exist
+    }
+  });
+
+  // Fetch user permissions
+  useEffect(() => {
+    const fetchPermissions = async () => {
+      if (userData?.account?.id && projectId) {
+        setPermissionsLoading(true);
+        try {
+          const permissions = await getUserPermissions(userData.account.id, projectId);
+          console.log('🔐 PERMISSION DEBUG:', {
+            userId: userData.account.id,
+            projectId,
+            permissions,
+            role: permissions?.role,
+            isScrumMaster: permissions?.isScrumMaster,
+            canManageSprints: permissions?.canManageSprints,
+            canStartEndSprints: canStartEndSprints(permissions)
+          });
+          setUserPermissions(permissions);
+        } catch (error) {
+          console.error('Error fetching permissions:', error);
+          setUserPermissions(null);
+        } finally {
+          setPermissionsLoading(false);
+        }
+      } else {
+        setPermissionsLoading(false);
+      }
+    };
+
+    fetchPermissions();
+  }, [userData?.account?.id, projectId]);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -335,7 +367,7 @@ export default function BacklogPage() {
             // 3. Add scrum master - fetch from project API
             try {
               if (taskToUpdate.projectId) {
-                const projectResponse = await axios.get(`http://localhost:8086/api/projects/${taskToUpdate.projectId}`);
+                const projectResponse = await axios.get(`http://localhost:8083/api/projects/${taskToUpdate.projectId}`);
                 if (projectResponse.data?.status === "SUCCESS" && projectResponse.data?.data?.scrumMasterId) {
                   const scrumMasterId = projectResponse.data.data.scrumMasterId;
                   if (scrumMasterId !== actorUserId && scrumMasterId !== taskToUpdate.assigneeId && scrumMasterId !== taskToUpdate.createdBy) {
@@ -456,7 +488,274 @@ export default function BacklogPage() {
     { value: "DONE", label: "Done" }
   ];
 
-  // Create new sprint
+  // Fetch project members for notifications
+  const fetchProjectMembers = async (): Promise<User[]> => {
+    try {
+      if (!projectId) {
+        console.warn("No project ID available for fetching members");
+        return [];
+      }
+
+      const response = await axios.get(`http://localhost:8083/api/projects/${projectId}/users`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Cache-Control': 'no-cache'
+        }
+      });
+
+      if (response.data && response.data.status === "SUCCESS" && Array.isArray(response.data.data)) {
+        return response.data.data;
+      } else {
+        console.warn("Unexpected response format for project members:", response.data);
+        return [];
+      }
+    } catch (error) {
+      console.error("Error fetching project members:", error);
+      return [];
+    }
+  };
+
+  // Enhanced sprint notification function to handle all sprint events
+  const sendSprintNotificationToMembers = async (
+    notificationType: "SPRINT_CREATED" | "SPRINT_UPDATED" | "SPRINT_STARTED" | "SPRINT_ENDED" | "SPRINT_COMPLETED" | "SPRINT_GOAL_UPDATED",
+    sprint: SprintOption,
+    actionDescription: string,
+    additionalInfo?: string
+  ) => {
+    try {
+      console.log(`🔔 SPRINT NOTIFICATION: Starting ${notificationType} notification process...`);
+      
+      // Validate projectId before proceeding
+      if (!projectId) {
+        console.error('❌ SPRINT NOTIFICATION: No project ID available');
+        return;
+      }
+      
+      let validatedProjectId: string;
+      let validatedSprintId: string | null = null;
+      
+      try {
+        validatedProjectId = validateProjectId(projectId);
+      } catch (error) {
+        console.error('❌ SPRINT NOTIFICATION: Invalid project ID format:', error);
+        return;
+      }
+      
+      try {
+        validatedSprintId = validateSprintId(sprint.id);
+      } catch (error) {
+        console.error('❌ SPRINT NOTIFICATION: Invalid sprint ID format:', error);
+        return;
+      }
+      
+      if (!validatedSprintId) {
+        console.error('❌ SPRINT NOTIFICATION: Sprint ID is required for notifications');
+        return;
+      }
+      
+      // Get current user data
+      if (!userData?.account?.id && !userData?.profile?.id) {
+        console.warn("No current user data available for notifications");
+        return;
+      }
+      
+      const currentUserId = userData.account?.id || userData.profile?.id;
+      const currentUserName = userData.profile?.username || userData.profile?.firstName || userData.account?.email || 'User';
+
+      console.log(`🔔 SPRINT NOTIFICATION: Starting ${notificationType} for sprint "${sprint.name}"`);
+
+      // Fetch project members
+      const projectMembers = await fetchProjectMembers();
+      console.log(`👥 SPRINT NOTIFICATION: Found ${projectMembers.length} project members`);
+
+      // Fetch project details to get scrum master
+      let scrumMasterId: string | null = null;
+      let projectName = "TaskFlow Project";
+      
+      try {
+        const projectResponse = await axios.get(`http://localhost:8083/api/projects/${validatedProjectId}`);
+        if (projectResponse.data?.status === "SUCCESS" && projectResponse.data?.data) {
+          scrumMasterId = projectResponse.data.data.scrumMasterId;
+          projectName = projectResponse.data.data.name || projectName;
+          console.log(`📋 SPRINT NOTIFICATION: Project details - Name: "${projectName}", Scrum Master: ${scrumMasterId}`);
+        }
+      } catch (error) {
+        console.warn('⚠️ SPRINT NOTIFICATION: Failed to fetch project details:', error);
+      }
+
+      // Create comprehensive recipient list
+      const allRecipients = new Set<string>();
+      
+      // Add all project members
+      projectMembers.forEach(member => {
+        if (member.id !== currentUserId) { // Exclude current user
+          allRecipients.add(member.id);
+        }
+      });
+      
+      // Add scrum master if not already included and not current user
+      if (scrumMasterId && scrumMasterId !== currentUserId && !allRecipients.has(scrumMasterId)) {
+        allRecipients.add(scrumMasterId);
+        console.log(`➕ SPRINT NOTIFICATION: Added scrum master ${scrumMasterId} to recipients`);
+      }
+
+      const recipientIds = Array.from(allRecipients);
+      console.log(`📝 SPRINT NOTIFICATION: Total recipients (excluding current user): ${recipientIds.length}`);
+      console.log(`📋 SPRINT NOTIFICATION: Recipients: ${recipientIds.join(', ')}`);
+
+      if (recipientIds.length === 0) {
+        console.log("No recipients to notify (current user is the only member or no members found)");
+        return;
+      }
+
+      // Determine notification title and message based on type
+      let notificationTitle = "";
+      let notificationMessage = "";
+      
+      switch (notificationType) {
+        case "SPRINT_CREATED":
+          notificationTitle = "New Sprint Created";
+          notificationMessage = `${currentUserName} created a new sprint "${sprint.name}"`;
+          break;
+        case "SPRINT_UPDATED":
+          notificationTitle = "Sprint Updated";
+          notificationMessage = `${currentUserName} updated sprint "${sprint.name}"${additionalInfo ? `: ${additionalInfo}` : ''}`;
+          break;
+        case "SPRINT_GOAL_UPDATED":
+          notificationTitle = "Sprint Goal Updated";
+          notificationMessage = `${currentUserName} updated the goal for sprint "${sprint.name}"`;
+          break;
+        case "SPRINT_STARTED":
+          notificationTitle = "Sprint Started";
+          notificationMessage = `${currentUserName} started sprint "${sprint.name}"`;
+          break;
+        case "SPRINT_ENDED":
+          notificationTitle = "Sprint Ended";
+          notificationMessage = `Sprint "${sprint.name}" has ended`;
+          break;
+        case "SPRINT_COMPLETED":
+          notificationTitle = "Sprint Completed";
+          notificationMessage = `${currentUserName} completed sprint "${sprint.name}"`;
+          break;
+        default:
+          notificationTitle = "Sprint Notification";
+          notificationMessage = `Sprint "${sprint.name}" was ${actionDescription.toLowerCase()}`;
+      }
+
+      // Create notification data with all required fields
+      const baseNotificationData = {
+        type: notificationType,
+        title: notificationTitle,
+        message: notificationMessage,
+        actorUserId: currentUserId,
+        actorUserName: currentUserName,
+        projectId: validatedProjectId,
+        projectName: projectName,
+        sprintId: validatedSprintId,
+        actionUrl: `/project/backlog?projectId=${validatedProjectId}&sprintId=${validatedSprintId}`
+      };
+
+      console.log(`🔍 SPRINT NOTIFICATION: Base notification data:`, baseNotificationData);
+
+      // Send notifications to all recipients
+      const notificationPromises = recipientIds.map(async (recipientId, index) => {
+        const notificationData = {
+          ...baseNotificationData,
+          recipientUserId: recipientId
+        };
+
+        console.log(`📤 SPRINT NOTIFICATION: Sending ${notificationType} notification ${index + 1}/${recipientIds.length} to user: ${recipientId}`);
+        console.log(`📋 SPRINT NOTIFICATION: Payload ${index + 1}:`, JSON.stringify(notificationData, null, 2));
+
+        try {
+          const response = await axios.post('http://localhost:8089/api/notifications/create', notificationData, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Cache-Control': 'no-cache'
+            }
+          });
+          console.log(`✅ SPRINT NOTIFICATION: Successfully sent to ${recipientId}`);
+          return response;
+        } catch (error) {
+          console.error(`❌ SPRINT NOTIFICATION: Failed to send to ${recipientId}:`, error);
+          if (axios.isAxiosError(error) && error.response) {
+            console.error(`   Status: ${error.response.status}`);
+            console.error(`   Data:`, error.response.data);
+          }
+          throw error; // Re-throw to be handled by Promise.allSettled
+        }
+      });
+
+      const results = await Promise.allSettled(notificationPromises);
+      const successful = results.filter(r => r.status === 'fulfilled').length;
+      const failed = results.filter(r => r.status === 'rejected').length;
+
+      console.log(`📊 SPRINT NOTIFICATION: Results - ${successful} successful, ${failed} failed out of ${recipientIds.length} total`);
+
+      if (successful > 0) {
+        console.log(`✅ SPRINT NOTIFICATION: ${successful} ${notificationType} notifications sent successfully`);
+      }
+      if (failed > 0) {
+        console.warn(`❌ SPRINT NOTIFICATION: ${failed} notifications failed to send`);
+      }
+
+    } catch (error) {
+      console.error(`❌ SPRINT NOTIFICATION: Failed to send ${notificationType} notifications:`, error);
+      // Don't fail the main operation if notification fails
+    }
+  };
+
+  // Format date for display
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { 
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
+
+  // Check for sprint end dates and send notifications
+  const checkSprintEndDates = async () => {
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // Reset time to start of day for accurate comparison
+      
+      for (const sprint of sprints) {
+        if (sprint.endDate && sprint.status === "ACTIVE") {
+          const endDate = new Date(sprint.endDate);
+          endDate.setHours(0, 0, 0, 0);
+          
+          // Check if sprint ended today
+          if (endDate.getTime() === today.getTime()) {
+            console.log(`📅 Sprint "${sprint.name}" ended today, sending notifications...`);
+            
+            // Send SPRINT_ENDED notification
+            await sendSprintNotificationToMembers(
+              "SPRINT_ENDED", 
+              sprint, 
+              "Ended", 
+              "Sprint has reached its end date"
+            );
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error checking sprint end dates:", error);
+    }
+  };
+
+  // Auto-check sprint end dates when sprints data loads
+  useEffect(() => {
+    if (sprints.length > 0) {
+      checkSprintEndDates();
+    }
+  }, [sprints]);
+
+  // Enhanced Create new sprint with better notifications
   const handleCreateSprint = async () => {
     if (!projectId) {
       toast.error("No project ID provided");
@@ -474,7 +773,7 @@ export default function BacklogPage() {
       endDate.setDate(endDate.getDate() + 14);
       const formattedEndDate = endDate.toISOString().split('T')[0];
 
-      // Format the request body according to the API requirements
+      // Format the request body according to the API requirements (without ID - let DB generate)
       const newSprint = {
         name: "New Sprint",
         goal: "",
@@ -488,15 +787,66 @@ export default function BacklogPage() {
       
       const response = await axios.post("http://localhost:8084/api/sprints", newSprint);
 
+      console.log("Sprint creation response:", response.data);
+
       if (response.data) {
         toast.success("Sprint created successfully");
         
-        // Reload sprints to get the new one with proper ID
+        // Extract sprint data from response - handle different response structures
+        let createdSprint: SprintOption;
+        
+        if (response.data.data && response.data.data.id) {
+          // ResponseDataAPI structure with nested data
+          createdSprint = {
+            id: response.data.data.id,
+            name: response.data.data.name || newSprint.name,
+            startDate: response.data.data.startDate || newSprint.startDate,
+            endDate: response.data.data.endDate || newSprint.endDate,
+            status: response.data.data.status || newSprint.status,
+            goal: response.data.data.goal || newSprint.goal,
+            projectId: response.data.data.projectId || newSprint.projectId
+          };
+        } else if (response.data.id) {
+          // Direct sprint object structure
+          createdSprint = {
+            id: response.data.id,
+            name: response.data.name || newSprint.name,
+            startDate: response.data.startDate || newSprint.startDate,
+            endDate: response.data.endDate || newSprint.endDate,
+            status: response.data.status || newSprint.status,
+            goal: response.data.goal || newSprint.goal,
+            projectId: response.data.projectId || newSprint.projectId
+          };
+        } else {
+          // If no ID in response, fetch sprints again to get the latest created one
+          console.warn("No sprint ID in response, fetching sprints to get the newly created one");
+          await fetchSprints();
+          toast.success("Sprint created successfully");
+          return;
+        }
+
+        console.log("Extracted sprint for notification:", createdSprint);
+        
+        // Send SPRINT_CREATED notifications to ALL project members including scrum master
+        try {
+          if (createdSprint.id && isValidUUID(createdSprint.id)) {
+            await sendSprintNotificationToMembers("SPRINT_CREATED", createdSprint, "Created");
+          } else {
+            console.warn("⚠️ Sprint created but ID is not a valid UUID:", createdSprint.id);
+            toast.warning("Sprint created successfully, but notifications were skipped due to invalid sprint ID format");
+          }
+        } catch (notificationError) {
+          console.error("Failed to send sprint creation notifications:", notificationError);
+          // Don't fail the main operation if notification fails
+          toast.warning("Sprint created successfully, but notifications may have failed");
+        }
+        
+        // Reload sprints to get the new one with proper ID from database
         await fetchSprints();
         
-        // Expand the newly created sprint
-        if (response.data.id) {
-          setExpandedSprint(response.data.id);
+        // Expand the newly created sprint if we have valid ID
+        if (createdSprint.id && isValidUUID(createdSprint.id)) {
+          setExpandedSprint(createdSprint.id);
         }
       } else {
         toast.error("Failed to create sprint");
@@ -504,7 +854,15 @@ export default function BacklogPage() {
       }
     } catch (error) {
       console.error("Error creating sprint:", error);
-      toast.error("Failed to create sprint");
+      if (axios.isAxiosError(error) && error.response) {
+        console.error("Sprint creation error details:", {
+          status: error.response.status,
+          data: error.response.data
+        });
+        toast.error(`Failed to create sprint: ${error.response.status} ${error.response.statusText}`);
+      } else {
+        toast.error("Failed to create sprint");
+      }
     }
   };
 
@@ -548,6 +906,9 @@ export default function BacklogPage() {
     }
 
     try {
+      // Get original sprint for comparison
+      const originalSprint = sprints.find(s => s.id === currentSprint.id);
+      
       // Create a copy of the sprint object with only the fields that should be updated
       const sprintUpdate = {
         name: currentSprint.name,
@@ -565,6 +926,26 @@ export default function BacklogPage() {
 
       if (response.data && response.data.status === "SUCCESS") {
         toast.success("Sprint updated successfully");
+        
+        // Check what was updated and send appropriate notifications
+        if (originalSprint) {
+          // Check if goal was updated
+          if (originalSprint.goal !== currentSprint.goal) {
+            await sendSprintNotificationToMembers(
+              "SPRINT_GOAL_UPDATED", 
+              currentSprint, 
+              "Updated Goal",
+              currentSprint.goal || "No goal set"
+            );
+          } else {
+            // Send general sprint updated notification
+            await sendSprintNotificationToMembers("SPRINT_UPDATED", currentSprint, "Updated");
+          }
+        } else {
+          // Fallback: send general update notification
+          await sendSprintNotificationToMembers("SPRINT_UPDATED", currentSprint, "Updated");
+        }
+        
         setShowSprintModal(false);
         await fetchSprints();
       } else {
@@ -579,10 +960,24 @@ export default function BacklogPage() {
   // Delete sprint
   const handleDeleteSprint = async (sprintId: string) => {
     try {
+      // Get sprint info before deletion for notification
+      const sprintToDelete = sprints.find(s => s.id === sprintId);
+      
       const response = await axios.delete(`http://localhost:8084/api/sprints/${sprintId}`);
       
       if (response.status === 200 || response.status === 204) {
         toast.success("Sprint deleted successfully");
+        
+        // Send notification about sprint deletion (using SPRINT_ENDED as closest match)
+        if (sprintToDelete) {
+          await sendSprintNotificationToMembers(
+            "SPRINT_ENDED", 
+            sprintToDelete, 
+            "Deleted", 
+            "Sprint has been removed from the project"
+          );
+        }
+        
         await fetchSprints();
         
         // Move tasks from deleted sprint back to backlog - chỉ xử lý parent tasks
@@ -608,19 +1003,19 @@ export default function BacklogPage() {
         return;
       }
       
-      const updatedTask = { ...taskToUpdate, sprintId: null as string | null };
+      const updatedTask = { ...taskToUpdate, sprintId: undefined };
       
       const response = await axios.put(`http://localhost:8085/api/tasks/${taskId}`, updatedTask);
       
       if (response.data) {
         // Update local state
         const updatedTasks = tasks.map((task) =>
-          task.id === taskId ? { ...task, sprintId: null as string | null } : task
+          task.id === taskId ? { ...task, sprintId: undefined } : task
         );
         setTasks(updatedTasks);
         
         // Add to backlog
-        const updatedBacklogTask = { ...taskToUpdate, sprintId: null as string | null };
+        const updatedBacklogTask = { ...taskToUpdate, sprintId: undefined };
         setBacklogTasks([...backlogTasks, updatedBacklogTask]);
         
         toast.success("Task moved to backlog");
@@ -742,17 +1137,6 @@ export default function BacklogPage() {
     return completedPoints;
   };
 
-  // Format date for display
-  const formatDate = (dateString?: string) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    });
-  };
-
   // Handle starting a sprint
   const handleStartSprint = async (sprintId: string) => {
     try {
@@ -760,6 +1144,14 @@ export default function BacklogPage() {
       
       if (response.data && response.data.status === "SUCCESS") {
         toast.success("Sprint started successfully");
+        
+        // Find the sprint that was started for notification
+        const startedSprint = sprints.find(s => s.id === sprintId);
+        if (startedSprint) {
+          // Send SPRINT_STARTED notifications to project members
+          await sendSprintNotificationToMembers("SPRINT_STARTED", startedSprint, "Started");
+        }
+        
         await fetchSprints(); // Reload sprints to get updated status
       } else {
         toast.error("Failed to start sprint");
@@ -777,6 +1169,14 @@ export default function BacklogPage() {
       
       if (response.data && response.data.status === "SUCCESS") {
         toast.success("Sprint completed successfully");
+        
+        // Find the sprint that was completed for notification
+        const completedSprint = sprints.find(s => s.id === sprintId);
+        if (completedSprint) {
+          // Send SPRINT_COMPLETED notifications to project members
+          await sendSprintNotificationToMembers("SPRINT_COMPLETED", completedSprint, "Completed");
+        }
+        
         await fetchSprints(); // Reload sprints to get updated status
       } else {
         toast.error("Failed to complete sprint");
@@ -843,6 +1243,7 @@ export default function BacklogPage() {
   // Add priority sorting function
   const sortTasksByPriority = (tasks: TaskData[]): TaskData[] => {
     const priorityOrder = {
+      'BLOCKER': 6,
       'HIGHEST': 5,
       'HIGH': 4,
       'MEDIUM': 3,
@@ -869,6 +1270,7 @@ export default function BacklogPage() {
   // Get priority icon and color
   const getPriorityIcon = (priority?: string) => {
     switch (priority) {
+      case 'BLOCKER': return '🚨';
       case 'HIGHEST': return '🔴';
       case 'HIGH': return '🟠';
       case 'MEDIUM': return '🟡';
@@ -880,6 +1282,7 @@ export default function BacklogPage() {
 
   const getPriorityColorClass = (priority?: string) => {
     switch (priority) {
+      case 'BLOCKER': return 'bg-red-200 text-red-900 border-red-400';
       case 'HIGHEST': return 'bg-red-100 text-red-800 border-red-300';
       case 'HIGH': return 'bg-orange-100 text-orange-800 border-orange-300';
       case 'MEDIUM': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
@@ -905,22 +1308,26 @@ export default function BacklogPage() {
               />
             </div>
             <div className="flex items-center ml-4 space-x-3">
-              <Button 
-                variant="default" 
-                size="sm"
-                onClick={handleCreateSprint}
-                className="h-9 bg-blue-500 text-white hover:bg-blue-600"
-              >
-                Create Sprint
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={trainAIModel}
-                className="h-9 border-orange-300 text-orange-700 hover:bg-orange-50"
-              >
-                🤖 Train AI Model
-              </Button>
+              {canCreateSprint(userPermissions) && (
+                <Button 
+                  variant="default" 
+                  size="sm"
+                  onClick={handleCreateSprint}
+                  className="h-9 bg-blue-500 text-white hover:bg-blue-600"
+                >
+                  Create Sprint
+                </Button>
+              )}
+              {canTrainAI(userPermissions) && (
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={trainAIModel}
+                  className="h-9 border-orange-300 text-orange-700 hover:bg-orange-50"
+                >
+                  🤖 Train AI Model
+                </Button>
+              )}
               <Button variant="outline" className="h-9 border-gray-300 flex items-center gap-1">
                 Epic <ChevronDown className="h-4 w-4" />
               </Button>
@@ -1001,79 +1408,97 @@ export default function BacklogPage() {
                               {tasks.filter(task => task.sprintId === sprint.id && task.status === "DONE" && (task.parentTaskId === null || task.parentTaskId === undefined)).length}
                             </span>
                           </div>
-                          {sprint.status === "ACTIVE" ? (
-                            <Button 
-                              variant="secondary" 
-                              size="sm"
-                              onClick={() => handleCompleteSprint(sprint.id)}
-                              className="bg-orange-100 text-orange-700 border-orange-200 hover:bg-orange-200"
-                            >
-                              Complete sprint
-                            </Button>
-                          ) : sprint.status === "COMPLETED" ? (
-                            <Button 
-                              variant="secondary" 
-                              size="sm"
-                              disabled
-                              className="bg-green-100 text-green-700 border-green-200"
-                            >
-                              Completed
-                            </Button>
-                          ) : (
-                            <Button 
-                              variant="secondary" 
-                              size="sm"
-                              onClick={() => handleStartSprint(sprint.id)}
-                            >
-                              Start sprint
-                            </Button>
+                          {(() => {
+                            const canStart = canStartEndSprints(userPermissions);
+                            console.log('🔍 SPRINT BUTTON DEBUG:', {
+                              sprintId: sprint.id,
+                              sprintStatus: sprint.status,
+                              userPermissions,
+                              canStartEndSprints: canStart,
+                              canManageSprints: userPermissions?.canManageSprints,
+                              isScrumMaster: userPermissions?.isScrumMaster,
+                              role: userPermissions?.role
+                            });
+                            return canStart;
+                          })() && (
+                            <>
+                              {sprint.status === "ACTIVE" ? (
+                                <Button 
+                                  variant="secondary" 
+                                  size="sm"
+                                  onClick={() => handleCompleteSprint(sprint.id)}
+                                  className="bg-orange-100 text-orange-700 border-orange-200 hover:bg-orange-200"
+                                >
+                                  Complete sprint
+                                </Button>
+                              ) : sprint.status === "COMPLETED" ? (
+                                <Button 
+                                  variant="secondary" 
+                                  size="sm"
+                                  disabled
+                                  className="bg-green-100 text-green-700 border-green-200"
+                                >
+                                  Completed
+                                </Button>
+                              ) : (
+                                <Button 
+                                  variant="secondary" 
+                                  size="sm"
+                                  onClick={() => handleStartSprint(sprint.id)}
+                                >
+                                  Start sprint
+                                </Button>
+                              )}
+                            </>
                           )}
-                          <div className="relative">
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="h-8 w-8 sprint-edit-button"
-                              onClick={() => setOpenSprintMenu(openSprintMenu === sprint.id ? null : sprint.id)}
-                            >
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                            
-                            {openSprintMenu === sprint.id && (
-                              <div 
-                                ref={sprintMenuRef}
-                                className="absolute right-0 top-full mt-1 w-48 bg-white rounded shadow-lg z-10 py-1 border"
+                          {canManageSprints(userPermissions) && (
+                            <div className="relative">
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-8 w-8 sprint-edit-button"
+                                onClick={() => setOpenSprintMenu(openSprintMenu === sprint.id ? null : sprint.id)}
                               >
-                                <button
-                                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center"
-                                  onClick={() => handleMoveSprint(sprint.id, 'up')}
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                              
+                              {openSprintMenu === sprint.id && (
+                                <div 
+                                  ref={sprintMenuRef}
+                                  className="absolute right-0 top-full mt-1 w-48 bg-white rounded shadow-lg z-10 py-1 border"
                                 >
-                                  <ChevronUp className="h-4 w-4 mr-2" />
-                                  Move up
-                                </button>
-                                <button
-                                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center"
-                                  onClick={() => handleMoveSprint(sprint.id, 'down')}
-                                >
-                                  <ChevronDown className="h-4 w-4 mr-2" />
-                                  Move down
-                                </button>
-                                <button
-                                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center"
-                                  onClick={() => handleEditSprint(sprint)}
-                                >
-                                  <Edit className="h-4 w-4 mr-2" />
-                                  Edit
-                                </button>
-                                <button
-                                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center text-red-600"
-                                  onClick={() => handleDeleteSprint(sprint.id)}
-                                >
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Delete
-                                </button>
-                              </div>
-                            )}
-                          </div>
+                                  <button
+                                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center"
+                                    onClick={() => handleMoveSprint(sprint.id, 'up')}
+                                  >
+                                    <ChevronUp className="h-4 w-4 mr-2" />
+                                    Move up
+                                  </button>
+                                  <button
+                                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center"
+                                    onClick={() => handleMoveSprint(sprint.id, 'down')}
+                                  >
+                                    <ChevronDown className="h-4 w-4 mr-2" />
+                                    Move down
+                                  </button>
+                                  <button
+                                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center"
+                                    onClick={() => handleEditSprint(sprint)}
+                                  >
+                                    <Edit className="h-4 w-4 mr-2" />
+                                    Edit
+                                  </button>
+                                  <button
+                                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center text-red-600"
+                                    onClick={() => handleDeleteSprint(sprint.id)}
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Delete
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -1212,13 +1637,17 @@ export default function BacklogPage() {
                 ) : (
                   <div className="mb-6 p-6 border border-dashed rounded text-center">
                     <p className="text-gray-500 mb-2">No sprints found for this project.</p>
-                    <Button 
-                      variant="secondary" 
-                      size="sm"
-                      onClick={handleCreateSprint}
-                    >
-                      Create Sprint
-                    </Button>
+                    {canCreateSprint(userPermissions) ? (
+                      <Button 
+                        variant="secondary" 
+                        size="sm"
+                        onClick={handleCreateSprint}
+                      >
+                        Create Sprint
+                      </Button>
+                    ) : (
+                      <p className="text-sm text-gray-400">Only project owners and scrum masters can create sprints.</p>
+                    )}
                   </div>
                 )}
 

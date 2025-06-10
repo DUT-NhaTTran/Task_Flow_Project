@@ -5,7 +5,8 @@ public enum TaskPriority {
     LOW(2, "Low", "#059669", "🟢"), 
     MEDIUM(3, "Medium", "#d97706", "🟡"),
     HIGH(4, "High", "#ea580c", "🟠"),
-    HIGHEST(5, "Highest", "#dc2626", "🔴");
+    HIGHEST(5, "Highest", "#dc2626", "🔴"),
+    BLOCKER(6, "Blocker", "#7c2d12", "🚨");
 
     private final int level;
     private final String displayName;
@@ -78,6 +79,7 @@ public enum TaskPriority {
      */
     public String getCssClass() {
         switch (this) {
+            case BLOCKER: return "priority-blocker";
             case HIGHEST: return "priority-highest";
             case HIGH: return "priority-high";
             case MEDIUM: return "priority-medium";
@@ -92,6 +94,7 @@ public enum TaskPriority {
      */
     public String getBackgroundClass() {
         switch (this) {
+            case BLOCKER: return "bg-red-200 text-red-900 border-red-400";
             case HIGHEST: return "bg-red-100 text-red-800";
             case HIGH: return "bg-orange-100 text-orange-800";
             case MEDIUM: return "bg-yellow-100 text-yellow-800";

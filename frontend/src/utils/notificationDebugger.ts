@@ -8,6 +8,19 @@ export interface NotificationTestResult {
   timestamp: string;
 }
 
+// Standard notification payload structure
+interface StandardNotificationPayload {
+  type: string;
+  title: string;
+  message: string;
+  recipientUserId: string;
+  actorUserId: string;
+  actorUserName: string;
+  projectId: string;
+  projectName: string;
+  taskId: string;
+}
+
 export class NotificationDebugger {
   
   /**
@@ -37,27 +50,28 @@ export class NotificationDebugger {
   }
 
   /**
-   * Test create notification API
+   * Test create notification API with standard payload format
    */
   static async testCreateNotification(testData?: any): Promise<NotificationTestResult> {
     try {
       console.log('🔍 Testing create notification API...');
       
-      const defaultTestData = {
-        type: "TASK_COMMENT",
-        title: "Test notification from debugger",
-        message: "This is a test notification to check database save",
+      // Standard payload format - only essential fields
+      const defaultTestData: StandardNotificationPayload = {
+        type: "TASK_ASSIGNED",
+        title: "Test from Notification Debugger",
+        message: "This is a test notification to check API and database",
         recipientUserId: "test-recipient-123",
-        actorUserId: "test-actor-456", 
+        actorUserId: "test-actor-456",
         actorUserName: "Test User Debugger",
         projectId: "test-project-789",
-        taskId: "test-task-abc",
-        actionUrl: "/test"
+        projectName: "Test Project",
+        taskId: "test-task-abc"
       };
 
       const notificationData = testData || defaultTestData;
       
-      console.log('📤 Sending test notification:', notificationData);
+      console.log('📤 Sending standard test notification:', notificationData);
       
       const response = await axios.post(
         'http://localhost:8089/api/notifications/create',
@@ -121,50 +135,50 @@ export class NotificationDebugger {
   }
 
   /**
-   * Run full notification test suite
+   * Run complete notification test suite
    */
-  static async runFullTest(): Promise<{
-    healthCheck: NotificationTestResult;
-    createNotification: NotificationTestResult;
-    getNotifications: NotificationTestResult;
-    summary: string;
-  }> {
-    console.group('🔬 Running Full Notification Test Suite');
+  static async runCompleteSuite(): Promise<NotificationTestResult[]> {
+    console.group('🧪 Running Complete Notification Test Suite');
+    
+    const results: NotificationTestResult[] = [];
     
     // Test 1: Health check
-    console.log('\n🏥 Step 1: Health Check');
-    const healthCheck = await this.testNotificationServiceHealth();
-    console.log('Health check result:', healthCheck);
+    console.log('\n1️⃣ Testing notification service health...');
+    const healthResult = await this.testNotificationServiceHealth();
+    results.push(healthResult);
+    console.log('Health check result:', healthResult.success ? '✅ PASS' : '❌ FAIL');
     
     // Test 2: Create notification
-    console.log('\n📝 Step 2: Create Notification');
-    const createNotification = await this.testCreateNotification();
-    console.log('Create notification result:', createNotification);
+    console.log('\n2️⃣ Testing notification creation...');
+    const createResult = await this.testCreateNotification();
+    results.push(createResult);
+    console.log('Create notification result:', createResult.success ? '✅ PASS' : '❌ FAIL');
     
-    // Test 3: Get notifications (if create was successful)
-    console.log('\n📋 Step 3: Get Notifications');
-    const getNotifications = await this.testGetNotifications();
-    console.log('Get notifications result:', getNotifications);
+    // Test 3: Get notifications
+    console.log('\n3️⃣ Testing notification retrieval...');
+    const getResult = await this.testGetNotifications();
+    results.push(getResult);
+    console.log('Get notifications result:', getResult.success ? '✅ PASS' : '❌ FAIL');
     
     // Summary
-    const allPassed = healthCheck.success && createNotification.success && getNotifications.success;
-    const summary = allPassed 
-      ? '✅ All notification tests passed! Service is working properly.'
-      : '❌ Some notification tests failed. Check the results above.';
-      
-    console.log('\n📊 Test Summary:', summary);
+    const passCount = results.filter(r => r.success).length;
+    const totalCount = results.length;
+    
+    console.log(`\n📊 Test Suite Summary: ${passCount}/${totalCount} tests passed`);
+    
+    if (passCount === totalCount) {
+      console.log('🎉 All tests passed! Notification system is working correctly.');
+    } else {
+      console.log('⚠️ Some tests failed. Check the results above for details.');
+    }
+    
     console.groupEnd();
     
-    return {
-      healthCheck,
-      createNotification, 
-      getNotifications,
-      summary
-    };
+    return results;
   }
 
   /**
-   * Test với real user data từ TaskDetailModal
+   * Test with real user data using standard format
    */
   static async testWithRealUserData(
     currentUserId: string,
@@ -172,24 +186,26 @@ export class NotificationDebugger {
     assigneeId: string,
     taskId: string,
     taskTitle: string,
-    projectId: string
+    projectId: string,
+    projectName: string
   ): Promise<NotificationTestResult> {
     try {
-      console.log('🔍 Testing with real user data from TaskDetailModal...');
+      console.log('🔍 Testing with real user data using standard format...');
       
-      const realNotificationData = {
-        type: "TASK_COMMENT",
-        title: "Test comment notification with real data",
-        message: `${currentUserName} commented on your task "${taskTitle}": "This is a test comment from notification debugger"`,
+      // Standard payload format - only essential fields
+      const realNotificationData: StandardNotificationPayload = {
+        type: "TASK_ASSIGNED",
+        title: "Test from Real Data",
+        message: `${currentUserName} assigned you to task "${taskTitle}"`,
         recipientUserId: assigneeId,
         actorUserId: currentUserId,
         actorUserName: currentUserName,
         projectId: projectId,
-        taskId: taskId,
-        actionUrl: `/project/board?projectId=${projectId}&taskId=${taskId}`
+        projectName: projectName,
+        taskId: taskId
       };
       
-      console.log('📤 Sending real notification data:', realNotificationData);
+      console.log('📤 Sending real notification data (standard format):', realNotificationData);
       
       const response = await axios.post(
         'http://localhost:8089/api/notifications/create',
@@ -257,7 +273,7 @@ export class NotificationDebugger {
 // Helper function for quick testing
 export const quickNotificationTest = async () => {
   const debugger = new NotificationDebugger();
-  const results = await debugger.runFullTest();
+  const results = await debugger.runCompleteSuite();
   
   // Also debug database
   await debugger.debugNotificationDatabase();

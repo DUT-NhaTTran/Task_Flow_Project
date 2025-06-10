@@ -6,6 +6,15 @@ import { toast } from "sonner";
 import dynamic from "next/dynamic";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { useUser } from "@/contexts/UserContext";
+import { 
+  getUserPermissions, 
+  canEditTask, 
+  canDeleteTaskAsUser, 
+  canCreateTask,
+  UserPermissions 
+} from "@/utils/permissions";
+import { useUserStorage } from "@/hooks/useUserStorage";
+import { useNavigation } from "@/contexts/NavigationContext";
 
 // Import TipTap editor component dynamically to avoid SSR issues
 const TiptapEditor = dynamic(() => import("@/components/ui/tiptap-editor"), {
@@ -36,7 +45,7 @@ export interface TaskData {
   tags?: string[] | null;
   labels?: string[];
   label?: string;
-  priority?: "LOWEST" | "LOW" | "MEDIUM" | "HIGH" | "HIGHEST"; // ✅ New priority field
+  priority?: "LOWEST" | "LOW" | "MEDIUM" | "HIGH" | "HIGHEST" | "BLOCKER"; // ✅ Updated with BLOCKER
   attachments?: Array<string | Attachment>;
   webLinks?: WebLink[];
   linkedWorkItems?: LinkedWorkItem[];
@@ -106,6 +115,14 @@ export default function TaskDetailModal({
 }: TaskDetailModalProps) {
   // Use UserContext for global user management
   const { currentUser, isLoading: userContextLoading, users: cachedUsers, getUserById, fetchUserById } = useUser();
+  
+  // User and navigation contexts  
+  const { userData } = useUserStorage();
+  const { currentProjectId } = useNavigation();
+
+  // Permission state
+  const [userPermissions, setUserPermissions] = useState<UserPermissions | null>(null);
+  const [permissionsLoading, setPermissionsLoading] = useState(true);
 
   // State for editing the task
   const [editedTask, setEditedTask] = useState<TaskData>({ ...task });
@@ -144,6 +161,35 @@ export default function TaskDetailModal({
       setComments([]);
     }
   }, [task]);
+
+  // Fetch user permissions
+  useEffect(() => {
+    const fetchPermissions = async () => {
+      if (userData?.account?.id && task?.projectId) {
+        setPermissionsLoading(true);
+        try {
+          const permissions = await getUserPermissions(userData.account.id, task.projectId);
+          console.log('🔐 TASK MODAL PERMISSION DEBUG:', {
+            userId: userData.account.id,
+            projectId: task.projectId,
+            permissions,
+            taskCreator: task.createdBy,
+            taskAssignee: task.assigneeId
+          });
+          setUserPermissions(permissions);
+        } catch (error) {
+          console.error('Error fetching permissions:', error);
+          setUserPermissions(null);
+        } finally {
+          setPermissionsLoading(false);
+        }
+      } else {
+        setPermissionsLoading(false);
+      }
+    };
+
+    fetchPermissions();
+  }, [userData?.account?.id, task?.projectId, task?.createdBy, task?.assigneeId]);
 
   // State for saving/loading
   const [isSaving, setIsSaving] = useState(false);
@@ -209,7 +255,7 @@ export default function TaskDetailModal({
   // Comment interface to match backend
   interface CommentData {
     id: number;
-    taskId: string;
+    taskId: string; // This will contain UUID as string from backend
     userId: string;
     content: string;
     createdAt: string;
@@ -2337,12 +2383,13 @@ export default function TaskDetailModal({
   // Handle priority change
   const handlePriorityChange = (displayValue: string) => {
     // Map display values to enum values
-    const priorityMap: Record<string, "LOWEST" | "LOW" | "MEDIUM" | "HIGH" | "HIGHEST"> = {
+    const priorityMap: Record<string, "LOWEST" | "LOW" | "MEDIUM" | "HIGH" | "HIGHEST" | "BLOCKER"> = {
       "🔵 Lowest": "LOWEST",
       "🟢 Low": "LOW", 
       "🟡 Medium": "MEDIUM",
       "🟠 High": "HIGH",
-      "🔴 Highest": "HIGHEST"
+      "🔴 Highest": "HIGHEST",
+      "🚨 Blocker": "BLOCKER"
     };
 
     const priority = priorityMap[displayValue];
@@ -2439,7 +2486,8 @@ export default function TaskDetailModal({
       "LOW": "🟢 Low",
       "MEDIUM": "🟡 Medium", 
       "HIGH": "🟠 High",
-      "HIGHEST": "🔴 Highest"
+      "HIGHEST": "🔴 Highest",
+      "BLOCKER": "🚨 Blocker"
     };
     
     return priorityMap[priority || "MEDIUM"] || "🟡 Medium";
@@ -2563,32 +2611,39 @@ export default function TaskDetailModal({
               {showMoreMenu && (
                 <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
                   <div className="py-1">
-                    <button
-                      onClick={() => {
-                        setShowMoreMenu(false);
-                        deleteTask();
-                      }}
-                      className="w-full px-4 py-2 text-left hover:bg-red-50 flex items-center gap-3 text-red-600"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
+                    {/* Only show delete button if user has permission */}
+                    {userData?.account?.id && canDeleteTaskAsUser(userPermissions, task.createdBy || null, userData.account.id) ? (
+                      <button
+                        onClick={() => {
+                          setShowMoreMenu(false);
+                          deleteTask();
+                        }}
+                        className="w-full px-4 py-2 text-left hover:bg-red-50 flex items-center gap-3 text-red-600"
                       >
-                        <path d="M3 6h18"></path>
-                        <path d="M19 6v14c0 1 -1 2 -2 2H7c-1 0 -2 -1 -2 -2V6"></path>
-                        <path d="M8 6V4c0 -1 1 -2 2 -2h4c1 0 2 1 2 2v2"></path>
-                        <line x1="10" y1="11" x2="10" y2="17"></line>
-                        <line x1="14" y1="11" x2="14" y2="17"></line>
-                      </svg>
-                      <span className="text-sm">Delete task</span>
-                    </button>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M3 6h18"></path>
+                          <path d="M19 6v14c0 1 -1 2 -2 2H7c-1 0 -2 -1 -2 -2V6"></path>
+                          <path d="M8 6V4c0 -1 1 -2 2 -2h4c1 0 2 1 2 2v2"></path>
+                          <line x1="10" y1="11" x2="10" y2="17"></line>
+                          <line x1="14" y1="11" x2="14" y2="17"></line>
+                        </svg>
+                        <span className="text-sm">Delete task</span>
+                      </button>
+                    ) : (
+                      <div className="px-4 py-2 text-sm text-gray-400 italic">
+                        Only task creators and project admins can delete tasks
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -2619,17 +2674,25 @@ export default function TaskDetailModal({
                   defaultValue={statusMap[editedTask.status] || "To Do"}
                 />
               </div>
-              <button
-                className={`ml-4 px-3 py-1 rounded-md ${
-                  isSaving
-                    ? "bg-gray-100 text-gray-400"
-                    : "bg-indigo-50 text-indigo-600 hover:bg-indigo-100"
-                }`}
-                onClick={saveChanges}
-                disabled={isSaving}
-              >
-                {isSaving ? "Saving..." : "Save changes"}
-              </button>
+              {/* Only show Save changes button if user has permission to edit the task */}
+              {userData?.account?.id && canEditTask(userPermissions, task.assigneeId || null, task.createdBy || null, userData.account.id) && (
+                <button
+                  className={`ml-4 px-3 py-1 rounded-md ${
+                    isSaving
+                      ? "bg-gray-100 text-gray-400"
+                      : "bg-indigo-50 text-indigo-600 hover:bg-indigo-100"
+                  }`}
+                  onClick={saveChanges}
+                  disabled={isSaving}
+                >
+                  {isSaving ? "Saving..." : "Save changes"}
+                </button>
+              )}
+              {userData?.account?.id && !canEditTask(userPermissions, task.assigneeId || null, task.createdBy || null, userData.account.id) && (
+                <div className="ml-4 px-3 py-1 text-sm text-gray-400 italic">
+                  Only task creators, assignees, and admins can edit tasks
+                </div>
+              )}
 
               {/* Add dropdown button - moved from attachments section */}
               <div className="relative ml-4">
@@ -4320,7 +4383,8 @@ export default function TaskDetailModal({
                     "🟠 High", 
                     "🟡 Medium",
                     "🟢 Low",
-                    "🔵 Lowest"
+                    "🔵 Lowest",
+                    "🚨 Blocker"
                   ]}
                   onSelect={handlePriorityChange}
                   defaultValue={getPriorityDisplayValue(editedTask.priority)}

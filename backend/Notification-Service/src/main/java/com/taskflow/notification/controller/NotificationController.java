@@ -11,6 +11,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/notifications")
@@ -30,23 +31,37 @@ public class NotificationController {
         response.setHeader("Pragma", "no-cache");
         response.setHeader("Expires", "0");
         
-        List<Notification> notifications = notificationService.getNotificationsByUserId(userId);
-                
-        return ResponseEntity.ok(ApiResponse.success(notifications, "Notifications retrieved successfully"));
+        try {
+            UUID userUuid = UUID.fromString(userId);
+            List<Notification> notifications = notificationService.getNotificationsByUserId(userUuid);
+            return ResponseEntity.ok(ApiResponse.success(notifications, "Notifications retrieved successfully"));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Invalid UUID format for userId: " + userId));
+        }
     }
     
     // Get unread notifications for a user
     @GetMapping("/user/{userId}/unread")
     public ResponseEntity<ApiResponse<List<Notification>>> getUnreadNotifications(@PathVariable String userId) {
-        List<Notification> notifications = notificationService.getUnreadNotificationsByUserId(userId);
-        return ResponseEntity.ok(ApiResponse.success(notifications, "Unread notifications retrieved successfully"));
+        try {
+            UUID userUuid = UUID.fromString(userId);
+            List<Notification> notifications = notificationService.getUnreadNotificationsByUserId(userUuid);
+            return ResponseEntity.ok(ApiResponse.success(notifications, "Unread notifications retrieved successfully"));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Invalid UUID format for userId: " + userId));
+        }
     }
     
     // Get unread count for a user
     @GetMapping("/user/{userId}/unread/count")
     public ResponseEntity<ApiResponse<Long>> getUnreadCount(@PathVariable String userId) {
-        long count = notificationService.getUnreadCount(userId);
-        return ResponseEntity.ok(ApiResponse.success(count, "Unread count retrieved successfully"));
+        try {
+            UUID userUuid = UUID.fromString(userId);
+            long count = notificationService.getUnreadCount(userUuid);
+            return ResponseEntity.ok(ApiResponse.success(count, "Unread count retrieved successfully"));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Invalid UUID format for userId: " + userId));
+        }
     }
     
     // Get notification by ID
@@ -65,11 +80,10 @@ public class NotificationController {
     @PatchMapping("/{notificationId}/read")
     public ResponseEntity<ApiResponse<String>> markAsRead(@PathVariable Long notificationId) {
         boolean success = notificationService.markAsRead(notificationId);
-        
         if (success) {
-            return ResponseEntity.ok(ApiResponse.success("success", "Notification marked as read"));
+            return ResponseEntity.ok(ApiResponse.success("Marked as read", "Notification marked as read successfully"));
         } else {
-            return ResponseEntity.badRequest().body(ApiResponse.error("Notification not found"));
+            return ResponseEntity.badRequest().body(ApiResponse.error("Notification not found or already read"));
         }
     }
     
@@ -77,9 +91,8 @@ public class NotificationController {
     @DeleteMapping("/{notificationId}")
     public ResponseEntity<ApiResponse<String>> deleteNotification(@PathVariable Long notificationId) {
         boolean success = notificationService.deleteNotification(notificationId);
-        
         if (success) {
-            return ResponseEntity.ok(ApiResponse.success("success", "Notification deleted successfully"));
+            return ResponseEntity.ok(ApiResponse.success("Deleted", "Notification deleted successfully"));
         } else {
             return ResponseEntity.badRequest().body(ApiResponse.error("Notification not found"));
         }
@@ -95,22 +108,84 @@ public class NotificationController {
     @PostMapping("/create")
     public ResponseEntity<ApiResponse<Notification>> createNotification(@RequestBody Map<String, Object> request) {
         try {
-            NotificationType type = NotificationType.valueOf((String) request.get("type"));
+            System.out.println("🔍 CONTROLLER: Raw payload received:");
+            System.out.println("  " + request.toString());
+            
+            // Extract ONLY fields from standard payload format
+            String typeStr = (String) request.get("type");
             String title = (String) request.get("title");
             String message = (String) request.get("message");
-            String recipientUserId = (String) request.get("recipientUserId");
-            String actorUserId = (String) request.get("actorUserId");
+            String recipientUserIdStr = (String) request.get("recipientUserId");
+            String actorUserIdStr = (String) request.get("actorUserId");
             String actorUserName = (String) request.get("actorUserName");
-            String actorUserAvatar = (String) request.get("actorUserAvatar");
-            String projectId = (String) request.get("projectId");
+            String projectIdStr = (String) request.get("projectId");
             String projectName = (String) request.get("projectName");
-            String taskId = (String) request.get("taskId");
-            String sprintId = (String) request.get("sprintId");
-            String commentId = (String) request.get("commentId");
+            String taskIdStr = (String) request.get("taskId");
+
+            // Print parsed payload before processing
+            System.out.println("🔍 CONTROLLER: Parsed standard payload:");
+            System.out.println("  - type: " + typeStr);
+            System.out.println("  - title: " + title);
+            System.out.println("  - message: " + message);
+            System.out.println("  - recipientUserId: " + recipientUserIdStr);
+            System.out.println("  - actorUserId: " + actorUserIdStr);
+            System.out.println("  - actorUserName: " + actorUserName);
+            System.out.println("  - projectId: " + projectIdStr);
+            System.out.println("  - projectName: " + projectName);
+            System.out.println("  - taskId: " + taskIdStr);
+
+            // Parse notification type
+            NotificationType type = null;
+            if (typeStr != null) {
+                try {
+                    type = NotificationType.valueOf(typeStr.toUpperCase());
+                } catch (IllegalArgumentException e) {
+                    return ResponseEntity.badRequest()
+                        .body(ApiResponse.error("Invalid notification type: " + typeStr));
+                }
+            }
+
+            // Convert String IDs to UUID
+            UUID recipientUserId = null;
+            UUID actorUserId = null;
+            UUID projectId = null;
+            UUID taskId = null;
             
-            // Generate action URL for project homescreen with taskId if available
+            if (recipientUserIdStr != null) {
+                try {
+                    recipientUserId = UUID.fromString(recipientUserIdStr);
+                } catch (IllegalArgumentException e) {
+                    return ResponseEntity.badRequest().body(ApiResponse.error("Invalid UUID format for recipientUserId: " + recipientUserIdStr));
+                }
+            }
+            
+            if (actorUserIdStr != null) {
+                try {
+                    actorUserId = UUID.fromString(actorUserIdStr);
+                } catch (IllegalArgumentException e) {
+                    return ResponseEntity.badRequest().body(ApiResponse.error("Invalid UUID format for actorUserId: " + actorUserIdStr));
+                }
+            }
+            
+            if (projectIdStr != null) {
+                try {
+                    projectId = UUID.fromString(projectIdStr);
+                } catch (IllegalArgumentException e) {
+                    return ResponseEntity.badRequest().body(ApiResponse.error("Invalid UUID format for projectId: " + projectIdStr));
+                }
+            }
+            
+            if (taskIdStr != null) {
+                try {
+                    taskId = UUID.fromString(taskIdStr);
+                } catch (IllegalArgumentException e) {
+                    return ResponseEntity.badRequest().body(ApiResponse.error("Invalid UUID format for taskId: " + taskIdStr));
+                }
+            }
+            
+            // Generate action URL only if project exists and it's not a PROJECT_DELETED notification
             String actionUrl = null;
-            if (projectId != null) {
+            if (projectId != null && type != NotificationType.PROJECT_DELETED) {
                 if (taskId != null) {
                     actionUrl = String.format("/project/project_homescreen?projectId=%s&taskId=%s&from=notification", projectId, taskId);
                 } else {
@@ -118,8 +193,11 @@ public class NotificationController {
                 }
             }
             
-            System.out.println("🔍 CONTROLLER: Creating notification with actorUserName: '" + actorUserName + "'");
-            System.out.println("🔍 CONTROLLER: Generated actionUrl: '" + actionUrl + "'");
+            System.out.println("🔍 CONTROLLER: Final values before API call:");
+            System.out.println("  - type: " + type);
+            System.out.println("  - recipientUserId: " + recipientUserId);
+            System.out.println("  - actorUserId: " + actorUserId);
+            System.out.println("  - actionUrl: " + actionUrl);
             
             // Validate required fields
             if (type == null || recipientUserId == null || actorUserId == null) {
@@ -127,12 +205,17 @@ public class NotificationController {
                     .body(ApiResponse.error("Missing required fields: type, recipientUserId, or actorUserId"));
             }
             
+            // Create notification with ONLY standard fields (no optional nulls)
             Notification notification = notificationService.createNotification(
                 type, title, message, recipientUserId, actorUserId, actorUserName,
-                actorUserAvatar, projectId, projectName, taskId, sprintId, commentId, actionUrl
+                null, // actorUserAvatar - not in standard payload
+                projectId, projectName, taskId, 
+                null, // sprintId - not in standard payload
+                null, // commentId - not in standard payload
+                actionUrl
             );
             
-            System.out.println("🔍 CONTROLLER: Notification created with ID: " + notification.getId());
+            System.out.println("🔍 CONTROLLER: Notification created successfully");
             return ResponseEntity.ok(ApiResponse.success(notification, "Notification created successfully"));
             
         } catch (IllegalArgumentException e) {
@@ -151,30 +234,76 @@ public class NotificationController {
     @PostMapping("/task-comment")
     public ResponseEntity<ApiResponse<Notification>> createTaskCommentNotification(@RequestBody Map<String, Object> request) {
         try {
-            String taskId = (String) request.get("taskId");
+            String recipientUserIdStr = (String) request.get("recipientUserId");
+            String actorUserIdStr = (String) request.get("actorUserId");
+            String actorUserName = (String) request.get("actorUserName");
+            String taskIdStr = (String) request.get("taskId");
             String taskTitle = (String) request.get("taskTitle");
-            String taskAssigneeId = (String) request.get("taskAssigneeId");
-            String commentAuthorId = (String) request.get("commentAuthorId");
-            String commentAuthorName = (String) request.get("commentAuthorName");
-            String commentId = (String) request.get("commentId");
-            String projectId = (String) request.get("projectId");
+            String projectIdStr = (String) request.get("projectId");
             String projectName = (String) request.get("projectName");
+            Object commentIdObj = request.get("commentId");
             
-            // Validate required fields
-            if (taskAssigneeId == null || commentAuthorId == null || taskId == null) {
-                return ResponseEntity.badRequest()
-                    .body(ApiResponse.error("Missing required fields: taskAssigneeId, commentAuthorId, or taskId"));
+            // Convert String IDs to appropriate types
+            UUID recipientUserId = null;
+            UUID actorUserId = null;
+            UUID projectId = null;
+            UUID taskId = null;
+            Long commentId = null;
+            
+            if (recipientUserIdStr != null) {
+                try {
+                    recipientUserId = UUID.fromString(recipientUserIdStr);
+                } catch (IllegalArgumentException e) {
+                    return ResponseEntity.badRequest().body(ApiResponse.error("Invalid UUID format for recipientUserId: " + recipientUserIdStr));
+                }
             }
             
-            // Don't send notification if user comments on their own assigned task
-            if (taskAssigneeId.equals(commentAuthorId)) {
-                return ResponseEntity.ok(ApiResponse.success(null, "No notification needed - user commented on own task"));
+            if (actorUserIdStr != null) {
+                try {
+                    actorUserId = UUID.fromString(actorUserIdStr);
+                } catch (IllegalArgumentException e) {
+                    return ResponseEntity.badRequest().body(ApiResponse.error("Invalid UUID format for actorUserId: " + actorUserIdStr));
+                }
+            }
+            
+            if (projectIdStr != null) {
+                try {
+                    projectId = UUID.fromString(projectIdStr);
+                } catch (IllegalArgumentException e) {
+                    return ResponseEntity.badRequest().body(ApiResponse.error("Invalid UUID format for projectId: " + projectIdStr));
+                }
+            }
+            
+            if (taskIdStr != null) {
+                try {
+                    taskId = UUID.fromString(taskIdStr);
+                } catch (IllegalArgumentException e) {
+                    return ResponseEntity.badRequest().body(ApiResponse.error("Invalid UUID format for taskId: " + taskIdStr));
+                }
+            }
+            
+            if (commentIdObj != null) {
+                try {
+                    if (commentIdObj instanceof String) {
+                        commentId = Long.parseLong((String) commentIdObj);
+                    } else if (commentIdObj instanceof Number) {
+                        commentId = ((Number) commentIdObj).longValue();
+                    }
+                } catch (NumberFormatException e) {
+                    return ResponseEntity.badRequest().body(ApiResponse.error("Invalid Long format for commentId: " + commentIdObj));
+                }
+            }
+            
+            // Validate required fields
+            if (recipientUserId == null || actorUserId == null || taskId == null) {
+                return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Missing required fields: recipientUserId, actorUserId, or taskId"));
             }
             
             Notification notification = notificationService.createTaskCommentNotification(
-                taskAssigneeId,
-                commentAuthorId,
-                commentAuthorName,
+                recipientUserId,
+                actorUserId,
+                actorUserName,
                 taskId,
                 taskTitle,
                 projectId,
@@ -182,7 +311,6 @@ public class NotificationController {
                 commentId
             );
             
-            System.out.println("CONTROLLER: Task comment notification created for user " + taskAssigneeId);
             return ResponseEntity.ok(ApiResponse.success(notification, "Task comment notification created successfully"));
             
         } catch (Exception e) {
@@ -197,13 +325,51 @@ public class NotificationController {
     @PostMapping("/task-assigned")
     public ResponseEntity<ApiResponse<Notification>> createTaskAssignedNotification(@RequestBody Map<String, Object> request) {
         try {
-            String recipientUserId = (String) request.get("recipientUserId");
-            String actorUserId = (String) request.get("actorUserId");
+            String recipientUserIdStr = (String) request.get("recipientUserId");
+            String actorUserIdStr = (String) request.get("actorUserId");
             String actorUserName = (String) request.get("actorUserName");
-            String taskId = (String) request.get("taskId");
+            String taskIdStr = (String) request.get("taskId");
             String taskTitle = (String) request.get("taskTitle");
-            String projectId = (String) request.get("projectId");
+            String projectIdStr = (String) request.get("projectId");
             String projectName = (String) request.get("projectName");
+            
+            // Convert String IDs to UUID
+            UUID recipientUserId = null;
+            UUID actorUserId = null;
+            UUID projectId = null;
+            UUID taskId = null;
+            
+            if (recipientUserIdStr != null) {
+                try {
+                    recipientUserId = UUID.fromString(recipientUserIdStr);
+                } catch (IllegalArgumentException e) {
+                    return ResponseEntity.badRequest().body(ApiResponse.error("Invalid UUID format for recipientUserId: " + recipientUserIdStr));
+                }
+            }
+            
+            if (actorUserIdStr != null) {
+                try {
+                    actorUserId = UUID.fromString(actorUserIdStr);
+                } catch (IllegalArgumentException e) {
+                    return ResponseEntity.badRequest().body(ApiResponse.error("Invalid UUID format for actorUserId: " + actorUserIdStr));
+                }
+            }
+            
+            if (projectIdStr != null) {
+                try {
+                    projectId = UUID.fromString(projectIdStr);
+                } catch (IllegalArgumentException e) {
+                    return ResponseEntity.badRequest().body(ApiResponse.error("Invalid UUID format for projectId: " + projectIdStr));
+                }
+            }
+            
+            if (taskIdStr != null) {
+                try {
+                    taskId = UUID.fromString(taskIdStr);
+                } catch (IllegalArgumentException e) {
+                    return ResponseEntity.badRequest().body(ApiResponse.error("Invalid UUID format for taskId: " + taskIdStr));
+                }
+            }
             
             // Validate required fields
             if (recipientUserId == null || actorUserId == null || taskId == null) {
@@ -230,15 +396,53 @@ public class NotificationController {
     @PostMapping("/task-updated")
     public ResponseEntity<ApiResponse<Notification>> createTaskUpdatedNotification(@RequestBody Map<String, Object> request) {
         try {
-            String recipientUserId = (String) request.get("recipientUserId");
-            String actorUserId = (String) request.get("actorUserId");
+            String recipientUserIdStr = (String) request.get("recipientUserId");
+            String actorUserIdStr = (String) request.get("actorUserId");
             String actorUserName = (String) request.get("actorUserName");
-            String taskId = (String) request.get("taskId");
+            String taskIdStr = (String) request.get("taskId");
             String taskTitle = (String) request.get("taskTitle");
-            String projectId = (String) request.get("projectId");
+            String projectIdStr = (String) request.get("projectId");
             String projectName = (String) request.get("projectName");
             String updateType = (String) request.get("updateType");
             String newValue = (String) request.get("newValue");
+            
+            // Convert String IDs to UUID
+            UUID recipientUserId = null;
+            UUID actorUserId = null;
+            UUID projectId = null;
+            UUID taskId = null;
+            
+            if (recipientUserIdStr != null) {
+                try {
+                    recipientUserId = UUID.fromString(recipientUserIdStr);
+                } catch (IllegalArgumentException e) {
+                    return ResponseEntity.badRequest().body(ApiResponse.error("Invalid UUID format for recipientUserId: " + recipientUserIdStr));
+                }
+            }
+            
+            if (actorUserIdStr != null) {
+                try {
+                    actorUserId = UUID.fromString(actorUserIdStr);
+                } catch (IllegalArgumentException e) {
+                    return ResponseEntity.badRequest().body(ApiResponse.error("Invalid UUID format for actorUserId: " + actorUserIdStr));
+                }
+            }
+            
+            if (projectIdStr != null) {
+                try {
+                    projectId = UUID.fromString(projectIdStr);
+                } catch (IllegalArgumentException e) {
+                    return ResponseEntity.badRequest().body(ApiResponse.error("Invalid UUID format for projectId: " + projectIdStr));
+                }
+            }
+            
+            if (taskIdStr != null) {
+                try {
+                    taskId = UUID.fromString(taskIdStr);
+                } catch (IllegalArgumentException e) {
+                    return ResponseEntity.badRequest().body(ApiResponse.error("Invalid UUID format for taskId: " + taskIdStr));
+                }
+            }
             
             // Validate required fields
             if (recipientUserId == null || actorUserId == null || taskId == null) {
@@ -272,15 +476,53 @@ public class NotificationController {
     @PostMapping("/task-status-changed")
     public ResponseEntity<ApiResponse<String>> createTaskStatusChangedNotifications(@RequestBody Map<String, Object> request) {
         try {
-            String actorUserId = (String) request.get("actorUserId");
+            String actorUserIdStr = (String) request.get("actorUserId");
             String actorUserName = (String) request.get("actorUserName");
-            String taskId = (String) request.get("taskId");
+            String taskIdStr = (String) request.get("taskId");
             String taskTitle = (String) request.get("taskTitle");
-            String projectId = (String) request.get("projectId");
+            String projectIdStr = (String) request.get("projectId");
             String projectName = (String) request.get("projectName");
-            String assigneeUserId = (String) request.get("assigneeUserId");
+            String assigneeUserIdStr = (String) request.get("assigneeUserId");
             String oldStatus = (String) request.get("oldStatus");
             String newStatus = (String) request.get("newStatus");
+            
+            // Convert String IDs to UUID
+            UUID actorUserId = null;
+            UUID assigneeUserId = null;
+            UUID projectId = null;
+            UUID taskId = null;
+            
+            if (actorUserIdStr != null) {
+                try {
+                    actorUserId = UUID.fromString(actorUserIdStr);
+                } catch (IllegalArgumentException e) {
+                    return ResponseEntity.badRequest().body(ApiResponse.error("Invalid UUID format for actorUserId: " + actorUserIdStr));
+                }
+            }
+            
+            if (assigneeUserIdStr != null) {
+                try {
+                    assigneeUserId = UUID.fromString(assigneeUserIdStr);
+                } catch (IllegalArgumentException e) {
+                    return ResponseEntity.badRequest().body(ApiResponse.error("Invalid UUID format for assigneeUserId: " + assigneeUserIdStr));
+                }
+            }
+            
+            if (projectIdStr != null) {
+                try {
+                    projectId = UUID.fromString(projectIdStr);
+                } catch (IllegalArgumentException e) {
+                    return ResponseEntity.badRequest().body(ApiResponse.error("Invalid UUID format for projectId: " + projectIdStr));
+                }
+            }
+            
+            if (taskIdStr != null) {
+                try {
+                    taskId = UUID.fromString(taskIdStr);
+                } catch (IllegalArgumentException e) {
+                    return ResponseEntity.badRequest().body(ApiResponse.error("Invalid UUID format for taskId: " + taskIdStr));
+                }
+            }
             
             // Validate required fields
             if (actorUserId == null || taskId == null || projectId == null) {
@@ -341,5 +583,53 @@ public class NotificationController {
         
         public T getData() { return data; }
         public void setData(T data) { this.data = data; }
+    }
+
+    // Simple notification response DTO (only essential fields)
+    public static class NotificationResponse {
+        private Long id;
+        private String type;
+        private String title;
+        private String message;
+        private String recipientUserId;
+        private String actorUserId;
+        private String actorUserName;
+        private String projectId;
+        private String projectName;
+        private String taskId;
+        private String actionUrl;
+        private Boolean isRead;
+        private String createdAt;
+
+        public NotificationResponse(Notification notification) {
+            this.id = notification.getId();
+            this.type = notification.getType() != null ? notification.getType().toString() : null;
+            this.title = notification.getTitle();
+            this.message = notification.getMessage();
+            this.recipientUserId = notification.getRecipientUserId() != null ? notification.getRecipientUserId().toString() : null;
+            this.actorUserId = notification.getActorUserId() != null ? notification.getActorUserId().toString() : null;
+            this.actorUserName = notification.getActorUserName();
+            this.projectId = notification.getProjectId() != null ? notification.getProjectId().toString() : null;
+            this.projectName = notification.getProjectName();
+            this.taskId = notification.getTaskId() != null ? notification.getTaskId().toString() : null;
+            this.actionUrl = notification.getActionUrl();
+            this.isRead = notification.getIsRead();
+            this.createdAt = notification.getCreatedAt() != null ? notification.getCreatedAt().toString() : null;
+        }
+
+        // Getters
+        public Long getId() { return id; }
+        public String getType() { return type; }
+        public String getTitle() { return title; }
+        public String getMessage() { return message; }
+        public String getRecipientUserId() { return recipientUserId; }
+        public String getActorUserId() { return actorUserId; }
+        public String getActorUserName() { return actorUserName; }
+        public String getProjectId() { return projectId; }
+        public String getProjectName() { return projectName; }
+        public String getTaskId() { return taskId; }
+        public String getActionUrl() { return actionUrl; }
+        public Boolean getIsRead() { return isRead; }
+        public String getCreatedAt() { return createdAt; }
     }
 } 

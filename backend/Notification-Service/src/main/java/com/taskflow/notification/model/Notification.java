@@ -2,6 +2,7 @@ package com.taskflow.notification.model;
 
 import com.taskflow.notification.payload.enums.NotificationType;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 public class Notification {
     
@@ -9,15 +10,15 @@ public class Notification {
     private NotificationType type;
     private String title;
     private String message;
-    private String recipientUserId;
-    private String actorUserId;
+    private UUID recipientUserId;
+    private UUID actorUserId;
     private String actorUserName;
     private String actorUserAvatar;
-    private String projectId;
+    private UUID projectId;
     private String projectName;
-    private String taskId;
-    private String sprintId;
-    private String commentId;
+    private UUID taskId;
+    private UUID sprintId;
+    private Long commentId;
     private String actionUrl;
     private Boolean isRead = false;
     private LocalDateTime createdAt;
@@ -92,19 +93,19 @@ public class Notification {
         this.message = message;
     }
 
-    public String getRecipientUserId() {
+    public UUID getRecipientUserId() {
         return recipientUserId;
     }
 
-    public void setRecipientUserId(String recipientUserId) {
+    public void setRecipientUserId(UUID recipientUserId) {
         this.recipientUserId = recipientUserId;
     }
 
-    public String getActorUserId() {
+    public UUID getActorUserId() {
         return actorUserId;
     }
 
-    public void setActorUserId(String actorUserId) {
+    public void setActorUserId(UUID actorUserId) {
         this.actorUserId = actorUserId;
     }
 
@@ -124,11 +125,11 @@ public class Notification {
         this.actorUserAvatar = actorUserAvatar;
     }
 
-    public String getProjectId() {
+    public UUID getProjectId() {
         return projectId;
     }
 
-    public void setProjectId(String projectId) {
+    public void setProjectId(UUID projectId) {
         this.projectId = projectId;
     }
 
@@ -140,27 +141,27 @@ public class Notification {
         this.projectName = projectName;
     }
 
-    public String getTaskId() {
+    public UUID getTaskId() {
         return taskId;
     }
 
-    public void setTaskId(String taskId) {
+    public void setTaskId(UUID taskId) {
         this.taskId = taskId;
     }
 
-    public String getSprintId() {
+    public UUID getSprintId() {
         return sprintId;
     }
 
-    public void setSprintId(String sprintId) {
+    public void setSprintId(UUID sprintId) {
         this.sprintId = sprintId;
     }
 
-    public String getCommentId() {
+    public Long getCommentId() {
         return commentId;
     }
 
-    public void setCommentId(String commentId) {
+    public void setCommentId(Long commentId) {
         this.commentId = commentId;
     }
 
@@ -196,28 +197,44 @@ public class Notification {
         this.readAt = readAt;
     }
 
-    // Builder class
+    @Override
+    public String toString() {
+        return "Notification{" +
+                "id=" + id +
+                ", type=" + type +
+                ", title='" + title + '\'' +
+                ", message='" + message + '\'' +
+                ", recipientUserId=" + recipientUserId +
+                ", actorUserId=" + actorUserId +
+                ", actorUserName='" + actorUserName + '\'' +
+                ", projectId='" + projectId + '\'' +
+                ", taskId=" + taskId +
+                ", sprintId=" + sprintId +
+                ", commentId=" + commentId +
+                ", isRead=" + isRead +
+                ", createdAt=" + createdAt +
+                '}';
+    }
+
+    // Builder pattern
     public static class Builder {
         private Long id;
         private NotificationType type;
         private String title;
         private String message;
-        private String recipientUserId;
-        private String actorUserId;
+        private UUID recipientUserId;
+        private UUID actorUserId;
         private String actorUserName;
         private String actorUserAvatar;
-        private String projectId;
+        private UUID projectId;
         private String projectName;
-        private String taskId;
-        private String sprintId;
-        private String commentId;
+        private UUID taskId;
+        private UUID sprintId;
+        private Long commentId;
         private String actionUrl;
         private Boolean isRead = false;
         private LocalDateTime createdAt;
         private LocalDateTime readAt;
-
-        public Builder() {
-        }
 
         public Builder id(Long id) {
             this.id = id;
@@ -239,12 +256,12 @@ public class Notification {
             return this;
         }
 
-        public Builder recipientUserId(String recipientUserId) {
+        public Builder recipientUserId(UUID recipientUserId) {
             this.recipientUserId = recipientUserId;
             return this;
         }
 
-        public Builder actorUserId(String actorUserId) {
+        public Builder actorUserId(UUID actorUserId) {
             this.actorUserId = actorUserId;
             return this;
         }
@@ -259,7 +276,7 @@ public class Notification {
             return this;
         }
 
-        public Builder projectId(String projectId) {
+        public Builder projectId(UUID projectId) {
             this.projectId = projectId;
             return this;
         }
@@ -269,17 +286,17 @@ public class Notification {
             return this;
         }
 
-        public Builder taskId(String taskId) {
+        public Builder taskId(UUID taskId) {
             this.taskId = taskId;
             return this;
         }
 
-        public Builder sprintId(String sprintId) {
+        public Builder sprintId(UUID sprintId) {
             this.sprintId = sprintId;
             return this;
         }
 
-        public Builder commentId(String commentId) {
+        public Builder commentId(Long commentId) {
             this.commentId = commentId;
             return this;
         }

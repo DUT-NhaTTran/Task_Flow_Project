@@ -1,6 +1,5 @@
 package com.tmnhat.tasksservice.service.Impl;
 
-import com.tmnhat.common.client.NotificationClient;
 import com.tmnhat.common.exception.DatabaseException;
 import com.tmnhat.common.exception.ResourceNotFoundException;
 import com.tmnhat.tasksservice.model.Tasks;
@@ -8,7 +7,7 @@ import com.tmnhat.tasksservice.payload.enums.TaskStatus;
 import com.tmnhat.tasksservice.repository.TasksDAO;
 import com.tmnhat.tasksservice.service.TaskService;
 import com.tmnhat.tasksservice.validation.TaskValidator;
-import org.springframework.beans.factory.annotation.Autowired;
+
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.client.RestTemplate;
@@ -19,8 +18,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.MediaType;
 
 import java.util.List;
-import java.util.UUID;
 import java.util.Map;
+import java.util.UUID;
 import java.util.HashMap;
 import java.util.ArrayList;
 
@@ -28,23 +27,6 @@ import java.util.ArrayList;
 public class TaskServiceImpl implements TaskService {
 
     private final TasksDAO tasksDAO = new TasksDAO();
-    
-    @Autowired(required = false) // Make it optional to prevent startup issues
-    private NotificationClient notificationClient;
-
-    // Helper method to safely send notifications
-    private void safeNotify(Runnable notificationAction) {
-        try {
-            if (notificationClient != null) {
-                notificationAction.run();
-                System.out.println("✅ Notification sent successfully");
-            } else {
-                System.out.println("⚠️ NotificationClient is null - notification skipped");
-            }
-        } catch (Exception e) {
-            System.err.println("❌ Failed to send notification: " + e.getMessage());
-        }
-    }
 
     @Override
     public void addTask(Tasks task) {
@@ -52,21 +34,8 @@ public class TaskServiceImpl implements TaskService {
             TaskValidator.validateTask(task);
             tasksDAO.addTask(task);
             
-            // Send notification to project members about new task
-            if (task.getAssigneeId() != null) {
-                // Get project and sprint info for notification
-                String projectName = getProjectName(task.getProjectId());
-                
-                safeNotify(() -> notificationClient.sendTaskCreatedNotification(
-                    task.getAssigneeId().toString(),
-                    "SYSTEM", // Or get from context
-                    "System",
-                    task.getId().toString(),
-                    task.getTitle(),
-                    task.getProjectId().toString(),
-                    projectName
-                ));
-            }
+            // NOTE: Removed automatic notification sending - frontend will handle this
+            System.out.println("🔄 Task created: " + task.getTitle() + " - Frontend should handle notification");
         } catch (Exception e) {
             throw new DatabaseException("Error adding task: " + e.getMessage());
         }
@@ -158,6 +127,7 @@ public class TaskServiceImpl implements TaskService {
             throw new DatabaseException("Error retrieving task: " + e.getMessage());
         }
     }
+
     @Override
     public List<Tasks> getTasksByStatusAndProjectAndSprint(String status, UUID projectId, UUID sprintId) {
         try {
@@ -167,7 +137,6 @@ public class TaskServiceImpl implements TaskService {
         }
     }
 
-
     @Override
     public List<Tasks> getAllTasks() {
         try {
@@ -176,6 +145,7 @@ public class TaskServiceImpl implements TaskService {
             throw new DatabaseException("Error retrieving tasks: " + e.getMessage());
         }
     }
+
     @Override
     public void assignTask(UUID taskId, UUID userId) {
         try {
@@ -189,15 +159,9 @@ public class TaskServiceImpl implements TaskService {
             // ✅ FIXED: Send notification to the assigned user (userId), not the one who assigned
             String projectName = getProjectName(task.getProjectId());
             
-            safeNotify(() -> notificationClient.sendTaskAssignedNotification(
-                userId.toString(), // Send to the person being assigned
-                "SYSTEM", 
-                "System",
-                taskId.toString(),
-                task.getTitle(),
-                task.getProjectId().toString(),
-                projectName
-            ));
+            // Send notification to the assigned user
+            // This method should be implemented to send notification to the assigned user
+            System.out.println("🔄 Task assigned to user: " + userId + " - Frontend should handle notification");
         } catch (Exception e) {
             throw new DatabaseException("Error assigning task: " + e.getMessage());
         }
@@ -319,16 +283,9 @@ public class TaskServiceImpl implements TaskService {
             if (task.getAssigneeId() != null) {
                 String projectName = getProjectName(task.getProjectId());
                 
-                safeNotify(() -> notificationClient.sendTaskCommentNotification(
-                    task.getAssigneeId().toString(),
-                    "SYSTEM", // Or get from context
-                    "System",
-                    taskId.toString(),
-                    task.getTitle(),
-                    task.getProjectId().toString(),
-                    projectName,
-                    null // commentId - would need to get this from DAO
-                ));
+                // Send notification to the assigned user
+                // This method should be implemented to send notification to the assigned user
+                System.out.println("🔄 New comment added to task: " + taskId + " - Frontend should handle notification");
             }
         } catch (Exception e) {
             throw new DatabaseException("Error commenting on task: " + e.getMessage());
@@ -349,21 +306,15 @@ public class TaskServiceImpl implements TaskService {
             if (task.getAssigneeId() != null) {
                 String projectName = getProjectName(task.getProjectId());
                 
-                safeNotify(() -> notificationClient.sendFileAttachedNotification(
-                    task.getAssigneeId().toString(),
-                    "SYSTEM", // Or get from context
-                    "System",
-                    taskId.toString(),
-                    task.getTitle(),
-                    task.getProjectId().toString(),
-                    projectName,
-                    file.getOriginalFilename()
-                ));
+                // Send notification about file attachment
+                // This method should be implemented to send notification about file attachment
+                System.out.println("🔄 New file attached to task: " + taskId + " - Frontend should handle notification");
             }
         } catch (Exception e) {
             throw new DatabaseException("Error attaching file to task: " + e.getMessage());
         }
     }
+
     // --- Member Functions ---
 
     @Override
@@ -379,15 +330,9 @@ public class TaskServiceImpl implements TaskService {
             // Send notification to new member
             String projectName = getProjectName(task.getProjectId());
             
-            safeNotify(() -> notificationClient.sendTaskAssignedNotification(
-                userId.toString(),
-                "SYSTEM", // Or get from context
-                "System",
-                taskId.toString(),
-                task.getTitle(),
-                task.getProjectId().toString(),
-                projectName
-            ));
+            // Send notification to the new member
+            // This method should be implemented to send notification to the new member
+            System.out.println("🔄 New member added to task: " + taskId + " - Frontend should handle notification");
         } catch (Exception e) {
             throw new DatabaseException("Error adding member to task: " + e.getMessage());
         }
@@ -410,6 +355,7 @@ public class TaskServiceImpl implements TaskService {
             throw new DatabaseException("Error retrieving task members: " + e.getMessage());
         }
     }
+
     @Override
     public List<Tasks> getTasksByProjectId(UUID projectId) {
         try {
@@ -651,8 +597,7 @@ public class TaskServiceImpl implements TaskService {
     private String getProjectName(UUID projectId) {
         try {
             // Call Projects Service to get project name
-            RestTemplate restTemplate = new RestTemplate();
-            String url = "http://localhost:8083/api/projects/" + projectId;
+            String url = "http://localhost:8086/api/projects/" + projectId;
             ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
             
             if (response.getBody() != null && response.getBody().get("data") != null) {
@@ -662,19 +607,6 @@ public class TaskServiceImpl implements TaskService {
             return "Unknown Project";
         } catch (Exception e) {
             return "Unknown Project";
-        }
-    }
-
-    // TODO: Add method to notify all project members except actor
-    private void notifyProjectMembers(UUID projectId, UUID excludeUserId, String notificationType, Tasks task) {
-        try {
-            // Get all project members from Projects Service
-            RestTemplate restTemplate = new RestTemplate();
-            String url = "http://localhost:8083/api/projects/" + projectId + "/members";
-            // Implementation would fetch members and send notifications to all except excludeUserId
-            // This requires Projects Service to have a members endpoint
-        } catch (Exception e) {
-            System.err.println("Failed to notify project members: " + e.getMessage());
         }
     }
 

@@ -48,12 +48,12 @@ public class ProjectDAO extends BaseDAO {
     }
 
     public void deleteProject(UUID id) throws SQLException {
-        String sql = "DELETE FROM projects WHERE id = ?";
+        String sql = "UPDATE projects SET deleted_at = NOW() WHERE id = ?";
         executeUpdate(sql, stmt -> stmt.setObject(1, id));
     }
 
     public Projects getProjectById(UUID id) throws SQLException {
-        String sql = "SELECT * FROM projects WHERE id = ?";
+        String sql = "SELECT * FROM projects WHERE id = ? AND deleted_at IS NULL";
         return executeQuery(sql, stmt -> {
             stmt.setObject(1, id);
             ResultSet rs = stmt.executeQuery();
@@ -65,7 +65,7 @@ public class ProjectDAO extends BaseDAO {
     }
 
     public List<Projects> getAllProjects() throws SQLException {
-        String sql = "SELECT * FROM projects ORDER BY created_at DESC";
+        String sql = "SELECT * FROM projects WHERE deleted_at IS NULL ORDER BY created_at DESC";
         return executeQuery(sql, stmt -> {
             List<Projects> projects = new ArrayList<>();
             ResultSet rs = stmt.executeQuery();
@@ -77,7 +77,7 @@ public class ProjectDAO extends BaseDAO {
     }
 
     public List<Projects> searchProjects(String keyword) throws SQLException {
-        String sql = "SELECT * FROM projects WHERE name ILIKE ?";
+        String sql = "SELECT * FROM projects WHERE name ILIKE ? AND deleted_at IS NULL";
         return executeQuery(sql, stmt -> {
             stmt.setString(1, "%" + keyword + "%");
             List<Projects> projects = new ArrayList<>();
@@ -94,6 +94,7 @@ public class ProjectDAO extends BaseDAO {
                      "INNER JOIN project_members pm ON p.id = pm.project_id " +
                      "WHERE pm.user_id = ? " +
                      "AND p.name ILIKE ? " +
+                     "AND p.deleted_at IS NULL " +
                      "ORDER BY p.created_at DESC";
         return executeQuery(sql, stmt -> {
             stmt.setObject(1, userId);
@@ -114,7 +115,7 @@ public class ProjectDAO extends BaseDAO {
 
     public List<Projects> paginateProjects(int page, int size) throws SQLException {
         int offset = (page - 1) * size;
-        String sql = "SELECT * FROM projects ORDER BY created_at DESC LIMIT ? OFFSET ?";
+        String sql = "SELECT * FROM projects WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT ? OFFSET ?";
         return executeQuery(sql, stmt -> {
             stmt.setInt(1, size);
             stmt.setInt(2, offset);
@@ -127,7 +128,7 @@ public class ProjectDAO extends BaseDAO {
         });
     }
     public List<Projects> filterProjectsByType(String projectType) throws SQLException {
-        String sql = "SELECT * FROM projects WHERE LOWER(project_type) = LOWER(?)";
+        String sql = "SELECT * FROM projects WHERE LOWER(project_type) = LOWER(?) AND deleted_at IS NULL";
         return executeQuery(sql, stmt -> {
             stmt.setString(1, projectType);
             List<Projects> projects = new ArrayList<>();
@@ -143,6 +144,7 @@ public class ProjectDAO extends BaseDAO {
         String sql = "SELECT DISTINCT p.* FROM projects p " +
                      "INNER JOIN project_members pm ON p.id = pm.project_id " +
                      "WHERE pm.user_id = ? " +
+                     "AND p.deleted_at IS NULL " +
                      "ORDER BY p.created_at DESC";
         
         System.out.println("=== DEBUG getAllProjectsByUserMembership ===");
@@ -158,9 +160,8 @@ public class ProjectDAO extends BaseDAO {
                 Projects project = mapResultSetToProject(rs);
                 projects.add(project);
                 count++;
-                System.out.println("Found project " + count + ": " + project.getName() + " (ID: " + project.getId() + ")");
             }
-            System.out.println("Total projects found: " + count);
+            System.out.println("Total active projects found: " + count);
             System.out.println("=== END DEBUG ===");
             return projects;
         });
@@ -180,7 +181,7 @@ public class ProjectDAO extends BaseDAO {
                 .build();
     }
     public UUID getLastInsertedProjectId() throws SQLException {
-        String sql = "SELECT id FROM projects ORDER BY created_at DESC LIMIT 1";
+        String sql = "SELECT id FROM projects WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 1";
         return executeQuery(sql, stmt -> {
             ResultSet rs = stmt.executeQuery();
             if (rs.next()) {
@@ -212,7 +213,7 @@ public class ProjectDAO extends BaseDAO {
         });
     }
     public Projects findLatestByOwnerId(UUID ownerId) throws SQLException {
-        String sql = "SELECT * FROM projects WHERE owner_id = ? ORDER BY created_at DESC LIMIT 1";
+        String sql = "SELECT * FROM projects WHERE owner_id = ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1";
 
         return executeQuery(sql, stmt -> {
             stmt.setObject(1, ownerId);

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { safeValidateUUID, validateProjectId, validateUserId, validateTaskId } from './uuidUtils';
 
 const NOTIFICATION_API_URL = 'http://localhost:8089';
 
@@ -21,6 +22,19 @@ interface Task {
   tags?: string[] | null;
 }
 
+// Standard notification payload structure
+interface StandardNotificationPayload {
+  type: string;
+  title: string;
+  message: string;
+  recipientUserId: string;
+  actorUserId: string;
+  actorUserName: string;
+  projectId: string;
+  projectName: string;
+  taskId: string;
+}
+
 // Check if a task is overdue
 export const isTaskOverdue = (task: Task): boolean => {
   if (!task.dueDate || task.status === "DONE") {
@@ -38,17 +52,40 @@ export const isTaskOverdue = (task: Task): boolean => {
 
 // Send task overdue notification
 export const sendTaskOverdueNotification = async (task: Task): Promise<void> => {
+  if (!task.assigneeId) {
+    console.log('No assignee for overdue task:', task.id);
+    return;
+  }
+
   try {
-    await axios.post(`${NOTIFICATION_API_URL}/api/notifications/task-overdue`, {
-      taskId: task.id,
-      taskTitle: task.title,
-      projectId: task.projectId,
+    // Validate UUIDs before sending
+    const validatedProjectId = task.projectId ? validateProjectId(task.projectId) : null;
+    const validatedAssigneeId = validateUserId(task.assigneeId);
+    const validatedTaskId = validateTaskId(task.id);
+    
+    if (!validatedProjectId) {
+      console.error('Cannot send overdue notification: invalid project ID');
+      return;
+    }
+
+    // Standard payload format - only essential fields
+    const notificationData: StandardNotificationPayload = {
+      type: "TASK_OVERDUE",
+      title: "Task Overdue",
+      message: `Task "${task.title}" is overdue and needs your attention`,
+      recipientUserId: validatedAssigneeId,
+      actorUserId: validatedAssigneeId, // Self-notification for overdue
+      actorUserName: "System",
+      projectId: validatedProjectId,
       projectName: task.projectName || "Unknown Project",
-      assigneeUserId: task.assigneeId
-    });
-    console.log('Task overdue notification sent for task:', task.id);
+      taskId: validatedTaskId
+    };
+
+    console.log('📤 TASK OVERDUE: Sending notification:', notificationData);
+    await axios.post(`${NOTIFICATION_API_URL}/api/notifications/create`, notificationData);
+    console.log('✅ TASK OVERDUE: Notification sent successfully for task:', task.id);
   } catch (error) {
-    console.error('Failed to send task overdue notification:', error);
+    console.error('❌ TASK OVERDUE: Failed to send notification:', error);
   }
 };
 
@@ -74,20 +111,35 @@ export const sendTaskStatusChangedNotification = async (
   }
   
   try {
-    await axios.post(`${NOTIFICATION_API_URL}/api/notifications/task-status-changed`, {
-      recipientUserId: task.assigneeId,
-      actorUserId,
-      actorUserName,
-      taskId: task.id,
-      taskTitle: task.title,
-      projectId: task.projectId,
+    // Validate UUIDs before sending
+    const validatedProjectId = task.projectId ? validateProjectId(task.projectId) : null;
+    const validatedAssigneeId = validateUserId(task.assigneeId);
+    const validatedActorId = validateUserId(actorUserId);
+    const validatedTaskId = validateTaskId(task.id);
+    
+    if (!validatedProjectId) {
+      console.error('Cannot send status change notification: invalid project ID');
+      return;
+    }
+    
+    // Standard payload format - only essential fields
+    const notificationData: StandardNotificationPayload = {
+      type: "TASK_STATUS_CHANGED",
+      title: "Task Status Changed",
+      message: `${actorUserName} changed task "${task.title}" status from "${oldStatus}" to "${newStatus}"`,
+      recipientUserId: validatedAssigneeId,
+      actorUserId: validatedActorId,
+      actorUserName: actorUserName,
+      projectId: validatedProjectId,
       projectName: task.projectName || "Unknown Project",
-      oldStatus,
-      newStatus
-    });
-    console.log('Task status change notification sent');
+      taskId: validatedTaskId
+    };
+
+    console.log('📤 TASK STATUS CHANGED: Sending notification:', notificationData);
+    await axios.post(`${NOTIFICATION_API_URL}/api/notifications/create`, notificationData);
+    console.log('✅ TASK STATUS CHANGED: Notification sent successfully');
   } catch (error) {
-    console.error('Failed to send task status change notification:', error);
+    console.error('❌ TASK STATUS CHANGED: Failed to send notification:', error);
   }
 };
 
@@ -97,18 +149,40 @@ export const sendTaskDeletedNotification = async (
   actorUserId: string,
   actorUserName: string
 ): Promise<void> => {
+  if (!task.assigneeId) {
+    console.log('No assignee for deleted task:', task.id);
+    return;
+  }
+
   try {
-    await axios.post(`${NOTIFICATION_API_URL}/api/notifications/task-deleted`, {
-      actorUserId,
-      actorUserName,
-      taskId: task.id,
-      taskTitle: task.title,
-      projectId: task.projectId,
+    // Validate UUIDs before sending
+    const validatedProjectId = task.projectId ? validateProjectId(task.projectId) : null;
+    const validatedAssigneeId = validateUserId(task.assigneeId);
+    const validatedActorId = validateUserId(actorUserId);
+    const validatedTaskId = validateTaskId(task.id);
+    
+    if (!validatedProjectId) {
+      console.error('Cannot send task deleted notification: invalid project ID');
+      return;
+    }
+
+    // Standard payload format - only essential fields  
+    const notificationData: StandardNotificationPayload = {
+      type: "TASK_DELETED",
+      title: "Task Deleted",
+      message: `${actorUserName} deleted task "${task.title}" that was assigned to you`,
+      recipientUserId: validatedAssigneeId,
+      actorUserId: validatedActorId,
+      actorUserName: actorUserName,
+      projectId: validatedProjectId,
       projectName: task.projectName || "Unknown Project",
-      assigneeUserId: task.assigneeId
-    });
-    console.log('Task deleted notification sent');
+      taskId: validatedTaskId
+    };
+
+    console.log('📤 TASK DELETED: Sending notification:', notificationData);
+    await axios.post(`${NOTIFICATION_API_URL}/api/notifications/create`, notificationData);
+    console.log('✅ TASK DELETED: Notification sent successfully');
   } catch (error) {
-    console.error('Failed to send task deleted notification:', error);
+    console.error('❌ TASK DELETED: Failed to send notification:', error);
   }
 }; 
