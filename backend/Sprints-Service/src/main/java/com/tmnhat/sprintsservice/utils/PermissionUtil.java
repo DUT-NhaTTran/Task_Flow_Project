@@ -65,16 +65,33 @@ public class PermissionUtil {
         boolean hasCreateSprintPermission = Boolean.TRUE.equals(canCreateSprint);
         boolean hasManageSprintsPermission = Boolean.TRUE.equals(canManageSprints);
         
+        // ✅ DEBUG: Log all permissions for sprint operations
+        System.out.println("🔍 PERMISSION CHECK for " + permission + ":");
+        System.out.println("- isOwner: " + hasOwnerRole);
+        System.out.println("- isScrumMaster: " + hasScrumMasterRole);
+        System.out.println("- canCreateSprint: " + hasCreateSprintPermission);
+        System.out.println("- canManageSprints: " + hasManageSprintsPermission);
+        
         switch (permission) {
             case CREATE_SPRINT:
             case UPDATE_SPRINT:
             case START_SPRINT:
             case END_SPRINT:
-                return hasOwnerRole || hasScrumMasterRole || hasCreateSprintPermission || hasManageSprintsPermission;
+                boolean canManage = hasOwnerRole || hasScrumMasterRole || hasCreateSprintPermission || hasManageSprintsPermission;
+                System.out.println("- Result for " + permission + ": " + canManage);
+                return canManage;
                 
             case DELETE_SPRINT:
-                // ✅ ONLY project owners can delete sprints (soft delete)
-                return hasOwnerRole;
+                // ✅ Project Owners and Scrum Masters can delete sprints (soft delete)
+                boolean canDelete = hasOwnerRole || hasScrumMasterRole;
+                System.out.println("- Result for DELETE_SPRINT (OWNER OR SCRUM MASTER): " + canDelete);
+                if (!canDelete) {
+                    System.out.println("❌ DELETE DENIED: User must be Project Owner or Scrum Master");
+                    System.out.println("   - Is Project Owner: " + hasOwnerRole);
+                    System.out.println("   - Is Scrum Master: " + hasScrumMasterRole);
+                    System.out.println("   - Other permissions (canCreateSprint/canManageSprints): " + (hasCreateSprintPermission || hasManageSprintsPermission));
+                }
+                return canDelete;
                 
             case VIEW_SPRINT:
                 return true; // All project members can view sprints

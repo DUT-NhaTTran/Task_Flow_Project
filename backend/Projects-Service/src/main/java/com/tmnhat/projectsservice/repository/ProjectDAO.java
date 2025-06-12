@@ -147,22 +147,16 @@ public class ProjectDAO extends BaseDAO {
                      "AND p.deleted_at IS NULL " +
                      "ORDER BY p.created_at DESC";
         
-        System.out.println("=== DEBUG getAllProjectsByUserMembership ===");
-        System.out.println("Query: " + sql);
-        System.out.println("UserId: " + userId);
         
         return executeQuery(sql, stmt -> {
             stmt.setObject(1, userId);
             List<Projects> projects = new ArrayList<>();
             ResultSet rs = stmt.executeQuery();
-            int count = 0;
             while (rs.next()) {
                 Projects project = mapResultSetToProject(rs);
                 projects.add(project);
-                count++;
             }
-            System.out.println("Total active projects found: " + count);
-            System.out.println("=== END DEBUG ===");
+          
             return projects;
         });
     }

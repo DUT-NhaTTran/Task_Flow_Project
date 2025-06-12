@@ -67,6 +67,7 @@ interface Task {
   parentTaskId?: string | null;
   tags?: string[] | null;
   createdBy?: string; // Add createdBy field for notifications
+  priority?: "LOWEST" | "LOW" | "MEDIUM" | "HIGH" | "HIGHEST" | "BLOCKER" | "BLOCK"; // ✅ Updated with BLOCK only
 }
 
 interface User {
@@ -2510,8 +2511,11 @@ export default function ProjectBoardPage() {
 
   const renderColumn = (title: string, status: Task["status"]) => {
     // Filter tasks: chỉ hiển thị parent tasks (không có parentTaskId) và có status tương ứng
+    // ✅ NEW: Also filter out tasks with BLOCK priority
     const tasksInColumn = (tasks || []).filter((t) => 
-      t.status === status && (t.parentTaskId === null || t.parentTaskId === undefined)
+      t.status === status && 
+      (t.parentTaskId === null || t.parentTaskId === undefined) &&
+      t.priority !== "BLOCK"
     );
     const hasTasksInColumn = tasksInColumn.length > 0;
     
@@ -2610,7 +2614,7 @@ export default function ProjectBoardPage() {
       }
     }
     
-    console.log("🔍 === END DEBUGGING LOCALSTORAGE ===");
+    
   }, []);
 
   useEffect(() => {

@@ -6,7 +6,9 @@ public enum TaskPriority {
     MEDIUM(3, "Medium", "#d97706", "🟡"),
     HIGH(4, "High", "#ea580c", "🟠"),
     HIGHEST(5, "Highest", "#dc2626", "🔴"),
-    BLOCKER(6, "Blocker", "#7c2d12", "🚨");
+    BLOCKER(6, "Blocker", "#7c2d12", "🚨"),
+    BLOCK(7, "Block", "#6b7280", "🚫"),
+    REJECT(8, "Reject", "#4b5563", "❌");
 
     private final int level;
     private final String displayName;

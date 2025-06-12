@@ -10,7 +10,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { TopNavigation } from "@/components/ui/top-navigation";
 import { Sidebar } from "@/components/ui/sidebar";
 import { useNavigation } from "@/contexts/NavigationContext";
-import { Search, ChevronDown, MoreHorizontal, ChevronRight, Plus, Edit, Check, Calendar, ChevronUp, Trash2 } from "lucide-react";
+import { Search, ChevronDown, MoreHorizontal, ChevronRight, Plus, Edit, Check, Calendar, ChevronUp, Trash2, X, Archive } from "lucide-react";
 import { useUserStorage } from "@/hooks/useUserStorage";
 import { sendTaskOverdueNotification } from "@/utils/taskNotifications";
 import { safeValidateUUID, validateProjectId, validateSprintId, generateMockUUID, isValidUUID } from "@/utils/uuidUtils";
@@ -29,6 +29,7 @@ import {
 } from "@/utils/permissions";
 import TaskDetailModal, { TaskData } from "@/components/tasks/TaskDetailModal";
 import { useProjectValidation } from "@/hooks/useProjectValidation";
+import { TaskMigrationModal } from "@/components/sprints/TaskMigrationModal";
 
 interface SprintOption {
   id: string;
@@ -91,6 +92,14 @@ export default function BacklogPage() {
   const statusDropdownRef = useRef<HTMLDivElement>(null);
   const sprintMenuRef = useRef<HTMLDivElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
+
+  // ✅ NEW: Task migration modal state
+  const [showTaskMigrationModal, setShowTaskMigrationModal] = useState(false);
+  const [sprintToDelete, setSprintToDelete] = useState<{
+    id: string;
+    name: string;
+    action: "cancel" | "delete";
+  } | null>(null);
 
   // Validate project exists and handle redirection if not
   useProjectValidation({ 
@@ -959,39 +968,55 @@ export default function BacklogPage() {
 
   // Delete sprint
   const handleDeleteSprint = async (sprintId: string) => {
-    try {
-      // Get sprint info before deletion for notification
-      const sprintToDelete = sprints.find(s => s.id === sprintId);
+    const sprint = sprints.find(s => s.id === sprintId);
+    if (!sprint) return;
+    
+    // ✅ NEW: Use TaskMigrationModal for soft delete with task migration
+    setSprintToDelete({
+      id: sprintId,
+      name: sprint.name,
+      action: "delete"
+    });
+    setShowTaskMigrationModal(true);
+  };
+
+  // ✅ NEW: Handle sprint cancellation
+  const handleCancelSprint = async (sprintId: string) => {
+    const sprint = sprints.find(s => s.id === sprintId);
+    if (!sprint) return;
+    
+    setSprintToDelete({
+      id: sprintId,
+      name: sprint.name,
+      action: "cancel"
+    });
+    setShowTaskMigrationModal(true);
+  };
+
+  // ✅ NEW: Handle task migration completion
+  const handleMigrationComplete = () => {
+    fetchSprints(); // Refresh sprints
+    // Fetch tasks for this project - inline the fetch logic
+    const refreshTasks = async () => {
+      if (!projectId) return;
       
-      const response = await axios.delete(`http://localhost:8084/api/sprints/${sprintId}`);
-      
-      if (response.status === 200 || response.status === 204) {
-        toast.success("Sprint deleted successfully");
-        
-        // Send notification about sprint deletion (using SPRINT_ENDED as closest match)
-        if (sprintToDelete) {
-          await sendSprintNotificationToMembers(
-            "SPRINT_ENDED", 
-            sprintToDelete, 
-            "Deleted", 
-            "Sprint has been removed from the project"
-          );
+      try {
+        const tasksResponse = await axios.get(`http://localhost:8085/api/tasks/project/${projectId}`);
+        if (tasksResponse.data) {
+          const allTasks = tasksResponse.data || [];
+          setTasks(allTasks);
+          
+          // Filter out tasks that are not assigned to any sprint (backlog tasks)
+          const backlogTasksList = allTasks.filter((task: TaskData) => !task.sprintId && (task.parentTaskId === null || task.parentTaskId === undefined));
+          setBacklogTasks(backlogTasksList);
         }
-        
-        await fetchSprints();
-        
-        // Move tasks from deleted sprint back to backlog - chỉ xử lý parent tasks
-        const sprintTasks = tasks.filter(task => task.sprintId === sprintId && (task.parentTaskId === null || task.parentTaskId === undefined));
-        for (const task of sprintTasks) {
-          await handleMoveTaskToBacklog(task.id);
-        }
-      } else {
-        toast.error("Failed to delete sprint");
+      } catch (error) {
+        console.error("Error refreshing tasks:", error);
       }
-    } catch (error) {
-      console.error("Error deleting sprint:", error);
-      toast.error("Failed to delete sprint");
-    }
+    };
+    
+    refreshTasks();
+    setSprintToDelete(null);
   };
 
   // Move task to backlog
@@ -1248,7 +1273,8 @@ export default function BacklogPage() {
       'HIGH': 4,
       'MEDIUM': 3,
       'LOW': 2,
-      'LOWEST': 1
+      'LOWEST': 1,
+      'BLOCK': 0     // ✅ NEW: Very low priority, hidden from main board
     };
 
     return [...tasks].sort((a, b) => {
@@ -1261,9 +1287,9 @@ export default function BacklogPage() {
       }
       
       // If priorities are equal, sort by created date (newest first)
-      const aCreated = new Date(a.createdAt || 0);
-      const bCreated = new Date(b.createdAt || 0);
-      return bCreated.getTime() - aCreated.getTime();
+      const aDate = new Date(a.createdAt || '').getTime();
+      const bDate = new Date(b.createdAt || '').getTime();
+      return bDate - aDate;
     });
   };
 
@@ -1276,6 +1302,8 @@ export default function BacklogPage() {
       case 'MEDIUM': return '🟡';
       case 'LOW': return '🟢';
       case 'LOWEST': return '🔵';
+      case 'BLOCK': return '🚫';
+      case 'REJECT': return '❌';
       default: return '🟡';
     }
   };
@@ -1288,9 +1316,18 @@ export default function BacklogPage() {
       case 'MEDIUM': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
       case 'LOW': return 'bg-green-100 text-green-800 border-green-300';
       case 'LOWEST': return 'bg-blue-100 text-blue-800 border-blue-300';
+      case 'BLOCK': return 'bg-gray-200 text-gray-700 border-gray-400';
+      case 'REJECT': return 'bg-gray-300 text-gray-800 border-gray-500';
       default: return 'bg-gray-100 text-gray-800 border-gray-300';
     }
   };
+
+  // ✅ NEW: Check if task should be dimmed (BLOCK or REJECT priority)
+  const isTaskDimmed = (priority?: string) => {
+    return priority === 'BLOCK' || priority === 'REJECT';
+  };
+
+  const isAuditVisible = userPermissions?.isOwner || userPermissions?.isScrumMaster;
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -1349,6 +1386,17 @@ export default function BacklogPage() {
                   <MoreHorizontal className="h-5 w-5" />
                 </Button>
               </div>
+              {isAuditVisible && projectId && (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-9 w-9 border-blue-300 text-blue-700 hover:bg-blue-50"
+                  title="View Audit Log"
+                  onClick={() => router.push(`/project/audit?projectId=${projectId}`)}
+                >
+                  <Archive className="h-5 w-5" />
+                </Button>
+              )}
             </div>
           </div>
 
@@ -1488,13 +1536,37 @@ export default function BacklogPage() {
                                     <Edit className="h-4 w-4 mr-2" />
                                     Edit
                                   </button>
-                                  <button
-                                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center text-red-600"
-                                    onClick={() => handleDeleteSprint(sprint.id)}
-                                  >
-                                    <Trash2 className="h-4 w-4 mr-2" />
-                                    Delete
-                                  </button>
+                                  
+                                  {/* Show different actions based on sprint status */}
+                                  {sprint.status === "ACTIVE" ? (
+                                    <button
+                                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center text-yellow-600"
+                                      onClick={() => handleCancelSprint(sprint.id)}
+                                    >
+                                      <X className="h-4 w-4 mr-2" />
+                                      Cancel Sprint
+                                    </button>
+                                  ) : sprint.status === "NOT_STARTED" ? (
+                                    <button
+                                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center text-red-600"
+                                      onClick={() => handleDeleteSprint(sprint.id)}
+                                    >
+                                      <Trash2 className="h-4 w-4 mr-2" />
+                                      Delete
+                                    </button>
+                                  ) : sprint.status === "COMPLETED" || sprint.status === "ARCHIVED" ? (
+                                    <div className="px-3 py-2 text-sm text-gray-400 italic">
+                                      Cannot modify completed sprint
+                                    </div>
+                                  ) : (
+                                    <button
+                                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center text-red-600"
+                                      onClick={() => handleDeleteSprint(sprint.id)}
+                                    >
+                                      <Trash2 className="h-4 w-4 mr-2" />
+                                      Delete
+                                    </button>
+                                  )}
                                 </div>
                               )}
                             </div>
@@ -1507,7 +1579,7 @@ export default function BacklogPage() {
                           {/* Task Items - Sort by priority */}
                           {tasks.filter(task => task.sprintId === sprint.id && (task.parentTaskId === null || task.parentTaskId === undefined)).length > 0 ? (
                             sortTasksByPriority(tasks.filter(task => task.sprintId === sprint.id && (task.parentTaskId === null || task.parentTaskId === undefined))).map(task => (
-                              <div className="border rounded-sm mb-2" key={task.id}>
+                              <div className={`border rounded-sm mb-2 ${isTaskDimmed(task.priority) ? 'opacity-50' : ''}`} key={task.id}>
                                 <div className="flex items-center p-3">
                                   <input 
                                     type="checkbox" 
@@ -1520,6 +1592,7 @@ export default function BacklogPage() {
                                         handleStatusChange(task.id, "TODO");
                                       }
                                     }} 
+                                    disabled={isTaskDimmed(task.priority)}
                                   />
                                   
                                   {/* Priority indicator */}
@@ -1527,10 +1600,15 @@ export default function BacklogPage() {
                                     {getPriorityIcon(task.priority)}
                                   </div>
                                   
-                                  <span className="text-blue-600 font-medium text-sm mr-2">{task.shortKey || task.id.substring(0, 8)}</span>
-                                  <span className="text-sm">{task.title}</span>
+                                  <span className={`text-blue-600 font-medium text-sm mr-2 ${isTaskDimmed(task.priority) ? 'text-gray-400' : ''}`}>{task.shortKey || task.id.substring(0, 8)}</span>
+                                  <span className={`text-sm ${isTaskDimmed(task.priority) ? 'text-gray-400' : ''}`}>{task.title}</span>
+                                  {isTaskDimmed(task.priority) && (
+                                    <span className="ml-2 text-xs text-gray-500 italic">
+                                      ({task.priority === 'BLOCK' ? 'Blocked' : 'Rejected'})
+                                    </span>
+                                  )}
                                   {task.label && (
-                                    <div className="ml-2 bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs font-medium">
+                                    <div className={`ml-2 px-2 py-0.5 rounded text-xs font-medium ${isTaskDimmed(task.priority) ? 'bg-gray-100 text-gray-500' : 'bg-blue-100 text-blue-800'}`}>
                                       {task.label}
                                     </div>
                                   )}
@@ -1701,7 +1779,7 @@ export default function BacklogPage() {
                       {/* Backlog Task Items - Sort by priority */}
                       {backlogTasks.length > 0 ? (
                         sortTasksByPriority(backlogTasks).map(task => (
-                          <div className="border rounded-sm mb-2" key={task.id}>
+                          <div className={`border rounded-sm mb-2 ${isTaskDimmed(task.priority) ? 'opacity-50' : ''}`} key={task.id}>
                             <div className="flex items-center p-3">
                               <input 
                                 type="checkbox" 
@@ -1714,6 +1792,7 @@ export default function BacklogPage() {
                                     handleStatusChange(task.id, "TODO");
                                   }
                                 }} 
+                                disabled={isTaskDimmed(task.priority)}
                               />
                               
                               {/* Priority indicator */}
@@ -1721,10 +1800,15 @@ export default function BacklogPage() {
                                 {getPriorityIcon(task.priority)}
                               </div>
                               
-                              <span className="text-blue-600 font-medium text-sm mr-2">{task.shortKey || task.id.substring(0, 8)}</span>
-                              <span className="text-sm">{task.title}</span>
+                              <span className={`text-blue-600 font-medium text-sm mr-2 ${isTaskDimmed(task.priority) ? 'text-gray-400' : ''}`}>{task.shortKey || task.id.substring(0, 8)}</span>
+                              <span className={`text-sm ${isTaskDimmed(task.priority) ? 'text-gray-400' : ''}`}>{task.title}</span>
+                              {isTaskDimmed(task.priority) && (
+                                <span className="ml-2 text-xs text-gray-500 italic">
+                                  ({task.priority === 'BLOCK' ? 'Blocked' : 'Rejected'})
+                                </span>
+                              )}
                               {task.label && (
-                                <div className="ml-2 bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs font-medium">
+                                <div className={`ml-2 px-2 py-0.5 rounded text-xs font-medium ${isTaskDimmed(task.priority) ? 'bg-gray-100 text-gray-500' : 'bg-blue-100 text-blue-800'}`}>
                                   {task.label}
                                 </div>
                               )}
@@ -1912,6 +1996,22 @@ export default function BacklogPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ✅ NEW: Task Migration Modal */}
+      {showTaskMigrationModal && sprintToDelete && (
+        <TaskMigrationModal
+          isOpen={showTaskMigrationModal}
+          onClose={() => {
+            setShowTaskMigrationModal(false);
+            setSprintToDelete(null);
+          }}
+          sprintId={sprintToDelete.id}
+          sprintName={sprintToDelete.name}
+          projectId={projectId || ''}
+          onComplete={handleMigrationComplete}
+          action={sprintToDelete.action}
+        />
       )}
     </div>
   );

@@ -45,7 +45,7 @@ export interface TaskData {
   tags?: string[] | null;
   labels?: string[];
   label?: string;
-  priority?: "LOWEST" | "LOW" | "MEDIUM" | "HIGH" | "HIGHEST" | "BLOCKER"; // ✅ Updated with BLOCKER
+  priority?: "LOWEST" | "LOW" | "MEDIUM" | "HIGH" | "HIGHEST" | "BLOCKER" | "BLOCK"; // ✅ Updated with BLOCK only
   attachments?: Array<string | Attachment>;
   webLinks?: WebLink[];
   linkedWorkItems?: LinkedWorkItem[];
@@ -2402,13 +2402,14 @@ export default function TaskDetailModal({
   // Handle priority change
   const handlePriorityChange = (displayValue: string) => {
     // Map display values to enum values
-    const priorityMap: Record<string, "LOWEST" | "LOW" | "MEDIUM" | "HIGH" | "HIGHEST" | "BLOCKER"> = {
+    const priorityMap: Record<string, "LOWEST" | "LOW" | "MEDIUM" | "HIGH" | "HIGHEST" | "BLOCKER" | "BLOCK"> = {
       "🔵 Lowest": "LOWEST",
       "🟢 Low": "LOW", 
       "🟡 Medium": "MEDIUM",
       "🟠 High": "HIGH",
       "🔴 Highest": "HIGHEST",
-      "🚨 Blocker": "BLOCKER"
+      "🚨 Blocker": "BLOCKER",
+      "🚫 Block": "BLOCK",
     };
 
     const priority = priorityMap[displayValue];
@@ -2506,7 +2507,8 @@ export default function TaskDetailModal({
       "MEDIUM": "🟡 Medium", 
       "HIGH": "🟠 High",
       "HIGHEST": "🔴 Highest",
-      "BLOCKER": "🚨 Blocker"
+      "BLOCKER": "🚨 Blocker",
+      "BLOCK": "🚫 Block"
     };
     
     return priorityMap[priority || "MEDIUM"] || "🟡 Medium";
@@ -4300,7 +4302,9 @@ export default function TaskDetailModal({
                     "🟡 Medium",
                     "🟢 Low",
                     "🔵 Lowest",
-                    "🚨 Blocker"
+                    "🚨 Blocker",
+                    "🚫 Block",
+                    "❌ Reject"
                   ]}
                   onSelect={handlePriorityChange}
                   defaultValue={getPriorityDisplayValue(editedTask.priority)}

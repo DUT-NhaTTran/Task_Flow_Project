@@ -4,5 +4,7 @@ public enum SprintStatus {
     NOT_STARTED,
     ACTIVE,
     COMPLETED,
-    ARCHIVED
+    ARCHIVED,
+    CANCELLED,
+    DELETED
 }

@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev",
     "build": "NODE_OPTIONS='--max-old-space-size=400' NEXT_TELEMETRY_DISABLED=1 GENERATE_SOURCEMAP=false next build",
-    "start": "NODE_OPTIONS='--max-old-space-size=400' next start",
+    "start": "next start",
     "lint": "next lint",
     "tailwind": "tailwindcss init -p"
   },

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   Globe,
   Clock,
@@ -16,9 +16,12 @@ import {
   ListChecks,
   BarChart3,
   Layout,
+  Archive,
 } from "lucide-react";
 import { useNavigation } from "@/contexts/NavigationContext";
 import { useUser } from "@/contexts/UserContext";
+import { useUserStorage } from "@/hooks/useUserStorage";
+import { getUserPermissions, UserPermissions } from "@/utils/permissions";
 
 interface SidebarProps {
   projectId?: string;
@@ -40,6 +43,11 @@ export function Sidebar({ projectId }: SidebarProps) {
 
   // Get current user from UserContext
   const { currentUser } = useUser();
+  const { userData } = useUserStorage();
+
+  // ✅ NEW: User permissions state
+  const [userPermissions, setUserPermissions] = useState<UserPermissions | null>(null);
+  const [permissionsLoading, setPermissionsLoading] = useState(true);
 
   // Auto-update navigation context with current data
   useEffect(() => {
@@ -58,6 +66,31 @@ export function Sidebar({ projectId }: SidebarProps) {
       setUserId(currentUser.id);
     }
   }, [projectId, searchParams, currentUser?.id, currentProjectId, userId, setCurrentProjectId, setUserId]);
+
+  // ✅ NEW: Fetch user permissions when projectId changes
+  useEffect(() => {
+    const fetchPermissions = async () => {
+      const activeProjectId = currentProjectId || projectId || searchParams?.get('projectId');
+      const activeUserId = userData?.account?.id || userData?.profile?.id;
+      
+      if (activeUserId && activeProjectId) {
+        setPermissionsLoading(true);
+        try {
+          const permissions = await getUserPermissions(activeUserId, activeProjectId);
+          setUserPermissions(permissions);
+        } catch (error) {
+          console.error('Error fetching user permissions:', error);
+          setUserPermissions(null);
+        } finally {
+          setPermissionsLoading(false);
+        }
+      } else {
+        setPermissionsLoading(false);
+      }
+    };
+
+    fetchPermissions();
+  }, [userData?.account?.id, userData?.profile?.id, currentProjectId, projectId, searchParams]);
 
   // Check if current path matches specific routes
   const isActive = (path: string) => {
@@ -79,6 +112,7 @@ export function Sidebar({ projectId }: SidebarProps) {
     if (path.includes("/project/calendar")) {
       return pathname.includes("/project/calendar");
     }
+
 
     return pathname.includes(path);
   };
@@ -102,7 +136,8 @@ export function Sidebar({ projectId }: SidebarProps) {
       'summary': '/project/summary',
       'board': '/project/project_homescreen',
       'backlog': '/project/backlog',
-      'calendar': '/project/calendar'
+      'calendar': '/project/calendar',
+      'audit': '/project/audit'
     };
     
     const basePath = basePaths[page];

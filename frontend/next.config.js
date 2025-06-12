@@ -34,10 +34,6 @@ const nextConfig = {
             };
         }
         
-        // Reduce bundle analyzer overhead
-        config.optimization.usedExports = true;
-        config.optimization.sideEffects = false;
-        
         return config;
     },
     

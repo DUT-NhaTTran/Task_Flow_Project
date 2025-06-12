@@ -144,7 +144,7 @@ public class SprintDAO extends BaseDAO {
     }
 
     public List<Sprints> getSprintsByProject(UUID projectId) throws SQLException {
-        String sql = "SELECT * FROM sprints WHERE project_id = ? AND deleted_at IS NULL";
+        String sql = "SELECT * FROM sprints WHERE project_id = ? AND deleted_at IS NULL AND status NOT IN ('DELETED', 'CANCELLED') ORDER BY created_at ASC";
         return executeQuery(sql, stmt -> {
             stmt.setObject(1, projectId);
             List<Sprints> list = new ArrayList<>();
@@ -160,7 +160,7 @@ public class SprintDAO extends BaseDAO {
     public List<Sprints> getFilteredSprintsForCalendar(UUID projectId, String search, 
                                                       List<String> assigneeIds, List<String> statuses, 
                                                       String startDate, String endDate) throws SQLException {
-        StringBuilder sql = new StringBuilder("SELECT * FROM sprints WHERE project_id = ? AND deleted_at IS NULL");
+        StringBuilder sql = new StringBuilder("SELECT * FROM sprints WHERE project_id = ? AND deleted_at IS NULL AND status NOT IN ('DELETED', 'CANCELLED')");
         
         List<Object> params = new ArrayList<>();
         params.add(projectId);
@@ -222,7 +222,7 @@ public class SprintDAO extends BaseDAO {
     }
 
     public List<String> getSprintStatuses(UUID projectId) throws SQLException {
-        String sql = "SELECT DISTINCT status FROM sprints WHERE project_id = ? AND deleted_at IS NULL ORDER BY status";
+        String sql = "SELECT DISTINCT status FROM sprints WHERE project_id = ? AND deleted_at IS NULL AND status NOT IN ('DELETED', 'CANCELLED') ORDER BY status";
         
         return executeQuery(sql, stmt -> {
             stmt.setObject(1, projectId);
@@ -235,6 +235,144 @@ public class SprintDAO extends BaseDAO {
                 }
             }
             return statuses;
+        });
+    }
+
+    // ✅ NEW: Soft delete methods
+    public void cancelSprint(UUID sprintId) throws SQLException {
+        String sql = "UPDATE sprints SET status = ?, updated_at = ? WHERE id = ?";
+        executeUpdate(sql, stmt -> {
+            stmt.setString(1, SprintStatus.CANCELLED.name());
+            stmt.setTimestamp(2, Timestamp.valueOf(java.time.LocalDateTime.now()));
+            stmt.setObject(3, sprintId);
+        });
+    }
+    
+    public void softDeleteSprint(UUID sprintId) throws SQLException {
+        String sql = "UPDATE sprints SET status = ?, deleted_at = ?, updated_at = ? WHERE id = ?";
+        executeUpdate(sql, stmt -> {
+            stmt.setString(1, SprintStatus.DELETED.name());
+            stmt.setTimestamp(2, Timestamp.valueOf(java.time.LocalDateTime.now()));
+            stmt.setTimestamp(3, Timestamp.valueOf(java.time.LocalDateTime.now()));
+            stmt.setObject(4, sprintId);
+        });
+    }
+    
+    public void restoreSprint(UUID sprintId) throws SQLException {
+        String sql = "UPDATE sprints SET status = ?, deleted_at = NULL, updated_at = ? WHERE id = ?";
+        executeUpdate(sql, stmt -> {
+            stmt.setString(1, SprintStatus.NOT_STARTED.name());
+            stmt.setTimestamp(2, Timestamp.valueOf(java.time.LocalDateTime.now()));
+            stmt.setObject(3, sprintId);
+        });
+    }
+    
+    // ✅ NEW: Audit queries
+    public List<Sprints> getDeletedSprintsByProject(UUID projectId) throws SQLException {
+        String sql = "SELECT * FROM sprints WHERE project_id = ? AND status = ? ORDER BY deleted_at DESC";
+        return executeQuery(sql, stmt -> {
+            stmt.setObject(1, projectId);
+            stmt.setString(2, SprintStatus.DELETED.name());
+            List<Sprints> list = new ArrayList<>();
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                list.add(mapResultSetToSprint(rs));
+            }
+            return list;
+        });
+    }
+    
+    public List<Sprints> getCancelledSprintsByProject(UUID projectId) throws SQLException {
+        String sql = "SELECT * FROM sprints WHERE project_id = ? AND status = ? ORDER BY updated_at DESC";
+        return executeQuery(sql, stmt -> {
+            stmt.setObject(1, projectId);
+            stmt.setString(2, SprintStatus.CANCELLED.name());
+            List<Sprints> list = new ArrayList<>();
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                list.add(mapResultSetToSprint(rs));
+            }
+            return list;
+        });
+    }
+    
+    // ✅ NEW: Task migration support
+    public List<Map<String, Object>> getIncompleteTasksFromSprint(UUID sprintId) throws SQLException {
+        String sql = "SELECT id, title, status, story_point, assignee_id FROM tasks WHERE sprint_id = ? AND status != 'DONE' AND deleted_at IS NULL";
+        return executeQuery(sql, stmt -> {
+            stmt.setObject(1, sprintId);
+            List<Map<String, Object>> tasks = new ArrayList<>();
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                Map<String, Object> task = new HashMap<>();
+                task.put("id", rs.getObject("id", UUID.class));
+                task.put("title", rs.getString("title"));
+                task.put("status", rs.getString("status"));
+                task.put("storyPoint", rs.getInt("story_point"));
+                task.put("assigneeId", rs.getObject("assignee_id", UUID.class));
+                tasks.add(task);
+            }
+            return tasks;
+        });
+    }
+    
+    public void moveTasksToBacklog(UUID sprintId) throws SQLException {
+        String sql = "UPDATE tasks SET sprint_id = NULL, updated_at = ? WHERE sprint_id = ? AND status != 'DONE' AND deleted_at IS NULL";
+        executeUpdate(sql, stmt -> {
+            stmt.setTimestamp(1, Timestamp.valueOf(java.time.LocalDateTime.now()));
+            stmt.setObject(2, sprintId);
+        });
+    }
+    
+    public void moveTasksToSprint(UUID fromSprintId, UUID toSprintId) throws SQLException {
+        String sql = "UPDATE tasks SET sprint_id = ?, updated_at = ? WHERE sprint_id = ? AND status != 'DONE' AND deleted_at IS NULL";
+        executeUpdate(sql, stmt -> {
+            stmt.setObject(1, toSprintId);
+            stmt.setTimestamp(2, Timestamp.valueOf(java.time.LocalDateTime.now()));
+            stmt.setObject(3, fromSprintId);
+        });
+    }
+
+    // ✅ NEW: Move specific tasks by IDs to backlog
+    public void moveSpecificTasksToBacklog(List<UUID> taskIds) throws SQLException {
+        if (taskIds == null || taskIds.isEmpty()) {
+            return;
+        }
+        
+        StringBuilder sql = new StringBuilder("UPDATE tasks SET sprint_id = NULL, updated_at = ? WHERE id IN (");
+        for (int i = 0; i < taskIds.size(); i++) {
+            if (i > 0) sql.append(", ");
+            sql.append("?");
+        }
+        sql.append(") AND deleted_at IS NULL");
+        
+        executeUpdate(sql.toString(), stmt -> {
+            stmt.setTimestamp(1, Timestamp.valueOf(java.time.LocalDateTime.now()));
+            for (int i = 0; i < taskIds.size(); i++) {
+                stmt.setObject(i + 2, taskIds.get(i));
+            }
+        });
+    }
+    
+    // ✅ NEW: Move specific tasks by IDs to another sprint
+    public void moveSpecificTasksToSprint(List<UUID> taskIds, UUID toSprintId) throws SQLException {
+        if (taskIds == null || taskIds.isEmpty()) {
+            return;
+        }
+        
+        StringBuilder sql = new StringBuilder("UPDATE tasks SET sprint_id = ?, updated_at = ? WHERE id IN (");
+        for (int i = 0; i < taskIds.size(); i++) {
+            if (i > 0) sql.append(", ");
+            sql.append("?");
+        }
+        sql.append(") AND deleted_at IS NULL");
+        
+        executeUpdate(sql.toString(), stmt -> {
+            stmt.setObject(1, toSprintId);
+            stmt.setTimestamp(2, Timestamp.valueOf(java.time.LocalDateTime.now()));
+            for (int i = 0; i < taskIds.size(); i++) {
+                stmt.setObject(i + 3, taskIds.get(i));
+            }
         });
     }
 

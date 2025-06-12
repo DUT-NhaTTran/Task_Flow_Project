@@ -196,4 +196,145 @@ public class SprintServiceImpl implements SprintService {
             throw new DatabaseException("Error retrieving sprint statuses: " + e.getMessage());
         }
     }
+
+    // ✅ NEW: Soft delete and audit methods
+    @Override
+    public void cancelSprint(UUID sprintId) {
+        try {
+            Sprints sprint = getSprintById(sprintId);
+            if (sprint == null) {
+                throw new ResourceNotFoundException("Sprint not found with ID " + sprintId);
+            }
+            
+            // Only allow cancelling NOT_STARTED or ACTIVE sprints
+            if (sprint.getStatus() != SprintStatus.NOT_STARTED && sprint.getStatus() != SprintStatus.ACTIVE) {
+                throw new DatabaseException("Only not started or active sprints can be cancelled");
+            }
+            
+            sprintsDAO.cancelSprint(sprintId);
+        } catch (Exception e) {
+            throw new DatabaseException("Error cancelling sprint: " + e.getMessage());
+        }
+    }
+    
+    @Override
+    public void softDeleteSprint(UUID sprintId) {
+        try {
+            Sprints sprint = getSprintById(sprintId);
+            if (sprint == null) {
+                throw new ResourceNotFoundException("Sprint not found with ID " + sprintId);
+            }
+            
+            // Prevent deletion of ACTIVE sprints without cancelling first
+            if (sprint.getStatus() == SprintStatus.ACTIVE) {
+                throw new DatabaseException("Active sprints must be cancelled before deletion");
+            }
+            
+            sprintsDAO.softDeleteSprint(sprintId);
+        } catch (Exception e) {
+            throw new DatabaseException("Error deleting sprint: " + e.getMessage());
+        }
+    }
+    
+    @Override
+    public List<Sprints> getDeletedSprintsByProject(UUID projectId) {
+        try {
+            return sprintsDAO.getDeletedSprintsByProject(projectId);
+        } catch (Exception e) {
+            throw new DatabaseException("Error retrieving deleted sprints: " + e.getMessage());
+        }
+    }
+    
+    @Override
+    public List<Sprints> getCancelledSprintsByProject(UUID projectId) {
+        try {
+            return sprintsDAO.getCancelledSprintsByProject(projectId);
+        } catch (Exception e) {
+            throw new DatabaseException("Error retrieving cancelled sprints: " + e.getMessage());
+        }
+    }
+    
+    @Override
+    public void restoreSprint(UUID sprintId) {
+        try {
+            // Note: This method can restore from both CANCELLED and DELETED states
+            sprintsDAO.restoreSprint(sprintId);
+        } catch (Exception e) {
+            throw new DatabaseException("Error restoring sprint: " + e.getMessage());
+        }
+    }
+    
+    // ✅ NEW: Task migration methods
+    @Override
+    public List<Map<String, Object>> getIncompleteTasksFromSprint(UUID sprintId) {
+        try {
+            return sprintsDAO.getIncompleteTasksFromSprint(sprintId);
+        } catch (Exception e) {
+            throw new DatabaseException("Error retrieving incomplete tasks: " + e.getMessage());
+        }
+    }
+    
+    @Override
+    public void moveTasksToBacklog(UUID sprintId) {
+        try {
+            sprintsDAO.moveTasksToBacklog(sprintId);
+        } catch (Exception e) {
+            throw new DatabaseException("Error moving tasks to backlog: " + e.getMessage());
+        }
+    }
+    
+    @Override
+    public void moveTasksToSprint(UUID fromSprintId, UUID toSprintId) {
+        try {
+            // Validate target sprint exists and is not completed/archived
+            Sprints targetSprint = getSprintById(toSprintId);
+            if (targetSprint == null) {
+                throw new ResourceNotFoundException("Target sprint not found with ID " + toSprintId);
+            }
+            
+            if (targetSprint.getStatus() == SprintStatus.COMPLETED || targetSprint.getStatus() == SprintStatus.ARCHIVED) {
+                throw new DatabaseException("Cannot move tasks to completed or archived sprint");
+            }
+            
+            sprintsDAO.moveTasksToSprint(fromSprintId, toSprintId);
+        } catch (Exception e) {
+            throw new DatabaseException("Error moving tasks between sprints: " + e.getMessage());
+        }
+    }
+    
+    // ✅ NEW: Specific task migration methods
+    @Override
+    public void moveSpecificTasksToBacklog(List<UUID> taskIds) {
+        try {
+            if (taskIds == null || taskIds.isEmpty()) {
+                return; // No tasks to move
+            }
+            sprintsDAO.moveSpecificTasksToBacklog(taskIds);
+        } catch (Exception e) {
+            throw new DatabaseException("Error moving specific tasks to backlog: " + e.getMessage());
+        }
+    }
+    
+    @Override
+    public void moveSpecificTasksToSprint(List<UUID> taskIds, UUID toSprintId) {
+        try {
+            if (taskIds == null || taskIds.isEmpty()) {
+                return; // No tasks to move
+            }
+            
+            // Validate target sprint exists and is not completed/archived
+            Sprints targetSprint = getSprintById(toSprintId);
+            if (targetSprint == null) {
+                throw new ResourceNotFoundException("Target sprint not found with ID " + toSprintId);
+            }
+            
+            if (targetSprint.getStatus() == SprintStatus.COMPLETED || targetSprint.getStatus() == SprintStatus.ARCHIVED) {
+                throw new DatabaseException("Cannot move tasks to completed or archived sprint");
+            }
+            
+            sprintsDAO.moveSpecificTasksToSprint(taskIds, toSprintId);
+        } catch (Exception e) {
+            throw new DatabaseException("Error moving specific tasks to sprint: " + e.getMessage());
+        }
+    }
 }
