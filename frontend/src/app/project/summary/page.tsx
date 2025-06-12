@@ -315,38 +315,58 @@ export default function ProjectSummaryPage() {
 
     // Handle different error scenarios with appropriate UI
     const handleProjectNotFound = () => {
-        console.log('📝 Project not found - redirecting to project homescreen');
-        setTimeout(() => {
-            window.location.href = '/project/project_homescreen';
-        }, 1000);
+        console.log('📝 Project not found - showing error state');
+        setErrorState({
+            type: 'not_found',
+            title: 'Project Not Found',
+            message: 'This project could not be found. Please check the project ID or select a different project.',
+            showProjectSelector: true
+        });
+        setIsLoading(false);
     };
 
     const handleServerError = () => {
-        console.log('📝 Server error - redirecting to project homescreen');
-        setTimeout(() => {
-            window.location.href = '/project/project_homescreen';
-        }, 1000);
+        console.log('📝 Server error - showing error state');
+        setErrorState({
+            type: 'server_error',
+            title: 'Server Error',
+            message: 'Unable to connect to the server. Please try again later.',
+            showProjectSelector: false
+        });
+        setIsLoading(false);
     };
 
     const handleAccessDenied = () => {
-        console.log('📝 Access denied - redirecting to project homescreen');
-        setTimeout(() => {
-            window.location.href = '/project/project_homescreen';
-        }, 1000);
+        console.log('📝 Access denied - showing error state');
+        setErrorState({
+            type: 'access_denied',
+            title: 'Access Denied',
+            message: 'You do not have permission to view this project.',
+            showProjectSelector: true
+        });
+        setIsLoading(false);
     };
 
     const handleNetworkError = () => {
-        console.log('📝 Network error - redirecting to project homescreen');
-        setTimeout(() => {
-            window.location.href = '/project/project_homescreen';
-        }, 1000);
+        console.log('📝 Network error - showing error state');
+        setErrorState({
+            type: 'network_error',
+            title: 'Network Error',
+            message: 'Please check your internet connection and try again.',
+            showProjectSelector: false
+        });
+        setIsLoading(false);
     };
 
     const handleUnknownError = () => {
-        console.log('📝 Unknown error - redirecting to project homescreen');
-        setTimeout(() => {
-            window.location.href = '/project/project_homescreen';
-        }, 1000);
+        console.log('📝 Unknown error - showing error state');
+        setErrorState({
+            type: 'unknown_error',
+            title: 'Something went wrong',
+            message: 'An unexpected error occurred. Please try again.',
+            showProjectSelector: false
+        });
+        setIsLoading(false);
     };
 
     const fetchProjectMembers = async () => {
@@ -917,7 +937,7 @@ export default function ProjectSummaryPage() {
                         <div className="flex items-center justify-center h-64">
                             <div className="text-center max-w-lg p-6">
                                 <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center bg-red-100 rounded-full text-red-500">
-                                    {errorState.type === 'not-found' && (
+                                    {errorState.type === 'not_found' && (
                                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                                             <path d="M10 3H3V10H10V3Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                                             <path d="M21 3H14V10H21V3Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -925,12 +945,12 @@ export default function ProjectSummaryPage() {
                                             <path d="M10 14H3V21H10V14Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                                         </svg>
                                     )}
-                                    {errorState.type === 'server-error' && (
+                                    {errorState.type === 'server_error' && (
                                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                                             <path d="M12 8V12M12 16H12.01M22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                                         </svg>
                                     )}
-                                    {(errorState.type === 'access-denied' || errorState.type === 'network-error' || errorState.type === 'unknown-error') && (
+                                    {(errorState.type === 'access_denied' || errorState.type === 'network_error' || errorState.type === 'unknown_error') && (
                                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                                             <path d="M12 9V13M12 17H12.01M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                                         </svg>

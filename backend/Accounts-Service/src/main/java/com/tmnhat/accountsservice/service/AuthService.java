@@ -12,4 +12,10 @@ public interface AuthService {
     Accounts getAccountByEmail(String email) throws SQLException;
     void linkUserIdToAccount(UUID accountId, UUID userId) throws SQLException;
     UUID getAccountIdByEmail(String email) throws SQLException;
+    
+    // Change password
+    void changePassword(String email, String currentPassword, String newPassword) throws Exception;
+    
+    // Change password by user ID
+    void changePasswordByUserId(UUID userId, String currentPassword, String newPassword) throws Exception;
 }

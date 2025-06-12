@@ -27,6 +27,7 @@ public class Tasks {
     private List<TaskTag> tags;
     private String label;
     private TaskPriority priority;  // ✅ New priority field
+    private LocalDateTime deletedAt;
 
     public Tasks() {
     }
@@ -48,6 +49,7 @@ public class Tasks {
         this.tags = builder.tags;
         this.label = builder.label;
         this.priority = builder.priority;
+        this.deletedAt = builder.deletedAt;
     }
 
     // ✅ Getters & Setters
@@ -180,6 +182,14 @@ public class Tasks {
         this.priority = priority;
     }
 
+    public LocalDateTime getDeletedAt() {
+        return deletedAt;
+    }
+
+    public void setDeletedAt(LocalDateTime deletedAt) {
+        this.deletedAt = deletedAt;
+    }
+
     // Builder class
 
     public static class Builder {
@@ -199,6 +209,7 @@ public class Tasks {
         private List<TaskTag> tags;
         private String label;
         private TaskPriority priority;
+        private LocalDateTime deletedAt;
 
         public Builder() {}
 
@@ -279,6 +290,11 @@ public class Tasks {
 
         public Builder priority(TaskPriority priority) {
             this.priority = priority;
+            return this;
+        }
+
+        public Builder deletedAt(LocalDateTime deletedAt) {
+            this.deletedAt = deletedAt;
             return this;
         }
 

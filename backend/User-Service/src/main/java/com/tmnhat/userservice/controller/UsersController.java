@@ -137,6 +137,4 @@ public class UsersController {
         String username = userService.getUsernameById(id);
         return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(username));
     }
-
-   
 } 

@@ -29,6 +29,8 @@ public class Sprints {
 
     private LocalDateTime updatedAt;
 
+    private LocalDateTime deletedAt;
+
     public Sprints() {}
 
     private Sprints(Builder builder) {
@@ -41,6 +43,7 @@ public class Sprints {
         this.status = builder.status;
         this.createdAt = builder.createdAt;
         this.updatedAt = builder.updatedAt;
+        this.deletedAt = builder.deletedAt;
     }
 
     // Getters & Setters
@@ -117,6 +120,14 @@ public class Sprints {
         this.updatedAt = updatedAt;
     }
 
+    public LocalDateTime getDeletedAt() {
+        return deletedAt;
+    }
+
+    public void setDeletedAt(LocalDateTime deletedAt) {
+        this.deletedAt = deletedAt;
+    }
+
     // Builder pattern
 
     public static class Builder {
@@ -129,6 +140,7 @@ public class Sprints {
         private SprintStatus status;
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
+        private LocalDateTime deletedAt;
 
         public Builder() {}
 
@@ -174,6 +186,11 @@ public class Sprints {
 
         public Builder updatedAt(LocalDateTime updatedAt) {
             this.updatedAt = updatedAt;
+            return this;
+        }
+
+        public Builder deletedAt(LocalDateTime deletedAt) {
+            this.deletedAt = deletedAt;
             return this;
         }
 

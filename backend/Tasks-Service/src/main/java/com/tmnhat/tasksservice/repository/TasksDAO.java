@@ -61,11 +61,12 @@ public class TasksDAO extends BaseDAO {
     }
 
     public void deleteTask(UUID id) throws SQLException {
-        String sql = "DELETE FROM tasks WHERE id = ?";
+        String sql = "UPDATE tasks SET deleted_at = NOW() WHERE id = ?";
         executeUpdate(sql, stmt -> stmt.setObject(1, id));
     }
+
     public Tasks getTaskById(UUID id) throws SQLException {
-        String sql = "SELECT * FROM tasks WHERE id = ?";
+        String sql = "SELECT * FROM tasks WHERE id = ? AND deleted_at IS NULL";
         return executeQuery(sql, stmt -> {
             stmt.setObject(1, id);
             ResultSet rs = stmt.executeQuery();
@@ -92,7 +93,7 @@ public class TasksDAO extends BaseDAO {
     }
 
     public List<Tasks> getAllTasks() throws SQLException {
-        String sql = "SELECT * FROM tasks";
+        String sql = "SELECT * FROM tasks WHERE deleted_at IS NULL";
         return executeQuery(sql, stmt -> {
             List<Tasks> tasks = new ArrayList<>();
             ResultSet rs = stmt.executeQuery();
@@ -139,7 +140,7 @@ public class TasksDAO extends BaseDAO {
     }
 
     public List<Tasks> filterTasks(String status, UUID assigneeId) throws SQLException {
-        String sql = "SELECT * FROM tasks WHERE status = ? AND assignee_id = ?";
+        String sql = "SELECT * FROM tasks WHERE status = ? AND assignee_id = ? AND deleted_at IS NULL";
         return executeQuery(sql, stmt -> {
             stmt.setString(1, status);
             stmt.setObject(2, assigneeId);
@@ -153,7 +154,7 @@ public class TasksDAO extends BaseDAO {
     }
 
     public List<Tasks> searchTasks(String keyword) throws SQLException {
-        String sql = "SELECT * FROM tasks WHERE title ILIKE ?";
+        String sql = "SELECT * FROM tasks WHERE title ILIKE ? AND deleted_at IS NULL";
         return executeQuery(sql, stmt -> {
             stmt.setString(1, "%" + keyword + "%");
             List<Tasks> tasks = new ArrayList<>();
@@ -166,7 +167,7 @@ public class TasksDAO extends BaseDAO {
     }
 
     public List<Tasks> getTasksBySprintId(UUID sprintId) throws SQLException {
-        String sql = "SELECT * FROM tasks WHERE sprint_id = ?";
+        String sql = "SELECT * FROM tasks WHERE sprint_id = ? AND deleted_at IS NULL";
         return executeQuery(sql, stmt -> {
             stmt.setObject(1, sprintId);
             List<Tasks> tasks = new ArrayList<>();
@@ -247,7 +248,7 @@ public class TasksDAO extends BaseDAO {
         });
     }
     public List<Tasks> getTasksByProjectId(UUID projectId) throws SQLException {
-        String sql = "SELECT * FROM tasks WHERE project_id = ?";
+        String sql = "SELECT * FROM tasks WHERE project_id = ? AND deleted_at IS NULL";
         return executeQuery(sql, stmt -> {
             stmt.setObject(1, projectId);
             ResultSet rs = stmt.executeQuery();
@@ -299,9 +300,9 @@ public class TasksDAO extends BaseDAO {
         // For due_date, we want to handle NULL values (put them at the end)
         String sql;
         if ("due_date".equals(orderByColumn)) {
-            sql = String.format("SELECT * FROM tasks WHERE project_id = ? ORDER BY %s %s NULLS LAST", orderByColumn, order);
+            sql = String.format("SELECT * FROM tasks WHERE project_id = ? AND deleted_at IS NULL ORDER BY %s %s NULLS LAST", orderByColumn, order);
         } else {
-            sql = String.format("SELECT * FROM tasks WHERE project_id = ? ORDER BY %s %s", orderByColumn, order);
+            sql = String.format("SELECT * FROM tasks WHERE project_id = ? AND deleted_at IS NULL ORDER BY %s %s", orderByColumn, order);
         }
         
         return executeQuery(sql, stmt -> {
@@ -326,7 +327,7 @@ public class TasksDAO extends BaseDAO {
 
     // Add method to get tasks by priority
     public List<Tasks> getTasksByPriority(UUID projectId, TaskPriority priority) throws SQLException {
-        String sql = "SELECT * FROM tasks WHERE project_id = ? AND priority = ?";
+        String sql = "SELECT * FROM tasks WHERE project_id = ? AND priority = ? AND deleted_at IS NULL";
         return executeQuery(sql, stmt -> {
             stmt.setObject(1, projectId);
             stmt.setString(2, priority.name());
@@ -345,7 +346,7 @@ public class TasksDAO extends BaseDAO {
                                                   List<String> statuses, String startDate, 
                                                   String endDate, String sprintId) throws SQLException {
         StringBuilder sql = new StringBuilder("SELECT t.*, u.username as assignee_name FROM tasks t ");
-        sql.append("LEFT JOIN users u ON t.assignee_id = u.id WHERE t.project_id = ?");
+        sql.append("LEFT JOIN users u ON t.assignee_id = u.id WHERE t.project_id = ? AND t.deleted_at IS NULL");
         
         List<Object> params = new ArrayList<>();
         params.add(projectId);
@@ -437,7 +438,7 @@ public class TasksDAO extends BaseDAO {
     public List<Map<String, Object>> getTaskAssignees(UUID projectId) throws SQLException {
         String sql = "SELECT DISTINCT u.id, u.username, u.email FROM users u " +
                     "INNER JOIN tasks t ON u.id = t.assignee_id " +
-                    "WHERE t.project_id = ? AND t.assignee_id IS NOT NULL " +
+                    "WHERE t.project_id = ? AND t.assignee_id IS NOT NULL AND t.deleted_at IS NULL " +
                     "ORDER BY u.username";
         
         return executeQuery(sql, stmt -> {
@@ -456,7 +457,7 @@ public class TasksDAO extends BaseDAO {
     }
 
     public List<String> getTaskTypes(UUID projectId) throws SQLException {
-        String sql = "SELECT DISTINCT label FROM tasks WHERE project_id = ? AND label IS NOT NULL ORDER BY label";
+        String sql = "SELECT DISTINCT label FROM tasks WHERE project_id = ? AND label IS NOT NULL AND deleted_at IS NULL ORDER BY label";
         
         return executeQuery(sql, stmt -> {
             stmt.setObject(1, projectId);
@@ -473,7 +474,7 @@ public class TasksDAO extends BaseDAO {
     }
 
     public List<String> getTaskStatuses(UUID projectId) throws SQLException {
-        String sql = "SELECT DISTINCT status FROM tasks WHERE project_id = ? ORDER BY status";
+        String sql = "SELECT DISTINCT status FROM tasks WHERE project_id = ? AND deleted_at IS NULL ORDER BY status";
         
         return executeQuery(sql, stmt -> {
             stmt.setObject(1, projectId);
@@ -534,6 +535,13 @@ public class TasksDAO extends BaseDAO {
         } catch (SQLException e) {
             // If priority column doesn't exist, default to MEDIUM
             builder.priority(TaskPriority.MEDIUM);
+        }
+        
+        // Try to get deletedAt field if exists
+        try {
+            builder.deletedAt(rs.getTimestamp("deleted_at") != null ? rs.getTimestamp("deleted_at").toLocalDateTime() : null);
+        } catch (SQLException e) {
+            // Ignore if deleted_at column doesn't exist
         }
         
         return builder.build();

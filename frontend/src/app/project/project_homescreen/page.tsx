@@ -31,6 +31,7 @@ import {
   UserPermissions 
 } from "@/utils/permissions";
 import { Edit } from "lucide-react";
+import { useUser } from "@/contexts/UserContext";
 
 // Interface definitions
 interface Project {
@@ -99,6 +100,25 @@ export default function ProjectBoardPage() {
   const router = useRouter();
   const { currentProjectId, setCurrentProjectId } = useNavigation();
   const { userData } = useUserStorage(); // Add this line
+  
+  // ✅ NEW: Use UserContext for user management
+  const { currentUser, isLoading: userContextLoading, users: cachedUsers, getUserById, fetchUserById } = useUser();
+  
+  // ✅ NEW: Simple permission check function for task editing/dragging
+  const canEditTask = (task: Task) => {
+    if (!currentUser?.id) return false;
+    
+    // Task creator can edit/drag
+    if (task.createdBy === currentUser.id) return true;
+    
+    // Task assignee can edit/drag  
+    if (task.assigneeId === currentUser.id) return true;
+    
+    // Admin users can edit/drag (using existing permission system)
+    if (userPermissions?.canManageAnyTask || userPermissions?.isOwner) return true;
+    
+    return false;
+  };
   
   // Get projectId from URL or context
   const urlProjectId = searchParams?.get("projectId")
@@ -420,6 +440,14 @@ export default function ProjectBoardPage() {
 
   const handleDragStart = (event: DragStartEvent) => {
     const task = event.active.data.current?.task as Task;
+    
+    // ✅ CHECK PERMISSION: Only allow drag if user can edit the task
+    if (!canEditTask(task)) {
+      console.log('❌ User cannot edit this task, preventing drag');
+      // Note: We handle permission check in the disabled prop of DraggableProjectTaskCard
+      return;
+    }
+    
     setActiveTask(task);
   };
 
@@ -2505,7 +2533,7 @@ export default function ProjectBoardPage() {
           </div>
         ) : hasTasksInColumn ? (
           tasksInColumn.map((task) => (
-            <DraggableProjectTaskCard key={task.id} task={task}>
+            <DraggableProjectTaskCard key={task.id} task={task} disabled={!canEditTask(task)}>
             <TaskCard
               task={task}
               onClick={() => setSelectedTask(task)}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { Dropdown } from "@/components/ui/drop-down";
 import axios from "axios";
@@ -120,31 +120,43 @@ export default function TaskDetailModal({
   const { userData } = useUserStorage();
   const { currentProjectId } = useNavigation();
 
-  // Permission state
-  const [userPermissions, setUserPermissions] = useState<UserPermissions | null>(null);
-  const [permissionsLoading, setPermissionsLoading] = useState(true);
+  // Task state management
+  const [editedTask, setEditedTask] = useState<TaskData>(task);
+  const [childWorkItems, setChildWorkItems] = useState<any[]>([]);
+  const [isLoadingComments, setIsLoadingComments] = useState(false);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [newComment, setNewComment] = useState("");
+  const [expandedComments, setExpandedComments] = useState<Set<number>>(new Set());
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [attachments, setAttachments] = useState<any[]>([]);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteConfirmMessage, setDeleteConfirmMessage] = useState("");
 
-  // ✅ NEW: Simple permission check function
-  const canEditCurrentTask = () => {
-    if (!currentUser?.id) return false;
-    
+  // Permission states
+  const [userPermissions, setUserPermissions] = useState<UserPermissions | null>(null);
+  const [isReadOnly, setIsReadOnly] = useState(false);
+
+  // Check if current user can edit this task
+  const canEditCurrentTask = useMemo(() => {
+    const currentUserId = userData?.account?.id;
+    if (!currentUserId) return false;
+
     // Task creator can edit
-    if (task.createdBy === currentUser.id) return true;
+    if (task.createdBy === currentUserId) return true;
     
     // Task assignee can edit  
-    if (task.assigneeId === currentUser.id) return true;
+    if (task.assigneeId === currentUserId) return true;
     
-    // Admin users can edit (using existing permission system)
-    if (userPermissions?.canManageAnyTask || userPermissions?.isOwner) return true;
+    // Project owner can edit
+    if (userPermissions?.isOwner) return true;
     
     return false;
-  };
+  }, [userData?.account?.id, task.createdBy, task.assigneeId, userPermissions?.isOwner]);
 
-  // ✅ NEW: Check if form should be read-only
-  const isReadOnly = !canEditCurrentTask();
-
-  // State for editing the task
-  const [editedTask, setEditedTask] = useState<TaskData>({ ...task });
+  // Set read-only mode based on permissions
+  useEffect(() => {
+    setIsReadOnly(!canEditCurrentTask);
+  }, [canEditCurrentTask]);
 
   // Update local state when task prop changes
   useEffect(() => {
@@ -218,12 +230,6 @@ export default function TaskDetailModal({
   // State for comment
   const [comment, setComment] = useState("");
   const [isAddingComment, setIsAddingComment] = useState(false);
-  const [isLoadingComments, setIsLoadingComments] = useState(false);
-  const [comments, setComments] = useState<CommentData[]>([]);
-
-  // Reply functionality state
-  const [replyingTo, setReplyingTo] = useState<number | null>(null);
-  const [replyText, setReplyText] = useState("");
   const [isAddingReply, setIsAddingReply] = useState(false);
 
   // State for users in the project with caching (separate from UserContext)
@@ -247,11 +253,6 @@ export default function TaskDetailModal({
   >("comments");
   const [isWatchingTask, setIsWatchingTask] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
-  const [showMoreMenu, setShowMoreMenu] = useState(false);
-
-  // ✅ State for delete confirmation modal
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deleteConfirmMessage, setDeleteConfirmMessage] = useState("");
 
   // State for Add dropdown
   const [isAddDropdownOpen, setIsAddDropdownOpen] = useState(false);
@@ -267,7 +268,6 @@ export default function TaskDetailModal({
   const [isSearching, setIsSearching] = useState(false);
 
   // State for displaying added items
-  const [childWorkItems, setChildWorkItems] = useState<any[]>([]);
   const [linkedWorkItems, setLinkedWorkItems] = useState<any[]>([]);
   const [webLinks, setWebLinks] = useState<any[]>([]);
 
@@ -2691,11 +2691,10 @@ export default function TaskDetailModal({
                   placeholder="Select Status"
                   onSelect={handleStatusChange}
                   defaultValue={statusMap[editedTask.status] || "To Do"}
-                  disabled={isReadOnly}
                 />
               </div>
               {/* Only show Save changes button if user has permission to edit the task */}
-              {!isReadOnly && (
+              {userData?.account?.id && canEditTask(userPermissions, task.assigneeId || null, task.createdBy || null, userData.account.id) && (
                 <button
                   className={`ml-4 px-3 py-1 rounded-md ${
                     isSaving
@@ -2708,12 +2707,9 @@ export default function TaskDetailModal({
                   {isSaving ? "Saving..." : "Save changes"}
                 </button>
               )}
-              {isReadOnly && (
-                <div className="ml-4 px-3 py-1 text-sm text-gray-400 italic flex items-center gap-2">
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
-                  </svg>
-                  Read-only - Only task creators and assignees can edit
+              {userData?.account?.id && !canEditTask(userPermissions, task.assigneeId || null, task.createdBy || null, userData.account.id) && (
+                <div className="ml-4 px-3 py-1 text-sm text-gray-400 italic">
+                  Only task creators, assignees, and admins can edit tasks
                 </div>
               )}
 
@@ -2860,54 +2856,52 @@ export default function TaskDetailModal({
             <div className="mb-8 w-full">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-base font-semibold">Description</h3>
-                {!isReadOnly && (
-                  <button
-                    onClick={toggleDescriptionEditMode}
-                    className="text-sm flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-100"
-                  >
-                    {isEditingDescription ? (
-                      <span className="flex items-center">
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="16"
-                          height="16"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <polyline points="20 6 9 17 4 12"></polyline>
-                        </svg>
-                        Done
-                      </span>
-                    ) : (
-                      <span className="flex items-center">
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="16"
-                          height="16"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                        </svg>
-                        Edit
-                      </span>
-                    )}
-                  </button>
-                )}
+                <button
+                  onClick={toggleDescriptionEditMode}
+                  className="text-sm flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-100"
+                >
+                  {isEditingDescription ? (
+                    <span className="flex items-center">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                      </svg>
+                      Done
+                    </span>
+                  ) : (
+                    <span className="flex items-center">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                      </svg>
+                      Edit
+                    </span>
+                  )}
+                </button>
               </div>
 
               {/* TipTap editor component with full width or read-only view */}
               <div className="w-full task-description-content">
-                {isEditingDescription && !isReadOnly ? (
+                {isEditingDescription ? (
                   <TiptapEditor
                     content={editedTask.description || ""}
                     onChange={(val) => updateField("description", val)}
@@ -2916,10 +2910,8 @@ export default function TaskDetailModal({
                   />
                 ) : (
                   <div
-                    className={`border rounded p-4 bg-gray-50 min-h-[150px] prose max-w-none transition-colors ${
-                      !isReadOnly ? "cursor-pointer hover:bg-gray-100" : "cursor-default"
-                    }`}
-                    onClick={!isReadOnly ? toggleDescriptionEditMode : undefined}
+                    className="border rounded p-4 bg-gray-50 min-h-[150px] prose max-w-none cursor-pointer hover:bg-gray-100 transition-colors"
+                    onClick={toggleDescriptionEditMode}
                   >
                     {editedTask.description ? (
                       <div
@@ -2929,7 +2921,7 @@ export default function TaskDetailModal({
                       />
                     ) : (
                       <p className="text-gray-400 italic">
-                        {isReadOnly ? "No description" : "Click to add description..."}
+                        Click to add description...
                       </p>
                     )}
                   </div>
@@ -4260,19 +4252,131 @@ export default function TaskDetailModal({
               {/* Assignee with integrated dropdown */}
               <div className="mb-3">
                 <span className="text-gray-700 block mb-1">Assignee</span>
-                <Dropdown
-                  placeholder="Unassigned"
-                  options={userOptions}
-                  onSelect={handleAssigneeChange}
-                  defaultValue={currentAssignee}
-                  className="w-full text-sm"
-                  disabled={isReadOnly}
-                />
+
+                {/* Integrated assignee display and dropdown */}
+                <div className="relative">
+                  <div 
+                    className="assignee-selector flex items-center gap-2 p-2 border rounded-lg bg-white cursor-pointer hover:border-blue-300 transition-colors"
+                    onClick={() => {
+                      // Toggle dropdown for assignee
+                      const dropdown = document.querySelector('.assignee-dropdown') as HTMLElement;
+                      if (dropdown) {
+                        dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
+                      }
+                    }}
+                  >
+                    {editedTask.assigneeId ? (
+                      <>
+                        {getAssignedUser() ? (
+                          <UserAvatar user={getAssignedUser()!} size="sm" />
+                        ) : (
+                          <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-medium">
+                            {getInitials(editedTask.assigneeName || "Unknown")}
+                          </div>
+                        )}
+                        <span className="text-sm font-medium flex-1">
+                          {getAssignedUser()?.username ||
+                            editedTask.assigneeName ||
+                            "Unknown User"}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium">
+                          ?
+                        </div>
+                        <span className="text-sm text-gray-500 flex-1">Unassigned</span>
+                      </>
+                    )}
+                    <svg
+                      className="w-4 h-4 text-gray-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+
+                  {/* Dropdown menu */}
+                  <div 
+                    className="assignee-dropdown absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto hidden"
+                  >
+                    <div className="py-1">
+                      {/* Current assignee if exists */}
+                      {editedTask.assigneeId && allUsers.find(u => u.id === editedTask.assigneeId) && (
+                        <button
+                          onClick={() => {
+                            handleAssigneeChange(getAssignedUser()?.username || editedTask.assigneeName || "");
+                            const dropdown = document.querySelector('.assignee-dropdown') as HTMLElement;
+                            if (dropdown) dropdown.style.display = 'none';
+                          }}
+                          className="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-2"
+                        >
+                          <UserAvatar 
+                            user={getAssignedUser() || { 
+                              username: editedTask.assigneeName || "Unknown", 
+                              email: editedTask.assigneeId || "",
+                              avatar: undefined 
+                            }} 
+                            size="sm" 
+                          />
+                          <span className="text-sm">{getAssignedUser()?.username || editedTask.assigneeName}</span>
+                          <svg className="w-4 h-4 text-blue-600 ml-auto" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                        </button>
+                      )}
+
+                      {/* Unassigned option */}
+                      <button
+                        onClick={() => {
+                          handleAssigneeChange("Unassigned");
+                          const dropdown = document.querySelector('.assignee-dropdown') as HTMLElement;
+                          if (dropdown) dropdown.style.display = 'none';
+                        }}
+                        className="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-2"
+                      >
+                        <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium">
+                          ?
+                        </div>
+                        <span className="text-sm">Unassigned</span>
+                        {!editedTask.assigneeId && (
+                          <svg className="w-4 h-4 text-blue-600 ml-auto" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                        )}
+                      </button>
+
+                      {/* Other users */}
+                      {loadingUsers ? (
+                        <div className="px-3 py-2 text-sm text-gray-500">Loading users...</div>
+                      ) : (
+                        allUsers
+                          .filter(user => user.id !== editedTask.assigneeId) // Filter out current assignee since it's shown at top
+                          .map((user) => (
+                            <button
+                              key={user.id}
+                              onClick={() => {
+                                handleAssigneeChange(user.username);
+                                const dropdown = document.querySelector('.assignee-dropdown') as HTMLElement;
+                                if (dropdown) dropdown.style.display = 'none';
+                              }}
+                              className="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-2"
+                            >
+                              <UserAvatar user={user} size="sm" />
+                              <span className="text-sm">{user.username}</span>
+                            </button>
+                          ))
+                      )}
+                    </div>
+                  </div>
+                </div>
 
                 <button
-                  className="text-blue-600 text-sm mt-1 disabled:text-gray-400 disabled:cursor-not-allowed"
+                  className="text-blue-600 text-sm mt-1"
                   onClick={assignToMe}
-                  disabled={allUsers.length === 0 || loadingUsers || isReadOnly}
+                  disabled={allUsers.length === 0 || loadingUsers}
                 >
                   Assign to me
                 </button>
@@ -4285,7 +4389,6 @@ export default function TaskDetailModal({
                   placeholder="Add a label"
                   value={editedTask.label || ""}
                   onChange={(e) => updateField("label", e.target.value)}
-                  disabled={isReadOnly}
                 />
               </div>
 
@@ -4304,7 +4407,6 @@ export default function TaskDetailModal({
                   ]}
                   onSelect={handlePriorityChange}
                   defaultValue={getPriorityDisplayValue(editedTask.priority)}
-                  disabled={isReadOnly}
                 />
               </div>
 
@@ -4315,7 +4417,6 @@ export default function TaskDetailModal({
                   className="w-full text-sm"
                   value={editedTask.dueDate || ""}
                   onChange={(e) => updateField("dueDate", e.target.value)}
-                  disabled={isReadOnly}
                 />
               </div>
 
@@ -4330,7 +4431,6 @@ export default function TaskDetailModal({
                     sprints.find((s) => s.id === editedTask.sprintId)?.name ||
                     "None"
                   }
-                  disabled={isReadOnly}
                 />
               </div>
 

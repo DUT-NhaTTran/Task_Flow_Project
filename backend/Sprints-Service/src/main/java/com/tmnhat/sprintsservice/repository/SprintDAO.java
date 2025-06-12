@@ -42,12 +42,12 @@ public class SprintDAO extends BaseDAO {
     }
 
     public void deleteSprint(UUID id) throws SQLException {
-        String sql = "DELETE FROM sprints WHERE id = ?";
+        String sql = "UPDATE sprints SET deleted_at = NOW() WHERE id = ?";
         executeUpdate(sql, stmt -> stmt.setObject(1, id));
     }
 
     public Sprints getSprintById(UUID id) throws SQLException {
-        String sql = "SELECT * FROM sprints WHERE id = ?";
+        String sql = "SELECT * FROM sprints WHERE id = ? AND deleted_at IS NULL";
         return executeQuery(sql, stmt -> {
             stmt.setObject(1, id);
             ResultSet rs = stmt.executeQuery();
@@ -59,7 +59,7 @@ public class SprintDAO extends BaseDAO {
     }
 
     public List<Sprints> getAllSprints() throws SQLException {
-        String sql = "SELECT * FROM sprints";
+        String sql = "SELECT * FROM sprints WHERE deleted_at IS NULL";
         return executeQuery(sql, stmt -> {
             List<Sprints> sprintList = new ArrayList<>();
             ResultSet rs = stmt.executeQuery();
@@ -94,7 +94,7 @@ public class SprintDAO extends BaseDAO {
 
     //Bổ sung: Lấy Sprint đang active của Project
     public Sprints getActiveSprintByProject(UUID projectId) throws SQLException {
-        String sql = "SELECT * FROM sprints WHERE project_id = ? AND status = ?";
+        String sql = "SELECT * FROM sprints WHERE project_id = ? AND status = ? AND deleted_at IS NULL";
         return executeQuery(sql, stmt -> {
             stmt.setObject(1, projectId);
             stmt.setString(2, SprintStatus.ACTIVE.name());
@@ -115,7 +115,7 @@ public class SprintDAO extends BaseDAO {
         });
     }
 
-    //Cập nhật mapResultSetToSprint để hỗ trợ status, createdAt, updatedAt
+    //Cập nhật mapResultSetToSprint để hỗ trợ status, createdAt, updatedAt, deletedAt
     private Sprints mapResultSetToSprint(ResultSet rs) throws SQLException {
         return new Sprints.Builder()
                 .id(rs.getObject("id", UUID.class))
@@ -127,10 +127,12 @@ public class SprintDAO extends BaseDAO {
                 .status(SprintStatus.valueOf(rs.getString("status")))
                 .createdAt(rs.getTimestamp("created_at") != null ? rs.getTimestamp("created_at").toLocalDateTime() : null)
                 .updatedAt(rs.getTimestamp("updated_at") != null ? rs.getTimestamp("updated_at").toLocalDateTime() : null)
+                .deletedAt(rs.getTimestamp("deleted_at") != null ? rs.getTimestamp("deleted_at").toLocalDateTime() : null)
                 .build();
     }
+
     public Sprints getLastSprintByProject(UUID projectId) throws SQLException {
-        String sql = "SELECT * FROM sprints WHERE project_id = ? ORDER BY end_date DESC LIMIT 1";
+        String sql = "SELECT * FROM sprints WHERE project_id = ? AND deleted_at IS NULL ORDER BY end_date DESC LIMIT 1";
         return executeQuery(sql, stmt -> {
             stmt.setObject(1, projectId);
             ResultSet rs = stmt.executeQuery();
@@ -141,9 +143,8 @@ public class SprintDAO extends BaseDAO {
         });
     }
 
-
     public List<Sprints> getSprintsByProject(UUID projectId) throws SQLException {
-        String sql = "SELECT * FROM sprints WHERE project_id = ?";
+        String sql = "SELECT * FROM sprints WHERE project_id = ? AND deleted_at IS NULL";
         return executeQuery(sql, stmt -> {
             stmt.setObject(1, projectId);
             List<Sprints> list = new ArrayList<>();
@@ -159,7 +160,7 @@ public class SprintDAO extends BaseDAO {
     public List<Sprints> getFilteredSprintsForCalendar(UUID projectId, String search, 
                                                       List<String> assigneeIds, List<String> statuses, 
                                                       String startDate, String endDate) throws SQLException {
-        StringBuilder sql = new StringBuilder("SELECT * FROM sprints WHERE project_id = ?");
+        StringBuilder sql = new StringBuilder("SELECT * FROM sprints WHERE project_id = ? AND deleted_at IS NULL");
         
         List<Object> params = new ArrayList<>();
         params.add(projectId);
@@ -221,7 +222,7 @@ public class SprintDAO extends BaseDAO {
     }
 
     public List<String> getSprintStatuses(UUID projectId) throws SQLException {
-        String sql = "SELECT DISTINCT status FROM sprints WHERE project_id = ? ORDER BY status";
+        String sql = "SELECT DISTINCT status FROM sprints WHERE project_id = ? AND deleted_at IS NULL ORDER BY status";
         
         return executeQuery(sql, stmt -> {
             stmt.setObject(1, projectId);

@@ -16,7 +16,8 @@ import {
     FolderOpen,
     Plus,
     User,
-    LogOut
+    LogOut,
+    Shield
 } from "lucide-react"
 import { Avatar } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -564,7 +565,15 @@ export function TopNavigation() {
                                     
                                     <div className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 text-gray-800 text-sm rounded cursor-pointer">
                                         <User className="h-4 w-4 text-gray-500" />
-                                        <span>Profile</span>
+                                        <Link href="/profile" className="flex-1">
+                                            Profile
+                                        </Link>
+                                    </div>
+                                    <div className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 text-gray-800 text-sm rounded cursor-pointer">
+                                        <Shield className="h-4 w-4 text-gray-500" />
+                                        <Link href="/account_settings" className="flex-1">
+                                            Account Settings
+                                        </Link>
                                     </div>
                                     <div
                                         className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 text-gray-800 text-sm rounded cursor-pointer"

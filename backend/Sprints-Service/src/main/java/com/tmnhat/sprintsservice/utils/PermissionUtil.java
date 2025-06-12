@@ -68,10 +68,13 @@ public class PermissionUtil {
         switch (permission) {
             case CREATE_SPRINT:
             case UPDATE_SPRINT:
-            case DELETE_SPRINT:
             case START_SPRINT:
             case END_SPRINT:
                 return hasOwnerRole || hasScrumMasterRole || hasCreateSprintPermission || hasManageSprintsPermission;
+                
+            case DELETE_SPRINT:
+                // ✅ ONLY project owners can delete sprints (soft delete)
+                return hasOwnerRole;
                 
             case VIEW_SPRINT:
                 return true; // All project members can view sprints

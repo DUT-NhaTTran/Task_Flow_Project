@@ -32,8 +32,15 @@ public class UserValidator {
             throw new BadRequestException("Username must be between 3 and 50 characters");
         }
         
-        if (!username.matches("^[a-zA-Z0-9._-]+$")) {
-            throw new BadRequestException("Username can only contain letters, numbers, dots, underscores, and hyphens");
+        // Allow letters (including Vietnamese), numbers, spaces, dots, underscores, and hyphens
+        // Vietnamese characters include: àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ
+        if (!username.matches("^[a-zA-Z0-9\\u00C0-\\u024F\\u1E00-\\u1EFF\\s._-]+$")) {
+            throw new BadRequestException("Username can only contain letters, numbers, spaces, dots, underscores, and hyphens");
+        }
+        
+        // Check for consecutive spaces or leading/trailing spaces
+        if (username.trim().length() != username.length() || username.contains("  ")) {
+            throw new BadRequestException("Username cannot have leading/trailing spaces or consecutive spaces");
         }
     }
     

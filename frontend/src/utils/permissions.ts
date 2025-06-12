@@ -127,7 +127,9 @@ export const canAssignTasks = (permissions: UserPermissions | null): boolean => 
 };
 
 export const canDeleteTask = (permissions: UserPermissions | null): boolean => {
-  return permissions?.canManageAnyTask || false;
+  // ✅ ONLY project owners can delete tasks (soft delete) via admin action
+  // Note: Task creators can also delete their own tasks (handled separately)
+  return permissions?.isOwner || false;
 };
 
 export const canViewReports = (permissions: UserPermissions | null): boolean => {
@@ -154,15 +156,15 @@ export const canEditTask = (permissions: UserPermissions | null, taskAssigneeId:
   return permissions?.canManageAnyTask || false;
 };
 
-// Check if user can delete a specific task (created by them OR has admin rights)
+// Check if user can delete a specific task (created by them OR is project owner)
 export const canDeleteTaskAsUser = (permissions: UserPermissions | null, taskCreatorId: string | null, currentUserId: string): boolean => {
   // If user created the task, they can delete it
   if (taskCreatorId === currentUserId) {
     return true;
   }
   
-  // Otherwise, check if they have admin permissions
-  return permissions?.canManageAnyTask || false;
+  // ✅ Otherwise, ONLY project owners can delete tasks (not scrum masters)
+  return permissions?.isOwner || false;
 };
 
 // Legacy function for backward compatibility (when creator info is not available)
@@ -243,4 +245,9 @@ export const handlePermissionError = (error: any): string => {
   }
   
   return 'An error occurred while checking permissions';
+};
+
+export const canDeleteSprint = (permissions: UserPermissions | null): boolean => {
+  // ✅ ONLY project owners can delete sprints (soft delete)
+  return permissions?.isOwner || false;
 }; 

@@ -151,7 +151,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public String getUsernameById(UUID id) {
-        Users user = getUserById(id); // Reuse existing method with validation
+        Users user = getUserById(id);
         return user.getUsername();
     }
 } 

@@ -86,10 +86,30 @@ export default function SignInPage() {
             console.log("💾 Saving complete user data using UserStorageService...");
             UserStorageService.saveLoggedInUser(accountInfo, userProfile, token);
 
-            // Step 5: Update UserContext for backward compatibility
+            // Step 5: Also save to localStorage for backward compatibility
+            console.log("💾 Also saving to localStorage for backward compatibility...");
+            localStorage.setItem('userId', userId);
+            localStorage.setItem('ownerId', userId); // Some pages expect ownerId
+            localStorage.setItem('currentUserId', userId);
+            localStorage.setItem('userEmail', userProfile.email);
+            localStorage.setItem('username', userProfile.username);
+            
+            // Store current user info as JSON for easy access
+            const userInfoCompat = {
+                id: userId,
+                userId: userId,
+                username: userProfile.username,
+                email: userProfile.email,
+                fullname: userProfile.firstName && userProfile.lastName 
+                    ? `${userProfile.firstName} ${userProfile.lastName}` 
+                    : userProfile.username
+            };
+            localStorage.setItem('userInfo', JSON.stringify(userInfoCompat));
+
+            // Step 6: Update UserContext for backward compatibility
             setCurrentUserId(userId);
             
-            // Step 6: Debug log saved data
+            // Step 7: Debug log saved data
             console.log("🔍 Verifying saved data:");
             
             // Navigate to main page

@@ -10,6 +10,7 @@ import { Dropdown } from "@/components/ui/drop-down";
 import { useRouter } from "next/navigation";
 import { useUserStorage } from "@/hooks/useUserStorage";
 import { toast } from "sonner";
+import UserStorageService from "@/services/userStorageService";
 
 interface Project {
     id: string;
@@ -48,7 +49,7 @@ export default function ProjectsPage() {
     const getUserId = () => {
         console.log('🔍 DEBUG: Getting user ID...');
         
-        // Try userData first
+        // Try userData first (from UserContext)
         if (userData?.account?.id) {
             console.log('✅ Found user ID in userData.account.id:', userData.account.id);
             return userData.account.id;
@@ -59,58 +60,59 @@ export default function ProjectsPage() {
             return userData.profile.id;
         }
         
+        // Check UserStorageService (sessionStorage) - PRIMARY source after login
+        try {
+            const loggedInUser = UserStorageService.getLoggedInUser();
+            if (loggedInUser?.account?.id) {
+                console.log('✅ Found user ID in UserStorageService.account.id:', loggedInUser.account.id);
+                return loggedInUser.account.id;
+            }
+            if (loggedInUser?.profile?.id) {
+                console.log('✅ Found user ID in UserStorageService.profile.id:', loggedInUser.profile.id);
+                return loggedInUser.profile.id;
+            }
+        } catch (error) {
+            console.warn('⚠️ Error accessing UserStorageService:', error);
+        }
+        
+        // Check sessionStorage directly (where login data is actually stored)
+        try {
+            const taskflowUser = sessionStorage.getItem('taskflow_logged_user');
+            if (taskflowUser) {
+                const userData = JSON.parse(taskflowUser);
+                if (userData?.account?.id) {
+                    console.log('✅ Found user ID in sessionStorage.account.id:', userData.account.id);
+                    return userData.account.id;
+                }
+                if (userData?.profile?.id) {
+                    console.log('✅ Found user ID in sessionStorage.profile.id:', userData.profile.id);
+                    return userData.profile.id;
+                }
+            }
+        } catch (error) {
+            console.warn('⚠️ Error parsing sessionStorage data:', error);
+        }
+        
         // Debug userData structure
         console.log('🔍 Full userData object:', userData);
         
-        // Fallback to localStorage with more keys
+        // Fallback to localStorage (for backward compatibility)
         const possibleUserKeys = [
             "ownerId", "userId", "user_id", "currentUserId", 
-            "id", "accountId", "account_id", "userInfo"
+            "id", "accountId", "account_id"
         ];
         
         for (const key of possibleUserKeys) {
             const value = localStorage.getItem(key);
             if (value && value.trim() && !value.includes('undefined') && !value.includes('null')) {
                 console.log(`✅ Found user ID in localStorage.${key}:`, value);
-                
-                // If it's JSON, try to parse it
-                if (key === "userInfo" && value.startsWith('{')) {
-                    try {
-                        const parsed = JSON.parse(value);
-                        if (parsed.id) {
-                            console.log('✅ Extracted ID from userInfo:', parsed.id);
-                            return parsed.id;
-                        }
-                    } catch (e) {
-                        console.log('⚠️ Failed to parse userInfo JSON');
-                    }
-                }
-                
                 return value;
             }
         }
         
-        // Check cookies as well
-        const cookies = document.cookie.split(';');
-        for (const cookie of cookies) {
-            const [name, value] = cookie.trim().split('=');
-            if (name && (name.includes('user') || name.includes('id') || name.includes('session')) && value) {
-                console.log(`✅ Found potential user ID in cookie ${name}:`, value);
-                return value;
-            }
-        }
-        
-        // Log all localStorage keys for debugging
+        // Log all storage data for debugging
         console.log('🔍 All localStorage keys:', Object.keys(localStorage));
-        console.log('🔍 All localStorage data:', localStorage);
-        
-        // TEMPORARY: If user is on projects page, they're probably logged in
-        // Use a temporary user ID to test the API
-        if (window.location.pathname.includes('/project/view_all_projects')) {
-            const tempUserId = "d90e8bd8-72e2-47cc-b9f0-edb92fe60c5a";
-            console.warn('🔧 TEMPORARY: Using fallback user ID for members:', tempUserId);
-            return tempUserId;
-        }
+        console.log('🔍 All sessionStorage keys:', Object.keys(sessionStorage));
         
         console.error('❌ No user ID found anywhere!');
         return null;
@@ -571,7 +573,7 @@ export default function ProjectsPage() {
         const projectDetails = await fetchProjectDetails(projectId);
         
         if (projectDetails?.canEdit) {
-            router.push(`/project/settings?projectId=${projectId}`);
+            router.push(`/project/edit_project?projectId=${projectId}`);
         } else {
             toast.error("Permission denied", {
                 description: "You don't have permission to edit this project. Only the project owner can edit projects."

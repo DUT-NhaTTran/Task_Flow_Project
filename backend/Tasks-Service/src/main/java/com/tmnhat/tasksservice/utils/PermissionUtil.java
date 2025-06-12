@@ -71,11 +71,15 @@ public class PermissionUtil {
                 return true; // All project members can create tasks
                 
             case UPDATE_ANY_TASK:
-            case DELETE_TASK:
                 return hasOwnerRole || hasScrumMasterRole || hasManageTasksPermission;
                 
             case UPDATE_ASSIGNED_TASK:
                 return true; // Anyone can update tasks assigned to them (checked in service layer)
+                
+            case DELETE_TASK:
+                // ✅ ONLY project owners can delete tasks (soft delete)
+                // Note: Task creator check is handled separately in canDeleteTask method
+                return hasOwnerRole;
                 
             case ASSIGN_TASK:
                 return hasOwnerRole || hasScrumMasterRole || hasAssignPermission;
@@ -138,15 +142,40 @@ public class PermissionUtil {
         return hasTaskPermission(userId, projectId, TaskPermission.UPDATE_ANY_TASK);
     }
 
-    // Check if user can delete specific task (created by them OR has admin rights)
+    // Check if user can delete specific task (created by them OR is project owner)
     public boolean canDeleteTask(UUID userId, UUID projectId, UUID createdByUserId) {
         // If user created the task, they can delete it
         if (userId.equals(createdByUserId)) {
             return true;
         }
         
-        // Otherwise, check if they have admin permissions (owner/scrum master)
-        return hasTaskPermission(userId, projectId, TaskPermission.DELETE_TASK);
+        // Otherwise, check if they are project owner (ONLY project owners, not scrum masters)
+        try {
+            String url = String.format("%s/api/projects/%s/members/%s/permissions", 
+                                     PROJECTS_SERVICE_URL, projectId, userId);
+            
+            @SuppressWarnings("unchecked")
+            Map<String, Object> response = restTemplate.getForObject(url, Map.class);
+            
+            if (response == null || !"SUCCESS".equals(response.get("status"))) {
+                return false;
+            }
+            
+            @SuppressWarnings("unchecked")
+            Map<String, Object> permissions = (Map<String, Object>) response.get("data");
+            
+            if (permissions == null) {
+                return false;
+            }
+            
+            // ✅ ONLY project owners can delete tasks (not scrum masters)
+            Boolean isOwner = (Boolean) permissions.get("isOwner");
+            return Boolean.TRUE.equals(isOwner);
+            
+        } catch (RestClientException e) {
+            System.err.println("Error checking delete permissions: " + e.getMessage());
+            return false;
+        }
     }
 
     // Permission check result wrapper

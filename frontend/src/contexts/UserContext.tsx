@@ -10,6 +10,11 @@ export interface User {
   email: string;
   role?: string;
   avatar?: string;
+  fullname?: string;
+  phone?: string;
+  userRole?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface UserContextType {
@@ -17,6 +22,7 @@ export interface UserContextType {
   isLoading: boolean;
   users: User[]; // Cache of all users
   refreshCurrentUser: () => Promise<void>;
+  updateUser: (updatedUser: User) => void;
   addUserToCache: (user: User) => void;
   getUserById: (userId: string) => User | null;
   fetchUserById: (userId: string) => Promise<User | null>;
@@ -263,6 +269,10 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     isLoading,
     users,
     refreshCurrentUser,
+    updateUser: (updatedUser: User) => {
+      setCurrentUser(updatedUser);
+      addUserToCache(updatedUser);
+    },
     addUserToCache,
     getUserById,
     fetchUserById,

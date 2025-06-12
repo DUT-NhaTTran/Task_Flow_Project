@@ -1,0 +1,93 @@
+# Enhanced AI Story Point Estimation Requirements
+# Based on: https://github.com/mrthlinh/Agile-User-Story-Point-Estimation
+
+# === CURRENT CORE (Already installed) ===
+fastapi==0.104.1
+uvicorn==0.24.0
+pydantic==2.5.0
+
+# === ENHANCED ML STACK ===
+# Traditional ML (Best Performance: TF-IDF + Random Forest)
+scikit-learn>=1.3.0
+pandas>=2.0.0
+numpy>=1.24.0
+joblib>=1.3.0
+
+# Advanced Gradient Boosting (From GitHub research)
+lightgbm>=4.1.0           # LightGBM for better performance
+catboost>=1.2.0           # CatBoost alternative
+xgboost>=2.0.0            # XGBoost option
+
+# === DEEP LEARNING & NLP ===
+# Deep Learning Frameworks
+torch>=2.1.0              # PyTorch for LSTM
+transformers>=4.35.0      # Hugging Face transformers
+sentence-transformers>=2.2.2
+
+# NLP & Text Processing
+nltk>=3.8.1               # Natural Language Toolkit
+spacy==3.7.2              # Advanced NLP
+textstat>=0.7.3           # Text complexity metrics
+gensim>=4.3.0             # Word2Vec, Doc2Vec implementations
+
+# Text Preprocessing
+beautifulsoup4>=4.12.0    # HTML cleaning
+unidecode>=1.3.0          # Unicode normalization
+contractions>=0.1.0       # Text contractions expansion
+
+# === FEATURE ENGINEERING ===
+# Text Vectorization
+tfidfvectorizer           # TF-IDF (part of scikit-learn)
+word2vec                  # Word embeddings
+doc2vec                   # Document embeddings
+
+# Feature Selection
+feature-engine>=1.6.0     # Advanced feature engineering
+category-encoders>=2.6.0  # Categorical encoding
+
+# === MODEL EVALUATION & MONITORING ===
+# Evaluation Metrics
+scikit-plot>=0.3.7        # Model evaluation plots
+yellowbrick>=1.5.0        # Visual model analysis
+mlflow>=2.8.0             # ML experiment tracking
+
+# Performance Monitoring
+memory-profiler>=0.61.0   # Memory usage monitoring
+psutil>=5.9.0             # System monitoring
+
+# === DATABASE & CACHING ===
+psycopg2-binary==2.9.9
+sqlalchemy==2.0.25
+redis==5.0.1
+aioredis==2.0.1
+
+# === UTILITIES ===
+# HTTP & Requests
+httpx==0.26.0
+requests>=2.31.0
+
+# Configuration & Logging
+pydantic-settings==2.1.0
+loguru==0.7.2
+python-dotenv>=1.0.0      # Environment variables
+
+# Data Processing
+python-multipart==0.0.6
+openpyxl>=3.1.0           # Excel file support
+xlrd>=2.0.0               # Excel reading
+
+# === DEVELOPMENT & TESTING ===
+pytest==7.4.4
+pytest-asyncio==0.23.4
+pytest-cov>=4.1.0        # Test coverage
+black>=23.0.0             # Code formatting
+flake8>=6.0.0             # Linting
+
+# === VISUALIZATION (Optional) ===
+matplotlib>=3.7.0         # Basic plotting
+seaborn>=0.12.0           # Statistical plotting
+plotly>=5.17.0            # Interactive plots
+
+# === PRODUCTION MONITORING ===
+prometheus-client>=0.19.0 # Metrics collection
+grafana-api>=1.0.3        # Dashboard integration 

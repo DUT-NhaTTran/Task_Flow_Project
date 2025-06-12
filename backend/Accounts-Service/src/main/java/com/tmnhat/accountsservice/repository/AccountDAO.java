@@ -55,7 +55,7 @@ public class AccountDAO extends BaseDAO {
         String sql = "UPDATE accounts SET password = ?, updated_at = ? WHERE id = ?";
         executeUpdate(sql, stmt -> {
             stmt.setString(1, newHashedPassword); // Mật khẩu đã được hash bởi BCrypt
-            stmt.setTimestamp(2, updatedAt != null ? Timestamp.valueOf(String.valueOf(updatedAt)) : null);
+            stmt.setTimestamp(2, updatedAt != null ? Timestamp.valueOf(updatedAt) : null);
             stmt.setObject(3, id);
         });
     }
@@ -76,6 +76,18 @@ public class AccountDAO extends BaseDAO {
         String sql = "SELECT * FROM accounts WHERE email = ?";
         return executeQuery(sql, stmt -> {
             stmt.setString(1, email);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                return mapResultSetToAccount(rs);
+            }
+            return null;
+        });
+    }
+
+    public Accounts getAccountByUserId(UUID userId) throws SQLException {
+        String sql = "SELECT * FROM accounts WHERE user_id = ?";
+        return executeQuery(sql, stmt -> {
+            stmt.setObject(1, userId);
             ResultSet rs = stmt.executeQuery();
             if (rs.next()) {
                 return mapResultSetToAccount(rs);

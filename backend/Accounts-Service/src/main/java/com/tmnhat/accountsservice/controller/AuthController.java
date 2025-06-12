@@ -89,4 +89,69 @@ public class AuthController {
         }
     }
 
+    // ✅ TEMPORARY: Check account existence endpoint
+    @GetMapping("/check-account/{email}")
+    public ResponseEntity<Map<String, Object>> checkAccount(@PathVariable String email) {
+        try {
+            boolean exists = authService.getAccountByEmail(email) != null;
+            return ResponseEntity.ok(Map.of(
+                "email", email,
+                "exists", exists,
+                "message", exists ? "Account found" : "Account not found"
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.ok(Map.of(
+                "email", email,
+                "exists", false,
+                "error", e.getMessage()
+            ));
+        }
+    }
+
+    // ✅ TEMPORARY: Test BCrypt endpoint
+    @PostMapping("/test-bcrypt")
+    public ResponseEntity<Map<String, Object>> testBCrypt(@RequestBody Map<String, String> payload) {
+        try {
+            String plainPassword = payload.get("password");
+            String storedHash = "$2a$10$hKtpBooPBuWup5rS5a19zuvtk3ZJl//FBtMb78qljZCyaQZZx.Hti";
+            
+            org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder encoder = 
+                new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder();
+            
+            boolean matches = encoder.matches(plainPassword, storedHash);
+            
+            return ResponseEntity.ok(Map.of(
+                "password", plainPassword,
+                "storedHash", storedHash, 
+                "matches", matches,
+                "hashLength", storedHash.length(),
+                "passwordLength", plainPassword.length()
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    // ✅ NEW: Change password endpoint
+    @PutMapping("/change-password/{userId}")
+    public ResponseEntity<Map<String, Object>> changePassword(@PathVariable UUID userId, @RequestBody Map<String, String> payload) {
+        try {
+            String currentPassword = payload.get("currentPassword");
+            String newPassword = payload.get("newPassword");
+
+            // Validate input
+            if (currentPassword == null || currentPassword.trim().isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Current password is required"));
+            }
+            if (newPassword == null || newPassword.trim().isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "New password is required"));
+            }
+
+            authService.changePasswordByUserId(userId, currentPassword, newPassword);
+            return ResponseEntity.ok(Map.of("status", "SUCCESS", "message", "Password changed successfully"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
 }

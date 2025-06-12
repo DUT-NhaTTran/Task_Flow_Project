@@ -77,6 +77,34 @@ public class ProjectMemberDAO extends BaseDAO {
         });
     }
 
+    public boolean canUpdateMemberRoles(UUID projectId, UUID userId) throws SQLException {
+        // Check if user is SCRUM_MASTER
+        String scrumMasterSql = "SELECT 1 FROM project_members " +
+                               "WHERE project_id = ? AND user_id = ? AND role_in_project = 'SCRUM_MASTER'";
+        boolean isScrumMaster = executeQuery(scrumMasterSql, stmt -> {
+            stmt.setObject(1, projectId);
+            stmt.setObject(2, userId);
+            ResultSet rs = stmt.executeQuery();
+            return rs.next();
+        });
+        
+        if (isScrumMaster) {
+            return true;
+        }
+        
+        // Check if user is project owner
+        String ownerSql = "SELECT 1 FROM projects " +
+                         "WHERE id = ? AND owner_id = ? AND deleted_at IS NULL";
+        boolean isProjectOwner = executeQuery(ownerSql, stmt -> {
+            stmt.setObject(1, projectId);
+            stmt.setObject(2, userId);
+            ResultSet rs = stmt.executeQuery();
+            return rs.next();
+        });
+        
+        return isProjectOwner;
+    }
+
     public boolean isProjectLead(UUID projectId, UUID userId) throws SQLException {
         String sql = "SELECT 1 FROM project_members " +
                      "WHERE project_id = ? AND user_id = ? AND role_in_project = 'PROJECT_LEAD'";
@@ -89,8 +117,8 @@ public class ProjectMemberDAO extends BaseDAO {
     }
 
     public void updateMemberRole(UUID projectId, UUID userId, String newRole, UUID requesterId) throws SQLException {
-        if (!isProjectLead(projectId, requesterId)) {
-            throw new SecurityException("Only project leader can update roles");
+        if (!canUpdateMemberRoles(projectId, requesterId)) {
+            throw new SecurityException("Only project owner or scrum master can update roles");
         }
 
         String sql = "UPDATE project_members SET role_in_project = ? WHERE project_id = ? AND user_id = ?";
