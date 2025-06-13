@@ -8,7 +8,6 @@ import OrderedList from "@tiptap/extension-ordered-list";
 import ListItem from "@tiptap/extension-list-item";
 import axios from "axios";
 import { toast } from "sonner";
-import { DropdownMenu } from '@/components/ui/DropdownMenu' 
 import Image from "@tiptap/extension-image";
 
 interface TiptapEditorProps {
@@ -16,6 +15,45 @@ interface TiptapEditorProps {
   onChange: (value: string) => void;
   taskId?: string;
   onAttachmentUpload?: (attachments: any[]) => void;
+}
+
+// Simple dropdown component for tiptap editor
+interface SimpleDropdownProps {
+  title: React.ReactNode;
+  items: Array<{
+    label: string;
+    icon?: React.ReactNode;
+    onClick: () => void;
+  }>;
+}
+
+function SimpleDropdown({ title, items }: SimpleDropdownProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  
+  return (
+    <div className="relative">
+      <div onClick={() => setIsOpen(!isOpen)} className="cursor-pointer">
+        {title}
+      </div>
+      {isOpen && (
+        <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-[180px] py-1">
+          {items.map((item, index) => (
+            <div
+              key={index}
+              onClick={() => {
+                item.onClick();
+                setIsOpen(false);
+              }}
+              className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm"
+            >
+              {item.icon && <span className="mr-2">{item.icon}</span>}
+              <span>{item.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function TiptapEditor({ content, onChange, taskId, onAttachmentUpload }: TiptapEditorProps) {
@@ -473,7 +511,7 @@ export default function TiptapEditor({ content, onChange, taskId, onAttachmentUp
     ];
 
     return (
-      <DropdownMenu 
+      <SimpleDropdown 
         title={imageIcon}
         items={imageMenuItems}
       />

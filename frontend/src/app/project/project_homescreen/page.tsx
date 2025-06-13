@@ -179,6 +179,33 @@ export default function ProjectBoardPage() {
   const [userProjects, setUserProjects] = useState<Project[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(false);
 
+  // ✅ ADD: Refs to prevent infinite loops
+  const hasFetchedProjectsRef = useRef(false);
+  const lastFetchedUserIdRef = useRef<string | null>(null);
+  const mountedRef = useRef(true);
+
+  // ✅ ADD: Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  // ✅ ADD: Reset refs when user changes to allow fresh fetching
+  useEffect(() => {
+    const currentUserId = userData?.account?.id || userData?.profile?.id;
+    
+    // Reset hasFetched flag when user ID changes (allows fresh fetch for new user)
+    if (currentUserId && lastFetchedUserIdRef.current && lastFetchedUserIdRef.current !== currentUserId) {
+      console.log('👤 [PROJECTS] User changed, resetting fetch flags:', {
+        previousUserId: lastFetchedUserIdRef.current,
+        newUserId: currentUserId
+      });
+      hasFetchedProjectsRef.current = false;
+      lastFetchedUserIdRef.current = null;
+    }
+  }, [userData?.account?.id, userData?.profile?.id]);
+
   // Recent projects tracking
   const saveRecentProject = (projectData: Project) => {
     try {
@@ -328,17 +355,43 @@ export default function ProjectBoardPage() {
 
   // Fetch user's projects for project selector
   const fetchUserProjects = async () => {
-    if (!userData?.account?.id && !userData?.profile?.id) {
-      console.log('No user ID available for fetching projects');
+    // ✅ ENHANCED: Get current user ID
+    const currentUserId = userData?.account?.id || userData?.profile?.id;
+    
+    if (!currentUserId) {
+      console.log('⚠️ [PROJECTS] No user ID available for fetching projects');
       return;
     }
 
+    // ✅ ENHANCED: Prevent duplicate calls with multiple checks
+    if (!mountedRef.current) {
+      console.log('⚠️ [PROJECTS] Component unmounted, skipping fetch');
+      return;
+    }
+    
+    if (hasFetchedProjectsRef.current && lastFetchedUserIdRef.current === currentUserId) {
+      console.log('⚠️ [PROJECTS] Already fetched projects for this user, skipping');
+      return;
+    }
+    
+    if (loadingProjects) {
+      console.log('⚠️ [PROJECTS] Already loading projects, skipping');
+      return;
+    }
+
+    console.log('🔍 [PROJECTS] Fetching user projects for:', currentUserId);
+    
+    if (!mountedRef.current) return; // Double-check before state update
     setLoadingProjects(true);
+    
     try {
-      const userId = userData?.account?.id || userData?.profile?.id;
-      console.log('🔍 Fetching user projects for:', userId);
+      const response = await axios.get(`http://localhost:8083/api/projects/search/member?keyword=&userId=${currentUserId}`);
       
-      const response = await axios.get(`http://localhost:8083/api/projects/search/member?keyword=&userId=${userId}`);
+      // ✅ Check if component is still mounted before updating state
+      if (!mountedRef.current) {
+        console.log('⚠️ [PROJECTS] Component unmounted during fetch, discarding results');
+        return;
+      }
       
       let projectsData = [];
       if (response.data?.status === "SUCCESS" && response.data?.data) {
@@ -357,13 +410,24 @@ export default function ProjectBoardPage() {
         ...filteredProjectsData.filter((p: any) => !recentProjects.some((r: Project) => r.id === p.id))
       ];
       
-      setUserProjects(combinedProjects);
-      console.log('✅ User projects loaded:', combinedProjects.length);
+      // ✅ Final check before state update
+      if (mountedRef.current) {
+        setUserProjects(combinedProjects);
+        hasFetchedProjectsRef.current = true;
+        lastFetchedUserIdRef.current = currentUserId;
+        console.log('✅ [PROJECTS] User projects loaded:', combinedProjects.length);
+      }
     } catch (error) {
-      console.log('📝 Failed to fetch user projects - using recent projects only');
-      setUserProjects(getRecentProjects());
+      console.log('📝 [PROJECTS] Failed to fetch user projects - using recent projects only');
+      if (mountedRef.current) {
+        setUserProjects(getRecentProjects());
+        hasFetchedProjectsRef.current = true;
+        lastFetchedUserIdRef.current = currentUserId;
+      }
     } finally {
-      setLoadingProjects(false);
+      if (mountedRef.current) {
+        setLoadingProjects(false);
+      }
     }
   };
 
@@ -1380,7 +1444,6 @@ export default function ProjectBoardPage() {
         console.log("Active sprint response:", res.data);
 
         if (!sprint || !sprint.id) {
-          console.log("No active sprint found, checking other sprints...");
           fetchLatestNonCompletedSprint();
           return;
         }
@@ -2717,12 +2780,6 @@ export default function ProjectBoardPage() {
     loadProjectData();
   }, [projectId, userData?.account?.id]);
 
-  // Fetch user projects when error state shows project selector OR when no projectId
-  useEffect(() => {
-    if ((errorState?.showProjectSelector || !projectId) && !loadingProjects && userProjects.length === 0 && userData?.account?.id) {
-      fetchUserProjects();
-    }
-  }, [errorState?.showProjectSelector, projectId, loadingProjects, userProjects.length, userData?.account?.id]);
 
   // Add mounted state to fix hydration mismatch
   const [isMounted, setIsMounted] = useState(false);
@@ -2730,6 +2787,47 @@ export default function ProjectBoardPage() {
   useEffect(() => {
     setIsMounted(true);
   }, []);
+
+  // ✅ ENHANCED: Fetch user projects when needed - with proper dependency management
+  useEffect(() => {
+    // Only fetch if:
+    // 1. No projectId (user needs to select a project) OR errorState shows project selector
+    // 2. User data is available 
+    // 3. Not already loading projects
+    // 4. Haven't fetched for this user yet OR user ID changed
+    
+    const currentUserId = userData?.account?.id || userData?.profile?.id;
+    const shouldFetch = (
+      (!projectId || errorState?.showProjectSelector) && // Need project selection
+      currentUserId && // User data available
+      !loadingProjects && // Not already loading
+      (!hasFetchedProjectsRef.current || lastFetchedUserIdRef.current !== currentUserId) // Haven't fetched for this user
+    );
+    
+    console.log('🔍 [PROJECTS-EFFECT] Checking if should fetch projects:', {
+      shouldFetch,
+      hasProjectId: !!projectId,
+      showProjectSelector: !!errorState?.showProjectSelector,
+      hasUserId: !!currentUserId,
+      loadingProjects,
+      hasFetched: hasFetchedProjectsRef.current,
+      lastUserId: lastFetchedUserIdRef.current,
+      currentUserId
+    });
+    
+    if (shouldFetch) {
+      console.log('✅ [PROJECTS-EFFECT] Triggering fetchUserProjects');
+      fetchUserProjects();
+    } else {
+      console.log('⏭️ [PROJECTS-EFFECT] Skipping fetchUserProjects - conditions not met');
+    }
+  }, [
+    projectId, 
+    errorState?.showProjectSelector, 
+    userData?.account?.id, 
+    userData?.profile?.id
+    // Removed loadingProjects and userProjects.length from dependencies to prevent loops
+  ]);
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -2817,12 +2915,6 @@ export default function ProjectBoardPage() {
                       <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                     </svg>
                     No active sprint found
-                    <button 
-                      onClick={() => window.location.href = `/project/backlog?projectId=${projectId}`}
-                      className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded hover:bg-amber-200 transition-colors"
-                    >
-                      Create Sprint
-                    </button>
                   </span>
                 )}
               </div>
@@ -2991,84 +3083,258 @@ export default function ProjectBoardPage() {
           </div>
 
           {!projectId ? (
-            <div className="flex items-center justify-center min-h-[60vh] bg-gray-50 border border-gray-200 rounded-lg mx-4">
-              <div className="text-center max-w-lg p-8 bg-white rounded-lg shadow-sm border border-gray-100">
-                <div className="w-20 h-20 mx-auto mb-6 flex items-center justify-center bg-blue-50 rounded-full text-blue-500">
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M9 12L11 14L15 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
+            // Check if user has any projects to determine which UI to show
+            loadingProjects ? (
+              // Show loading while checking user's projects
+              <div className="flex items-center justify-center h-64">
+                <div className="flex items-center space-x-3">
+                  <div className="animate-spin h-8 w-8 border-3 border-blue-500 border-t-transparent rounded-full"></div>
+                  <span className="text-gray-600 text-lg">Loading your projects...</span>
                 </div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-3">Select a Project</h3>
-                <p className="text-gray-600 mb-6 leading-relaxed">Choose a project from your recent projects or browse all available projects to continue.</p>
-                
-                <div className="mt-6">
-                  <div className="mb-6">
-                    <h4 className="text-sm font-medium text-gray-700 mb-3">Your projects:</h4>
-                    {loadingProjects ? (
-                      <div className="flex items-center justify-center py-6">
-                        <div className="animate-spin h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full mr-3"></div>
-                        <span className="text-sm text-gray-500">Loading your projects...</span>
-                      </div>
-                    ) : userProjects.length > 0 ? (
-                      <div className="max-h-48 overflow-y-auto bg-gray-50 border border-gray-200 rounded-lg">
-                        {userProjects.map((proj, index) => {
-                          const isRecent = isMounted && getRecentProjects().some(r => r.id === proj.id);
-                          return (
-                            <div
-                              key={proj.id}
-                              className="p-3 hover:bg-blue-50 cursor-pointer border-b border-gray-200 last:border-b-0 transition-colors duration-150"
-                              onClick={() => router.push(`/project/project_homescreen?projectId=${proj.id}`)}
-                            >
-                              <div className="flex items-center">
-                                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center text-blue-600 font-semibold mr-3 text-sm">
-                                  {proj.name.substring(0, 2).toUpperCase()}
-                                </div>
-                                <div className="text-left flex-1">
-                                  <div className="flex items-center gap-2">
-                                    <div className="font-medium text-sm text-gray-900">{proj.name}</div>
-                                    {isRecent && (
-                                      <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
-                                        Recent
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="text-xs text-gray-500">{proj.projectType || 'Software'}</div>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="text-center py-6 bg-gray-50 rounded-lg border border-gray-200">
-                        <p className="text-sm text-gray-500">No projects found</p>
-                        <p className="text-xs text-gray-400 mt-1">You may need to create a new project</p>
-                      </div>
-                    )}
+              </div>
+            ) : userProjects.length === 0 ? (
+              // NEW USER UI: Enhanced welcome message for users with no projects
+              <div className="flex items-center justify-center min-h-[70vh] p-4">
+                <div className="text-center max-w-2xl p-12 bg-white rounded-2xl shadow-lg border border-gray-100">
+                  {/* Welcome Icon */}
+                  <div className="w-24 h-24 mx-auto mb-8 flex items-center justify-center bg-gradient-to-br from-blue-500 to-purple-600 rounded-full text-white shadow-lg">
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M12 2L13.09 8.26L20 9L13.09 9.74L12 16L10.91 9.74L4 9L10.91 8.26L12 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M8 21L9.09 15.26L15 14L9.09 13.74L8 8L6.91 13.74L1 14L6.91 15.26L8 21Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
                   </div>
                   
-                  <div className="flex gap-3 justify-center">
-                    {isMounted && getRecentProjects().length > 0 && (
+                  {/* Welcome Message */}
+                  <h2 className="text-3xl font-bold text-gray-900 mb-4">Welcome to TaskFlow! 🎉</h2>
+                  <p className="text-lg text-gray-600 mb-8 leading-relaxed">
+                    You're new here! Start your journey by creating your first project or join an existing team.
+                  </p>
+                  
+                  {/* Features Preview */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10 text-sm">
+                    <div className="text-center p-4 bg-blue-50 rounded-lg border border-blue-100">
+                      <div className="w-12 h-12 mx-auto mb-3 flex items-center justify-center bg-blue-500 text-white rounded-lg">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M9 12L11 14L15 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </div>
+                      <h4 className="font-semibold text-gray-900 mb-2">Manage Tasks</h4>
+                      <p className="text-gray-600">Organize your work with Kanban boards and sprints</p>
+                    </div>
+                    
+                    <div className="text-center p-4 bg-green-50 rounded-lg border border-green-100">
+                      <div className="w-12 h-12 mx-auto mb-3 flex items-center justify-center bg-green-500 text-white rounded-lg">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M17 21V19C17 17.9391 16.5786 16.9217 15.8284 16.1716C15.0783 15.4214 14.0609 15 13 15H5C3.93913 15 2.92172 15.4214 2.17157 16.1716C1.42143 16.9217 1 17.9391 1 19V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M9 11C11.2091 11 13 9.20914 13 7C13 4.79086 11.2091 3 9 3C6.79086 3 5 4.79086 5 7C5 9.20914 6.79086 11 9 11Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M23 21V19C22.9993 18.1137 22.7044 17.2528 22.1614 16.5523C21.6184 15.8519 20.8581 15.3516 20 15.13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M16 3.13C16.8604 3.35031 17.623 3.85071 18.1676 4.55232C18.7122 5.25392 19.0078 6.11683 19.0078 7.005C19.0078 7.89318 18.7122 8.75608 18.1676 9.45769C17.623 10.1593 16.8604 10.6597 16 10.88" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </div>
+                      <h4 className="font-semibold text-gray-900 mb-2">Team Collaboration</h4>
+                      <p className="text-gray-600">Work together with real-time updates and notifications</p>
+                    </div>
+                    
+                    <div className="text-center p-4 bg-purple-50 rounded-lg border border-purple-100">
+                      <div className="w-12 h-12 mx-auto mb-3 flex items-center justify-center bg-purple-500 text-white rounded-lg">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M22 12H18L15 21L9 3L6 12H2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </div>
+                      <h4 className="font-semibold text-gray-900 mb-2">Track Progress</h4>
+                      <p className="text-gray-600">Monitor project progress with detailed analytics</p>
+                    </div>
+                  </div>
+                  
+                  {/* Action Buttons */}
+                  <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                    <Button 
+                      className="bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 px-8 py-3 text-base font-semibold rounded-xl shadow-lg transform hover:scale-105 transition-all duration-200"
+                      onClick={() => router.push('/project/create_project')}
+                    >
+                      <svg width="20" height="20" className="mr-2" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 6V18M6 12H18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                      Create Your First Project
+                    </Button>
+                    <Button 
+                      variant="outline"
+                      className="px-8 py-3 text-base font-semibold border-2 border-gray-300 hover:border-blue-400 hover:bg-blue-50 rounded-xl transition-all duration-200"
+                      onClick={() => router.push('/project/view_all_projects')}
+                    >
+                      <svg width="20" height="20" className="mr-2" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M21 16V8C20.9996 7.64927 20.9071 7.30481 20.7315 7.00116C20.556 6.69751 20.3037 6.44536 20 6.27L13 2.27C12.696 2.09446 12.3511 2.00205 12 2.00205C11.6489 2.00205 11.304 2.09446 11 2.27L4 6.27C3.69626 6.44536 3.44398 6.69751 3.26846 7.00116C3.09294 7.30481 3.00036 7.64927 3 8V16C3.00036 16.3507 3.09294 16.6952 3.26846 16.9988C3.44398 17.3025 3.69626 17.5546 4 17.73L11 21.73C11.304 21.9055 11.6489 21.9979 12 21.9979C12.3511 21.9979 12.696 21.9055 13 21.73L20 17.73C20.3037 17.5546 20.556 17.3025 20.7315 16.9988C20.9071 16.6952 20.9996 16.3507 21 16Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M7.5 4.21L12 6.81L16.5 4.21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M7.5 19.79V14.6L3 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M21 12L16.5 14.6V19.79" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M12 22.81V6.81" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                      Browse Public Projects
+                    </Button>
+                  </div>
+                  
+                  {/* Help Text */}
+                  <div className="mt-8 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                    <p className="text-sm text-amber-800">
+                      <svg width="16" height="16" className="inline mr-2" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M12 16V12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M12 8H12.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                      <strong>Need help?</strong> Ask a team member to invite you to their project, or start by creating your own project.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              // EXISTING USER UI: Enhanced project selection for users with projects
+              <div className="flex items-center justify-center min-h-[70vh] p-4">
+                <div className="text-center max-w-4xl p-10 bg-white rounded-2xl shadow-lg border border-gray-100">
+                  {/* Header */}
+                  <div className="w-20 h-20 mx-auto mb-6 flex items-center justify-center bg-gradient-to-br from-green-500 to-blue-600 rounded-full text-white shadow-lg">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M9 12L11 14L15 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
+                  <h2 className="text-2xl font-bold text-gray-900 mb-4">Select a Project</h2>
+                  <p className="text-gray-600 mb-8 text-lg leading-relaxed">
+                    You have <span className="font-semibold text-blue-600">{userProjects.length}</span> project{userProjects.length !== 1 ? 's' : ''} available. Choose one to continue working.
+                  </p>
+                  
+                  {/* Recent Projects Section */}
+                  {isMounted && getRecentProjects().length > 0 && (
+                    <div className="mb-8">
+                      <div className="flex items-center justify-center gap-3 mb-4">
+                        <div className="h-px bg-gray-300 flex-1"></div>
+                        <h3 className="text-sm font-semibold text-gray-700 bg-green-100 text-green-700 px-3 py-1 rounded-full">
+                          📈 Recent Projects
+                        </h3>
+                        <div className="h-px bg-gray-300 flex-1"></div>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                        {getRecentProjects().slice(0, 3).map((proj) => (
+                          <div
+                            key={proj.id}
+                            className="p-4 border-2 border-green-200 bg-green-50 hover:bg-green-100 cursor-pointer rounded-xl transition-all duration-200 transform hover:scale-105 hover:shadow-md"
+                            onClick={() => router.push(`/project/project_homescreen?projectId=${proj.id}`)}
+                          >
+                            <div className="flex items-center">
+                              <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center text-white font-bold mr-3 text-sm shadow-md">
+                                {proj.name.substring(0, 2).toUpperCase()}
+                              </div>
+                              <div className="text-left flex-1">
+                                <div className="font-semibold text-gray-900 mb-1">{proj.name}</div>
+                                <div className="text-xs text-green-700 font-medium">{proj.projectType || 'Software'}</div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      
                       <Button 
-                        className="bg-green-600 text-white hover:bg-green-700 px-6 py-2 text-sm font-medium"
+                        className="bg-green-600 text-white hover:bg-green-700 px-6 py-3 text-sm font-semibold rounded-lg shadow-md transform hover:scale-105 transition-all duration-200 mb-6"
                         onClick={() => redirectToMostRecentProject()}
                       >
-                        Go to Recent Project
+                        <svg width="16" height="16" className="mr-2" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M13 2L3 14H12L11 22L21 10H12L13 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        Quick Access: Most Recent
                       </Button>
-                    )}
+                    </div>
+                  )}
+                  
+                  {/* All Projects Section */}
+                  <div className="mb-8">
+                    <div className="flex items-center justify-center gap-3 mb-4">
+                      <div className="h-px bg-gray-300 flex-1"></div>
+                      <h3 className="text-sm font-semibold text-gray-700 bg-blue-100 text-blue-700 px-3 py-1 rounded-full">
+                        📁 All Your Projects ({userProjects.length})
+                      </h3>
+                      <div className="h-px bg-gray-300 flex-1"></div>
+                    </div>
+                    
+                    <div className="max-h-80 overflow-y-auto bg-gray-50 border-2 border-gray-200 rounded-xl">
+                      {userProjects.map((proj, index) => {
+                        const isRecent = isMounted && getRecentProjects().some(r => r.id === proj.id);
+                        return (
+                          <div
+                            key={proj.id}
+                            className={`p-4 hover:bg-blue-50 cursor-pointer border-b border-gray-200 last:border-b-0 transition-all duration-150 ${
+                              index === 0 ? 'rounded-t-xl' : ''
+                            } ${
+                              index === userProjects.length - 1 ? 'rounded-b-xl' : ''
+                            }`}
+                            onClick={() => router.push(`/project/project_homescreen?projectId=${proj.id}`)}
+                          >
+                            <div className="flex items-center">
+                              <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center text-white font-bold mr-4 text-sm shadow-md">
+                                {proj.name.substring(0, 2).toUpperCase()}
+                              </div>
+                              <div className="text-left flex-1">
+                                <div className="flex items-center gap-3 mb-1">
+                                  <div className="font-semibold text-gray-900">{proj.name}</div>
+                                  {isRecent && (
+                                    <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-semibold">
+                                      🕒 Recent
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 text-xs text-gray-500">
+                                  <span className="bg-gray-200 px-2 py-1 rounded">{proj.projectType || 'Software'}</span>
+                                  <span className="bg-gray-200 px-2 py-1 rounded">{proj.access || 'Private'}</span>
+                                  {proj.ownerName && (
+                                    <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded">
+                                      👑 {proj.ownerName}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="text-gray-400">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <path d="M9 18L15 12L9 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  
+                  {/* Action Buttons */}
+                  <div className="flex flex-col sm:flex-row gap-4 justify-center">
                     <Button 
-                      className="bg-blue-600 text-white hover:bg-blue-700 px-6 py-2 text-sm font-medium"
+                      className="bg-blue-600 text-white hover:bg-blue-700 px-6 py-3 text-sm font-semibold rounded-lg shadow-md transform hover:scale-105 transition-all duration-200"
                       onClick={() => {
                         window.location.href = '/project/view_all_projects';
                       }}
                     >
+                      <svg width="16" height="16" className="mr-2" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M21 16V8C20.9996 7.64927 20.9071 7.30481 20.7315 7.00116C20.556 6.69751 20.3037 6.44536 20 6.27L13 2.27C12.696 2.09446 12.3511 2.00205 12 2.00205C11.6489 2.00205 11.304 2.09446 11 2.27L4 6.27C3.69626 6.44536 3.44398 6.69751 3.26846 7.00116C3.09294 7.30481 3.00036 7.64927 3 8V16C3.00036 16.3507 3.09294 16.6952 3.26846 16.9988C3.44398 17.3025 3.69626 17.5546 4 17.73L11 21.73C11.304 21.9055 11.6489 21.9979 12 21.9979C12.3511 21.9979 12.696 21.9055 13 21.73L20 17.73C20.3037 17.5546 20.556 17.3025 20.7315 16.9988C20.9071 16.6952 20.9996 16.3507 21 16Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M7.5 4.21L12 6.81L16.5 4.21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M7.5 19.79V14.6L3 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M21 12L16.5 14.6V19.79" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M12 22.81V6.81" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
                       Browse All Projects
+                    </Button>
+                    <Button 
+                      variant="outline"
+                      className="px-6 py-3 text-sm font-semibold border-2 border-gray-300 hover:border-green-400 hover:bg-green-50 rounded-lg transition-all duration-200"
+                      onClick={() => router.push('/project/create_project')}
+                    >
+                      <svg width="16" height="16" className="mr-2" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 6V18M6 12H18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                      Create New Project
                     </Button>
                   </div>
                 </div>
               </div>
-            </div>
+            )
           ) : !project ? (
             // Loading state when no project
             <div className="flex items-center justify-center h-64">

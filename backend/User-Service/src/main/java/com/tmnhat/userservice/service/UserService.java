@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.UUID;
 
 public interface UserService {
-    void createUser(Users user);
+    Users createUser(Users user);
     void updateUser(UUID id, Users user);
     void deleteUser(UUID id);
     Users getUserById(UUID id);
@@ -17,7 +17,7 @@ public interface UserService {
     Users getUserByEmail(String email);
     void changeUserRole(UUID userId, String role);
     List<Users> searchUsers(String keyword);
-    void updateAvatar(UUID userId, MultipartFile avatar);
+    void updateAvatar(UUID userId, String avatarUrl);
     List<Users> getUsersByProjectId(UUID projectId);
     String getUsernameById(UUID id);
 } 

@@ -46,3 +46,24 @@ __pycache__/
 pip-log.txt
 pip-delete-this-directory.txt
 .pytest_cache/
+
+# Build directories
+target/
+.next/
+build/
+dist/
+
+# Log files
+*.log
+
+# SQL migration files
+*.sql
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE files
+.vscode/
+.idea/

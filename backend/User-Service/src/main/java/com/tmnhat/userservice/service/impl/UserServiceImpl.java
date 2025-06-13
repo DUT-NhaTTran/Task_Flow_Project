@@ -5,12 +5,14 @@ import com.tmnhat.userservice.payload.enums.UserRole;
 import com.tmnhat.userservice.repository.UserDAO;
 import com.tmnhat.userservice.service.UserService;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.sql.SQLException;
 
+@Service
 public class UserServiceImpl implements UserService {
     
     private final UserDAO userDAO;
@@ -20,14 +22,22 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public void createUser(Users user) {       
+    public Users createUser(Users user) {       
         if (userDAO.getUserByEmail(user.getEmail()) != null) {
             throw new BadRequestException("Email already exists");
         }
         LocalDateTime now = LocalDateTime.now();
         user.setCreatedAt(now);
         user.setUpdatedAt(now);
+        
+        // Generate UUID for the user
+        UUID userId = UUID.randomUUID();
+        user.setId(userId);
+        
         userDAO.createUser(user);
+        
+        // Return the created user with ID
+        return user;
     }
 
     @Override
@@ -124,17 +134,11 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public void updateAvatar(UUID userId, MultipartFile avatar) {
+    public void updateAvatar(UUID userId, String avatarUrl) {
         Users user = getUserById(userId);
-    
-        if (avatar != null && !avatar.isEmpty()) {
-            String fileName = avatar.getOriginalFilename();
-            user.setAvatar(fileName);
-            user.setUpdatedAt(LocalDateTime.now());
-            userDAO.updateUser(userId, user);
-        } else {
-            throw new BadRequestException("Avatar file cannot be empty");
-        }
+        user.setAvatar(avatarUrl);
+        user.setUpdatedAt(LocalDateTime.now());
+        userDAO.updateUser(userId, user);
     }
 
     @Override

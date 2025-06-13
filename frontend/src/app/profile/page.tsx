@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { TopNavigation } from "@/components/ui/top-navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Dropdown } from "@/components/ui/drop-down";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { toast } from "sonner";
 import { useUser } from "@/contexts/UserContext";
@@ -26,6 +27,10 @@ export default function ProfilePage() {
     const router = useRouter();
     const { currentUser, isLoading, updateUser } = useUser();
     const fileInputRef = useRef<HTMLInputElement>(null);
+    
+    // Check if this is a welcome flow from registration
+    const [isWelcomeFlow, setIsWelcomeFlow] = useState(false);
+    const [tempUserData, setTempUserData] = useState<{userId?: string, email?: string}>({});
 
     // Form state
     const [profile, setProfile] = useState<UserProfile>({
@@ -51,7 +56,59 @@ export default function ProfilePage() {
         userRole: ''
     });
 
+    // Check for welcome flow and temp data
     useEffect(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const welcomeParam = urlParams.get('welcome');
+        
+        if (welcomeParam === 'true') {
+            setIsWelcomeFlow(true);
+            
+            // Get temp user data from sessionStorage
+            const tempUserId = sessionStorage.getItem('tempUserId');
+            const tempEmail = sessionStorage.getItem('tempEmail');
+            
+            if (tempUserId && tempEmail) {
+                setTempUserData({ userId: tempUserId, email: tempEmail });
+                
+                console.log('🎉 Welcome flow detected:', { tempUserId, tempEmail });
+                
+                // Clean up temp data
+                sessionStorage.removeItem('tempUserId');
+                sessionStorage.removeItem('tempEmail');
+                
+                // Show welcome message
+                toast.success("Welcome! Please complete your profile", {
+                    description: "Fill in your information to get started with TaskFlow"
+                });
+            }
+        }
+    }, []);
+
+    useEffect(() => {
+        // Skip user loading if in welcome flow - we handle temp data above
+        if (isWelcomeFlow && tempUserData.userId) {
+            // Keep form mostly empty for welcome flow - let user fill fresh data
+            setProfile({
+                id: tempUserData.userId,
+                username: '', // Keep empty for user to fill
+                email: tempUserData.email || '',
+                phone: '', // Keep empty
+                avatar: '', // Keep empty
+                userRole: 'USER' // Default role
+            });
+            setOriginalProfile({
+                id: tempUserData.userId,
+                username: '',
+                email: tempUserData.email || '',
+                phone: '',
+                avatar: '',
+                userRole: 'USER'
+            });
+            console.log('🎉 Welcome flow: Form initialized with empty fields for fresh input');
+            return;
+        }
+        
         if (!isLoading && currentUser) {
             setProfile({
                 id: currentUser.id,
@@ -73,11 +130,11 @@ export default function ProfilePage() {
                 createdAt: currentUser.createdAt,
                 updatedAt: currentUser.updatedAt
             });
-        } else if (!isLoading && !currentUser) {
+        } else if (!isLoading && !currentUser && !isWelcomeFlow) {
             toast.error("Please log in to access your profile");
             router.push('/auth/signin');
         }
-    }, [currentUser, isLoading, router]);
+    }, [currentUser, isLoading, router, isWelcomeFlow, tempUserData.userId, tempUserData.email]);
 
     const validateForm = (): boolean => {
         const newErrors: Record<string, string> = {};
@@ -121,9 +178,16 @@ export default function ProfilePage() {
         const hasProfileChanges = 
             newProfile.username !== originalProfile.username ||
             newProfile.email !== originalProfile.email ||
+            newProfile.userRole !== originalProfile.userRole ||
             (newProfile.phone || '') !== (originalProfile.phone || '');
         
-        setHasChanges(hasProfileChanges);
+        // In welcome flow, always consider as having changes if user filled required fields
+        if (isWelcomeFlow) {
+            const hasRequiredFields = !!(newProfile.username.trim() && newProfile.email.trim());
+            setHasChanges(hasRequiredFields);
+        } else {
+            setHasChanges(hasProfileChanges);
+        }
         
         // Clear error when user starts typing
         if (errors[field]) {
@@ -177,29 +241,30 @@ export default function ProfilePage() {
                 }
             );
 
-            if (response.data?.status === "SUCCESS") {
-                // Create a local URL for the uploaded file
-                const newAvatarUrl = URL.createObjectURL(file);
+            if (response.data?.status === "SUCCESS" && response.data?.data?.url) {
+                // Use the Cloudinary URL from response
+                const cloudinaryUrl = response.data.data.url;
+                console.log('✅ Avatar uploaded successfully:', cloudinaryUrl);
                 
                 setProfile(prev => ({
                     ...prev,
-                    avatar: newAvatarUrl
+                    avatar: cloudinaryUrl
                 }));
                 
                 // Check if avatar changed
-                setHasChanges(newAvatarUrl !== originalProfile.avatar);
+                setHasChanges(cloudinaryUrl !== originalProfile.avatar);
                 
                 // Update user context
                 if (currentUser) {
                     updateUser({
                         ...currentUser,
-                        avatar: newAvatarUrl
+                        avatar: cloudinaryUrl
                     });
                 }
                 
                 toast.success("Avatar updated successfully");
             } else {
-                throw new Error("Failed to upload avatar");
+                throw new Error("Failed to upload avatar - no URL returned");
             }
         } catch (error) {
             console.error('❌ Error uploading avatar:', error);
@@ -263,6 +328,38 @@ export default function ProfilePage() {
             );
 
             if (response.data?.status === "SUCCESS") {
+                // Update role if it has changed
+                if (profile.userRole !== originalProfile.userRole) {
+                    try {
+                        console.log('🔄 Updating user role:', profile.userRole);
+                        
+                        // Update role in User Service only (role is stored in users table)
+                        const userRoleResponse = await axios.patch(
+                            `http://localhost:8086/api/users/${profile.id}/role?role=${profile.userRole}`,
+                            {},
+                            {
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                }
+                            }
+                        );
+                        
+                        if (userRoleResponse.data?.status !== "SUCCESS") {
+                            console.warn('⚠️ Role update failed but profile updated successfully');
+                            toast.warning("Profile updated but role change failed", {
+                                description: "Please try updating your role again."
+                            });
+                        } else {
+                            console.log('✅ Role updated successfully');
+                        }
+                    } catch (roleError) {
+                        console.error('❌ Error updating role:', roleError);
+                        toast.warning("Profile updated but role change failed", {
+                            description: "Please try updating your role again."
+                        });
+                    }
+                }
+                
                 // Update user context
                 if (currentUser) {
                     updateUser({
@@ -270,24 +367,35 @@ export default function ProfilePage() {
                         username: updateData.username,
                         email: updateData.email,
                         phone: updateData.phone || undefined,
-                        userRole: updateData.userRole,
+                        userRole: profile.userRole, // Use the new role
                         avatar: updateData.avatar || undefined
                     });
                 }
                 
-                toast.success("Profile updated successfully");
-                setHasChanges(false);
-                
-                // Update original profile to new values
-                if (currentUser) {
-                    setOriginalProfile({
-                        id: currentUser.id,
-                        username: updateData.username,
-                        email: updateData.email,
-                        phone: updateData.phone || '',
-                        avatar: updateData.avatar || '',
-                        userRole: updateData.userRole || 'USER'
+                if (isWelcomeFlow) {
+                    toast.success("Profile completed successfully! Please sign in to continue.", {
+                        description: "Your account is now ready to use."
                     });
+                    
+                    // Redirect to signin with success message
+                    setTimeout(() => {
+                        router.push('/auth/signin?message=profile_completed');
+                    }, 1500);
+                } else {
+                    toast.success("Profile updated successfully");
+                    setHasChanges(false);
+                    
+                    // Update original profile to new values
+                    if (currentUser) {
+                        setOriginalProfile({
+                            id: currentUser.id,
+                            username: updateData.username,
+                            email: updateData.email,
+                            phone: updateData.phone || '',
+                            avatar: updateData.avatar || '',
+                            userRole: profile.userRole // Use the new role value
+                        });
+                    }
                 }
             } else {
                 throw new Error("Failed to update profile");
@@ -385,15 +493,22 @@ export default function ProfilePage() {
                             <Button 
                                 variant="outline" 
                                 size="sm"
-                                onClick={() => router.back()}
+                                onClick={() => {
+                                    // For welcome flow, redirect to signin after completion
+                                    if (isWelcomeFlow) {
+                                        router.push('/auth/signin?message=profile_completed');
+                                    } else {
+                                        router.back();
+                                    }
+                                }}
                                 className="flex items-center gap-2"
                             >
                                 <ArrowLeft className="w-4 h-4" />
-                                Back
+                                {isWelcomeFlow ? 'Continue to Sign In' : 'Back'}
                             </Button>
                             <div>
                                 <h1 className="text-2xl font-semibold text-gray-900">
-                                    Profile Settings
+                                    {isWelcomeFlow ? 'Complete Your Profile' : 'Profile Settings'}
                                     {hasChanges && (
                                         <span className="ml-2 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
                                             Unsaved changes
@@ -401,28 +516,32 @@ export default function ProfilePage() {
                                     )}
                                 </h1>
                                 <p className="text-sm text-gray-600">
-                                    {hasChanges 
-                                        ? "You have unsaved changes. Don't forget to save!" 
-                                        : "Manage your account information and preferences"
+                                    {isWelcomeFlow 
+                                        ? "Welcome! Please add your personal information to complete your registration"
+                                        : hasChanges 
+                                            ? "You have unsaved changes. Don't forget to save!" 
+                                            : "Manage your account information and preferences"
                                     }
                                 </p>
                             </div>
                         </div>
                         
-                        {hasChanges && (
+                        {(hasChanges || isWelcomeFlow) && (
                             <div className="flex items-center gap-2">
-                                <Button
-                                    variant="outline"
-                                    onClick={handleReset}
-                                    disabled={isSaving}
-                                    className="flex items-center gap-2"
-                                >
-                                    <X className="w-4 h-4" />
-                                    Reset
-                                </Button>
+                                {!isWelcomeFlow && (
+                                    <Button
+                                        variant="outline"
+                                        onClick={handleReset}
+                                        disabled={isSaving}
+                                        className="flex items-center gap-2"
+                                    >
+                                        <X className="w-4 h-4" />
+                                        Reset
+                                    </Button>
+                                )}
                                 <Button
                                     onClick={handleSave}
-                                    disabled={isSaving}
+                                    disabled={isSaving || (isWelcomeFlow && (!profile.username.trim() || !profile.email.trim()))}
                                     className="bg-blue-600 hover:bg-blue-700 flex items-center gap-2"
                                 >
                                     {isSaving ? (
@@ -433,13 +552,32 @@ export default function ProfilePage() {
                                     ) : (
                                         <>
                                             <Save className="w-4 h-4" />
-                                            Save Changes
+                                            {isWelcomeFlow ? 'Complete Registration' : 'Save Changes'}
                                         </>
                                     )}
                                 </Button>
                             </div>
                         )}
                     </div>
+                    
+                    {/* Welcome flow progress indicator */}
+                    {isWelcomeFlow && (
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-medium text-sm">
+                                    2
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-medium text-blue-900">
+                                        Step 2 of 2: Complete Your Profile
+                                    </h3>
+                                    <p className="text-sm text-blue-700">
+                                        Add your personal information and preferences. You can always update these later.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* Profile Card */}
@@ -486,8 +624,16 @@ export default function ProfilePage() {
                             <p className="text-gray-600 mb-2">{profile.email}</p>
                             <div className="flex items-center gap-2">
                                 <Shield className="w-4 h-4 text-gray-400" />
-                                <span className="text-sm text-gray-500 capitalize">
-                                    {profile.userRole?.toLowerCase()}
+                                <span className="text-sm text-gray-500">
+                                    {profile.userRole === 'USER' ? 'User' :
+                                     profile.userRole === 'ADMIN' ? 'Admin' :
+                                     profile.userRole === 'MANAGER' ? 'Manager' :
+                                     profile.userRole === 'DEVELOPER' ? 'Developer' :
+                                     profile.userRole === 'TESTER' ? 'Tester' :
+                                     profile.userRole === 'DESIGNER' ? 'Designer' :
+                                     profile.userRole === 'SCRUM_MASTER' ? 'Scrum Master' :
+                                     profile.userRole === 'PRODUCT_OWNER' ? 'Product Owner' :
+                                     'User'}
                                 </span>
                             </div>
                         </div>
@@ -616,11 +762,47 @@ export default function ProfilePage() {
                                     <label className="block text-sm font-medium text-gray-700 mb-2">
                                         Account Type
                                     </label>
-                                    <div className="p-3 bg-gray-50 rounded-md">
-                                        <span className="text-sm text-gray-600 capitalize">
-                                            {profile.userRole?.toLowerCase() || 'User'}
-                                        </span>
-                                    </div>
+                                    <Dropdown
+                                        placeholder="Select account type"
+                                        options={[
+                                            "User",
+                                            "Admin", 
+                                            "Manager",
+                                            "Developer",
+                                            "Tester",
+                                            "Designer",
+                                            "Scrum Master",
+                                            "Product Owner"
+                                        ]}
+                                        defaultValue={
+                                            profile.userRole === 'USER' ? 'User' :
+                                            profile.userRole === 'ADMIN' ? 'Admin' :
+                                            profile.userRole === 'MANAGER' ? 'Manager' :
+                                            profile.userRole === 'DEVELOPER' ? 'Developer' :
+                                            profile.userRole === 'TESTER' ? 'Tester' :
+                                            profile.userRole === 'DESIGNER' ? 'Designer' :
+                                            profile.userRole === 'SCRUM_MASTER' ? 'Scrum Master' :
+                                            profile.userRole === 'PRODUCT_OWNER' ? 'Product Owner' :
+                                            'User'
+                                        }
+                                        onSelect={(value: string) => {
+                                            const roleValue = 
+                                                value === 'User' ? 'USER' :
+                                                value === 'Admin' ? 'ADMIN' :
+                                                value === 'Manager' ? 'MANAGER' :
+                                                value === 'Developer' ? 'DEVELOPER' :
+                                                value === 'Tester' ? 'TESTER' :
+                                                value === 'Designer' ? 'DESIGNER' :
+                                                value === 'Scrum Master' ? 'SCRUM_MASTER' :
+                                                value === 'Product Owner' ? 'PRODUCT_OWNER' :
+                                                'USER';
+                                            handleInputChange('userRole', roleValue);
+                                        }}
+                                        className="w-full"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        Your role determines your permissions and access level in the system
+                                    </p>
                                 </div>
                                 
                                 {profile.createdAt && (

@@ -1,7 +1,6 @@
 package com.tmnhat.accountsservice.service.Impl;
 
 import com.tmnhat.accountsservice.model.Accounts;
-import com.tmnhat.accountsservice.payload.enums.Role;
 import com.tmnhat.accountsservice.repository.AccountDAO;
 import com.tmnhat.accountsservice.security.JwtUtil;
 import com.tmnhat.accountsservice.service.AuthService;
@@ -59,7 +58,7 @@ public class AuthServiceImpl implements AuthService {
             throw new DatabaseException("Incorrect password");
         }
 
-        return jwtUtil.generateToken(account.getId(), String.valueOf(Role.USER));
+        return jwtUtil.generateToken(account.getId(), "USER");
     }
     @Override
     public UUID getUserIdByEmail(String email) throws SQLException {

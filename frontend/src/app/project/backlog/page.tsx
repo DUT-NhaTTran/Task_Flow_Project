@@ -10,7 +10,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { TopNavigation } from "@/components/ui/top-navigation";
 import { Sidebar } from "@/components/ui/sidebar";
 import { useNavigation } from "@/contexts/NavigationContext";
-import { Search, ChevronDown, MoreHorizontal, ChevronRight, Plus, Edit, Check, Calendar, ChevronUp, Trash2, X, Archive } from "lucide-react";
+import { Search, ChevronDown, MoreHorizontal, ChevronRight, Plus, Edit, Check, Calendar, ChevronUp, Trash2, X, Archive, Filter, Users } from "lucide-react";
 import { useUserStorage } from "@/hooks/useUserStorage";
 import { sendTaskOverdueNotification } from "@/utils/taskNotifications";
 import { safeValidateUUID, validateProjectId, validateSprintId, generateMockUUID, isValidUUID } from "@/utils/uuidUtils";
@@ -25,11 +25,17 @@ import {
   canEditTask,
   canTrainAI,
   UserPermissions,
-  getRoleDisplayName
+  getRoleDisplayName,
+  canManageProject, 
+  canDeleteProject, 
+  isProjectOwner
 } from "@/utils/permissions";
 import TaskDetailModal, { TaskData } from "@/components/tasks/TaskDetailModal";
 import { useProjectValidation } from "@/hooks/useProjectValidation";
 import { TaskMigrationModal } from "@/components/sprints/TaskMigrationModal";
+import { useProjectTasks } from "@/hooks/useProjectTasks";
+import { checkAndNotifyOverdueSprints, resetSprintOverdueNotification } from "@/utils/taskNotifications";
+import { useUser } from "@/contexts/UserContext";
 
 interface SprintOption {
   id: string;
@@ -47,9 +53,23 @@ interface User {
   email: string;
   role?: string;
   avatar?: string;
+  avatarUrl?: string; // Add this for backward compatibility
 }
 
 type CheckboxNames = 'sprintHeader' | 'backlogHeader';
+
+interface FilterState {
+  searchText: string;
+  status: string[];
+  assignee: string[];
+  priority: string[];
+  labels: string[];
+  createdDateFrom: string;
+  createdDateTo: string;
+}
+
+// Add constants and avatar functions after the other utility functions (around line 40)
+const DEFAULT_AVATAR_URL = "https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_960_720.png";
 
 export default function BacklogPage() {
   const searchParams = useSearchParams();
@@ -101,6 +121,26 @@ export default function BacklogPage() {
     action: "cancel" | "delete";
   } | null>(null);
 
+  // Filter states
+  const [showFilters, setShowFilters] = useState(false);
+  const [searchText, setSearchText] = useState("");
+  const [filters, setFilters] = useState<FilterState>({
+    searchText: "",
+    status: [],
+    assignee: [],
+    priority: [],
+    labels: [],
+    createdDateFrom: "",
+    createdDateTo: ""
+  });
+  const [filteredTasks, setFilteredTasks] = useState<TaskData[]>([]);
+  const [filteredBacklogTasks, setFilteredBacklogTasks] = useState<TaskData[]>([]);
+  const [projectUsers, setProjectUsers] = useState<User[]>([]);
+
+  // Available filter options
+  const filterStatusOptions = ["TODO", "IN_PROGRESS", "REVIEW", "DONE"];
+  const filterPriorityOptions = ["LOWEST", "LOW", "MEDIUM", "HIGH", "HIGHEST", "BLOCKER", "BLOCK"];
+
   // Validate project exists and handle redirection if not
   useProjectValidation({ 
     projectId: projectId || null,
@@ -140,6 +180,284 @@ export default function BacklogPage() {
     fetchPermissions();
   }, [userData?.account?.id, projectId]);
 
+  // Add avatar cache
+  const avatarCache = useRef<Record<string, string>>({});
+
+  // Add avatar fetching function
+  const fetchUserAvatar = async (userId: string): Promise<string> => {
+    if (!userId || !isValidUUID(userId)) {
+      return DEFAULT_AVATAR_URL;
+    }
+
+    // Check cache first
+    if (avatarCache.current[userId]) {
+      return avatarCache.current[userId];
+    }
+
+    try {
+      const currentUserId = userData?.account?.id || userData?.profile?.id;
+      if (!currentUserId) {
+        avatarCache.current[userId] = DEFAULT_AVATAR_URL;
+        return DEFAULT_AVATAR_URL;
+      }
+
+      const response = await axios.get(
+        `http://localhost:8086/api/users/${userId}`,
+        {
+          headers: { "X-User-Id": currentUserId }
+        }
+      );
+
+      if (response.data?.status === "SUCCESS" && response.data.data?.avatar) {
+        const avatarUrl = response.data.data.avatar;
+        avatarCache.current[userId] = avatarUrl;
+        return avatarUrl;
+      } else {
+        avatarCache.current[userId] = DEFAULT_AVATAR_URL;
+        return DEFAULT_AVATAR_URL;
+      }
+    } catch (error) {
+      console.error(`Error fetching avatar for user ${userId}:`, error);
+      avatarCache.current[userId] = DEFAULT_AVATAR_URL;
+      return DEFAULT_AVATAR_URL;
+    }
+  };
+
+  const getInitials = (name: string): string => {
+    if (!name) return "?";
+    return name.split(' ').map(word => word[0]).join('').toUpperCase().slice(0, 2);
+  };
+
+  const AvatarDisplay = ({ 
+    avatarUrl, 
+    displayName, 
+    size = "normal" 
+  }: { 
+    avatarUrl?: string, 
+    displayName: string, 
+    size?: "small" | "normal" 
+  }) => {
+    const [currentAvatarUrl, setCurrentAvatarUrl] = useState<string>(avatarUrl || DEFAULT_AVATAR_URL);
+    const [hasError, setHasError] = useState(false);
+    
+    const sizeClasses = size === "small" ? "w-6 h-6 text-xs" : "w-8 h-8 text-sm";
+    
+    useEffect(() => {
+      setCurrentAvatarUrl(avatarUrl || DEFAULT_AVATAR_URL);
+      setHasError(false);
+    }, [avatarUrl]);
+
+    const handleImageError = () => {
+      if (!hasError) {
+        setHasError(true);
+        setCurrentAvatarUrl(DEFAULT_AVATAR_URL);
+      }
+    };
+
+    if (!currentAvatarUrl || currentAvatarUrl === DEFAULT_AVATAR_URL || hasError) {
+      return (
+        <div className={`${sizeClasses} rounded-full bg-gradient-to-br from-blue-500 to-purple-600 text-white flex items-center justify-center font-bold shadow-sm`}>
+          {getInitials(displayName)}
+        </div>
+      );
+    }
+
+    return (
+      <img 
+        src={currentAvatarUrl} 
+        alt={displayName} 
+        className={`${sizeClasses} rounded-full object-cover border-2 border-white shadow-sm`}
+        onError={handleImageError}
+        onLoad={() => setHasError(false)}
+      />
+    );
+  };
+
+  // Fetch project users for filter (update this function)
+  const fetchProjectUsers = async () => {
+    if (!projectId) return;
+    try {
+      const userId = userData?.account?.id || userData?.profile?.id;
+      if (!userId) return;
+
+      const response = await axios.get(
+        `http://localhost:8083/api/projects/${projectId}/users`,
+        {
+          headers: { "X-User-Id": userId }
+        }
+      );
+
+      if (response.data?.status === "SUCCESS") {
+        const users = response.data.data || [];
+        setProjectUsers(users);
+        
+        // Prefetch avatars for all users
+        users.forEach(async (user: User) => {
+          if (user.id && isValidUUID(user.id)) {
+            try {
+              const avatarUrl = await fetchUserAvatar(user.id);
+              user.avatarUrl = avatarUrl;
+            } catch (error) {
+              console.error(`Error fetching avatar for user ${user.id}:`, error);
+            }
+          }
+        });
+      }
+    } catch (error: any) {
+      console.error("Error fetching project users:", error);
+    }
+  };
+
+  // Apply filters to tasks
+  const applyFilters = () => {
+    let filtered = [...tasks].filter(task => task && task.id);
+    let filteredBacklog = [...backlogTasks].filter(task => task && task.id);
+
+    // Search text filter
+    if (filters.searchText.trim()) {
+      const searchText = filters.searchText.toLowerCase();
+      filtered = filtered.filter(task => 
+        task.title?.toLowerCase().includes(searchText) ||
+        task.description?.toLowerCase().includes(searchText) ||
+        task.shortKey?.toLowerCase().includes(searchText)
+      );
+      filteredBacklog = filteredBacklog.filter(task => 
+        task.title?.toLowerCase().includes(searchText) ||
+        task.description?.toLowerCase().includes(searchText) ||
+        task.shortKey?.toLowerCase().includes(searchText)
+      );
+    }
+
+    // Status filter
+    if (filters.status.length > 0) {
+      filtered = filtered.filter(task => filters.status.includes(task.status));
+      filteredBacklog = filteredBacklog.filter(task => filters.status.includes(task.status));
+    }
+
+    // Assignee filter
+    if (filters.assignee.length > 0) {
+      filtered = filtered.filter(task => 
+        task.assigneeId && filters.assignee.includes(task.assigneeId)
+      );
+      filteredBacklog = filteredBacklog.filter(task => 
+        task.assigneeId && filters.assignee.includes(task.assigneeId)
+      );
+    }
+
+    // Priority filter
+    if (filters.priority.length > 0) {
+      filtered = filtered.filter(task => 
+        task.priority && filters.priority.includes(task.priority)
+      );
+      filteredBacklog = filteredBacklog.filter(task => 
+        task.priority && filters.priority.includes(task.priority)
+      );
+    }
+
+    // Labels filter
+    if (filters.labels.length > 0) {
+      filtered = filtered.filter(task => 
+        task.tags && task.tags.some(tag => filters.labels.includes(tag))
+      );
+      filteredBacklog = filteredBacklog.filter(task => 
+        task.tags && task.tags.some(tag => filters.labels.includes(tag))
+      );
+    }
+
+    // Created date filter
+    if (filters.createdDateFrom) {
+      const fromDate = new Date(filters.createdDateFrom);
+      filtered = filtered.filter(task => 
+        task.createdAt && new Date(task.createdAt) >= fromDate
+      );
+      filteredBacklog = filteredBacklog.filter(task => 
+        task.createdAt && new Date(task.createdAt) >= fromDate
+      );
+    }
+    if (filters.createdDateTo) {
+      const toDate = new Date(filters.createdDateTo);
+      toDate.setHours(23, 59, 59, 999);
+      filtered = filtered.filter(task => 
+        task.createdAt && new Date(task.createdAt) <= toDate
+      );
+      filteredBacklog = filteredBacklog.filter(task => 
+        task.createdAt && new Date(task.createdAt) <= toDate
+      );
+    }
+
+    setFilteredTasks(filtered);
+    setFilteredBacklogTasks(filteredBacklog);
+  };
+
+  // Handle filter changes
+  const handleFilterChange = (filterType: keyof FilterState, value: any) => {
+    setFilters(prev => ({
+      ...prev,
+      [filterType]: value
+    }));
+  };
+
+  // Handle array filter toggles
+  const toggleArrayFilter = (filterType: keyof FilterState, value: string) => {
+    setFilters(prev => {
+      const currentArray = prev[filterType] as string[];
+      const newArray = currentArray.includes(value)
+        ? currentArray.filter(item => item !== value)
+        : [...currentArray, value];
+      
+      return {
+        ...prev,
+        [filterType]: newArray
+      };
+    });
+  };
+
+  // Clear all filters
+  const clearAllFilters = () => {
+    setFilters({
+      searchText: "",
+      status: [],
+      assignee: [],
+      priority: [],
+      labels: [],
+      createdDateFrom: "",
+      createdDateTo: ""
+    });
+    setSearchText("");
+  };
+
+  // Get unique labels from all tasks
+  const availableLabels = Array.from(
+    new Set(tasks.filter(task => task && task.tags).flatMap(task => task.tags || []))
+  ).filter(Boolean);
+
+  // Check if any filters are active
+  const hasActiveFilters = () => {
+    return filters.searchText.trim() !== "" ||
+           filters.status.length > 0 ||
+           filters.assignee.length > 0 ||
+           filters.priority.length > 0 ||
+           filters.labels.length > 0 ||
+           filters.createdDateFrom !== "" ||
+           filters.createdDateTo !== "";
+  };
+
+  // Apply filters whenever filter state changes
+  useEffect(() => {
+    applyFilters();
+  }, [filters, tasks, backlogTasks]);
+
+  // Fetch project users when component mounts
+  useEffect(() => {
+    fetchProjectUsers();
+  }, [projectId, userData]);
+
+  // Initialize filtered tasks
+  useEffect(() => {
+    setFilteredTasks(tasks);
+    setFilteredBacklogTasks(backlogTasks);
+  }, [tasks, backlogTasks]);
+
   // Close dropdowns when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -163,7 +481,6 @@ export default function BacklogPage() {
   // Fetch tasks and sprints
   useEffect(() => {
     if (!projectId) {
-      toast.error("No project ID provided");
       return;
     }
     
@@ -237,7 +554,6 @@ export default function BacklogPage() {
     }
     
     if (!projectId) {
-      toast.error("No project ID provided");
       return;
     }
     
@@ -537,7 +853,6 @@ export default function BacklogPage() {
       
       // Validate projectId before proceeding
       if (!projectId) {
-        console.error('❌ SPRINT NOTIFICATION: No project ID available');
         return;
       }
       
@@ -761,13 +1076,73 @@ export default function BacklogPage() {
   useEffect(() => {
     if (sprints.length > 0) {
       checkSprintEndDates();
+      checkSprintOverdue(); // Add overdue check
     }
   }, [sprints]);
+
+  // Check for overdue sprints and notify PO/SM
+  const checkSprintOverdue = async () => {
+    console.log('🔔 BACKLOG: Starting sprint overdue check...');
+    console.log('🔔 BACKLOG: Project ID:', projectId);
+    console.log('🔔 BACKLOG: Sprints count:', sprints.length);
+    
+    try {
+      if (!projectId || sprints.length === 0) {
+        console.log('🔔 BACKLOG: Skipping overdue check - no project ID or sprints');
+        return;
+      }
+
+      // Get project details to find owner (PO) and scrum master
+      const userId = userData?.account?.id || userData?.profile?.id;
+      if (!userId) {
+        console.log('🔔 BACKLOG: Skipping overdue check - no user ID');
+        return;
+      }
+
+      console.log('🔔 BACKLOG: Fetching project details with user ID:', userId);
+      const response = await axios.get(`http://localhost:8083/api/projects/${projectId}`, {
+        headers: { "X-User-Id": userId }
+      });
+
+      console.log('🔔 BACKLOG: Project API response:', response.data);
+
+      if (response.data?.status === "SUCCESS" && response.data.data) {
+        const project = response.data.data;
+        const ownerId = project.ownerId; // Product Owner
+        const scrumMasterId = project.scrumMasterId; // Scrum Master
+        const currentProjectName = project.name || "Unknown Project";
+
+        console.log('🔔 BACKLOG: Project details:');
+        console.log('  - Project name:', currentProjectName);
+        console.log('  - Owner ID (PO):', ownerId);
+        console.log('  - Scrum Master ID:', scrumMasterId);
+
+        // Update sprint data with project name for notifications
+        const sprintsWithProject = sprints.map(sprint => ({
+          ...sprint,
+          status: sprint.status || "PLANNING", // Ensure status is defined
+          projectId: projectId,
+          projectName: currentProjectName
+        }));
+
+        console.log('🔔 BACKLOG: Checking sprints for overdue:', sprintsWithProject.length);
+        
+        // Check and notify for overdue sprints
+        await checkAndNotifyOverdueSprints(sprintsWithProject, ownerId, scrumMasterId);
+      } else {
+        console.error('🔔 BACKLOG: Failed to get project details:', response.data);
+      }
+    } catch (error: any) {
+      console.error('🔔 BACKLOG: Error checking sprint overdue:', error);
+      if (error.response) {
+        console.error('🔔 BACKLOG: Error response:', error.response.data);
+      }
+    }
+  };
 
   // Enhanced Create new sprint with better notifications
   const handleCreateSprint = async () => {
     if (!projectId) {
-      toast.error("No project ID provided");
       return;
     }
 
@@ -995,6 +1370,14 @@ export default function BacklogPage() {
 
   // ✅ NEW: Handle task migration completion
   const handleMigrationComplete = () => {
+    // Reset overdue notification status for the sprint that was deleted/cancelled
+    if (sprintToDelete) {
+      resetSprintOverdueNotification(sprintToDelete.id);
+      console.log(`🔄 SPRINT ${sprintToDelete.action.toUpperCase()}: Reset overdue notification for sprint ${sprintToDelete.id}`);
+    }
+    
+    fetchSprints(); // Refresh sprints
+    // Fetch tasks for this project - inline the fetch logic
     fetchSprints(); // Refresh sprints
     // Fetch tasks for this project - inline the fetch logic
     const refreshTasks = async () => {
@@ -1195,6 +1578,10 @@ export default function BacklogPage() {
       if (response.data && response.data.status === "SUCCESS") {
         toast.success("Sprint completed successfully");
         
+        // Reset overdue notification status for completed sprint
+        resetSprintOverdueNotification(sprintId);
+        console.log(`🔄 SPRINT COMPLETED: Reset overdue notification for sprint ${sprintId}`);
+        
         // Find the sprint that was completed for notification
         const completedSprint = sprints.find(s => s.id === sprintId);
         if (completedSprint) {
@@ -1247,23 +1634,7 @@ export default function BacklogPage() {
     }
   };
 
-  // Train AI Model function
-  const trainAIModel = async () => {
-    try {
-      toast.info("Training AI model... This may take a few minutes.");
-      
-      const response = await axios.post(`http://localhost:8085/api/tasks/train-ai-model`);
-      
-      if (response.data && response.data.success) {
-        toast.success("AI model trained successfully!");
-      } else {
-        toast.error("Failed to train AI model");
-      }
-    } catch (error) {
-      console.error("Error training AI model:", error);
-      toast.error("Error training AI model");
-    }
-  };
+  
 
   // Add priority sorting function
   const sortTasksByPriority = (tasks: TaskData[]): TaskData[] => {
@@ -1336,69 +1707,265 @@ export default function BacklogPage() {
         <TopNavigation />
         <div className="flex-1 overflow-y-auto">
           {/* Search and Controls Header */}
-          <div className="py-3 px-4 flex items-center border-b">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input 
-                className="pl-10 h-9" 
-                placeholder="Search backlog" 
-              />
-            </div>
-            <div className="flex items-center ml-4 space-x-3">
-              {canCreateSprint(userPermissions) && (
-                <Button 
-                  variant="default" 
-                  size="sm"
-                  onClick={handleCreateSprint}
-                  className="h-9 bg-blue-500 text-white hover:bg-blue-600"
+          <div className="bg-white border-b border-gray-200 shadow-sm">
+            <div className="px-6 py-4 flex items-center justify-between">
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <Input 
+                  className="pl-12 h-11 bg-gray-50 border-gray-200 rounded-xl placeholder-gray-500 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 text-sm font-medium" 
+                  placeholder="Search tasks, sprints, or assignees..." 
+                  value={filters.searchText}
+                  onChange={(e) => handleFilterChange("searchText", e.target.value)}
+                />
+                {filters.searchText && (
+                  <button
+                    onClick={() => handleFilterChange("searchText", "")}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 p-1 hover:bg-gray-200 rounded-full transition-colors"
+                  >
+                    <X className="h-4 w-4 text-gray-500" />
+                  </button>
+                )}
+              </div>
+              
+              <div className="flex items-center gap-3 ml-6">
+                {/* Filter Toggle */}
+                <div
+                  onClick={() => setShowFilters(!showFilters)}
+                  className={`relative group p-3 rounded-xl cursor-pointer transition-all duration-200 ${
+                    showFilters 
+                      ? 'bg-blue-100 text-blue-700 shadow-sm' 
+                      : 'bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-gray-700'
+                  }`}
+                  title="Toggle filters"
                 >
+                  <Filter className="h-5 w-5" />
+                  {hasActiveFilters() && (
+                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-orange-500 rounded-full border-2 border-white"></div>
+                  )}
+                </div>
+
+                {/* Clear Filters */}
+                {hasActiveFilters() && (
+                  <div
+                    onClick={clearAllFilters}
+                    className="group p-3 bg-red-50 text-red-600 rounded-xl cursor-pointer hover:bg-red-100 hover:text-red-700 transition-all duration-200 shadow-sm"
+                    title="Clear all filters"
+                  >
+                    <X className="h-5 w-5" />
+                  </div>
+                )}
+
+                {/* Create Sprint Button */}
+                <Button
+                  onClick={handleCreateSprint}
+                  className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-3 rounded-xl font-semibold shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 transition-all duration-200 flex items-center gap-2"
+                >
+                  <Plus className="h-5 w-5" />
                   Create Sprint
                 </Button>
-              )}
-              {canTrainAI(userPermissions) && (
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={trainAIModel}
-                  className="h-9 border-orange-300 text-orange-700 hover:bg-orange-50"
-                >
-                  🤖 Train AI Model
-                </Button>
-              )}
-              <Button variant="outline" className="h-9 border-gray-300 flex items-center gap-1">
-                Epic <ChevronDown className="h-4 w-4" />
-              </Button>
-              <div className="flex items-center space-x-2">
-                <Button size="icon" variant="ghost" className="h-9 w-9">
-                  <span className="sr-only">Timeline view</span>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M2 9H22M2 15H22M8 3V21M16 3V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </Button>
-                <Button size="icon" variant="ghost" className="h-9 w-9">
-                  <span className="sr-only">Board view</span>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2"/>
-                    <path d="M3 9H21M12 3V21" stroke="currentColor" strokeWidth="2"/>
-                  </svg>
-                </Button>
-                <Button size="icon" variant="ghost" className="h-9 w-9">
-                  <MoreHorizontal className="h-5 w-5" />
-                </Button>
+
+              
               </div>
-              {isAuditVisible && projectId && (
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-9 w-9 border-blue-300 text-blue-700 hover:bg-blue-50"
-                  title="View Audit Log"
-                  onClick={() => router.push(`/project/audit?projectId=${projectId}`)}
-                >
-                  <Archive className="h-5 w-5" />
-                </Button>
-              )}
             </div>
           </div>
+
+          {/* Filters Panel */}
+          {showFilters && (
+            <div className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200 shadow-sm">
+              <div className="px-6 py-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
+                  {/* Status Filter */}
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                      <label className="text-sm font-semibold text-gray-800">Status</label>
+                    </div>
+                    <div className="space-y-2">
+                      {filterStatusOptions.map((status) => (
+                        <label key={status} className="flex items-center group cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={filters.status.includes(status)}
+                            onChange={() => toggleArrayFilter("status", status)}
+                            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                          />
+                          <span className={`ml-3 text-sm px-2 py-1 rounded-md font-medium transition-all ${getStatusColorClass(status)} ${
+                            filters.status.includes(status) ? 'ring-2 ring-blue-500 ring-opacity-50' : ''
+                          }`}>
+                            {status.replace('_', ' ')}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Assignee Filter */}
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                      <label className="text-sm font-semibold text-gray-800">Assignee</label>
+                    </div>
+                    <div className="space-y-2 max-h-32 overflow-y-auto custom-scrollbar">
+                      {projectUsers.map((user) => (
+                        <label key={user.id} className="flex items-center group cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={filters.assignee.includes(user.id)}
+                            onChange={() => toggleArrayFilter("assignee", user.id)}
+                            className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500 focus:ring-2"
+                          />
+                          <div className="ml-3 flex items-center gap-2">
+                            <AvatarDisplay 
+                              avatarUrl={user.avatarUrl}
+                              displayName={user.username || user.email}
+                            />
+                            <span className="text-sm text-gray-700 group-hover:text-gray-900 transition-colors">
+                              {user.username || user.email}
+                            </span>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Priority Filter */}
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
+                      <label className="text-sm font-semibold text-gray-800">Priority</label>
+                    </div>
+                    <div className="space-y-2 max-h-32 overflow-y-auto custom-scrollbar">
+                      {filterPriorityOptions.map((priority) => (
+                        <label key={priority} className="flex items-center group cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={filters.priority.includes(priority)}
+                            onChange={() => toggleArrayFilter("priority", priority)}
+                            className="w-4 h-4 text-orange-600 border-gray-300 rounded focus:ring-orange-500 focus:ring-2"
+                          />
+                          <span className={`ml-3 text-sm px-3 py-1 rounded-full font-medium transition-all ${getPriorityColorClass(priority)} ${
+                            filters.priority.includes(priority) ? 'ring-2 ring-orange-500 ring-opacity-50 transform scale-105' : 'group-hover:scale-105'
+                          }`}>
+                            {priority}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Labels Filter */}
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                      <label className="text-sm font-semibold text-gray-800">Labels</label>
+                    </div>
+                    <div className="space-y-2 max-h-32 overflow-y-auto custom-scrollbar">
+                      {availableLabels.length > 0 ? (
+                        availableLabels.map((label) => (
+                          <label key={label} className="flex items-center group cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={filters.labels.includes(label)}
+                              onChange={() => toggleArrayFilter("labels", label)}
+                              className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500 focus:ring-2"
+                            />
+                            <span className="ml-3 px-3 py-1 bg-gradient-to-r from-purple-100 to-blue-100 text-purple-800 rounded-full text-sm font-medium group-hover:from-purple-200 group-hover:to-blue-200 transition-all">
+                              {label}
+                            </span>
+                          </label>
+                        ))
+                      ) : (
+                        <div className="text-sm text-gray-500 italic">No labels available</div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Created Date From */}
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-indigo-500 rounded-full"></div>
+                      <label className="text-sm font-semibold text-gray-800">Created From</label>
+                    </div>
+                    <Input
+                      type="date"
+                      value={filters.createdDateFrom}
+                      onChange={(e) => handleFilterChange("createdDateFrom", e.target.value)}
+                      className="w-full h-10 text-sm border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+                    />
+                  </div>
+
+                  {/* Created Date To */}
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-indigo-500 rounded-full"></div>
+                      <label className="text-sm font-semibold text-gray-800">Created To</label>
+                    </div>
+                    <Input
+                      type="date"
+                      value={filters.createdDateTo}
+                      onChange={(e) => handleFilterChange("createdDateTo", e.target.value)}
+                      className="w-full h-10 text-sm border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+                    />
+                  </div>
+                </div>
+
+                {/* Filter Summary */}
+                {hasActiveFilters() && (
+                  <div className="mt-6 pt-4 border-t border-gray-300">
+                    <div className="flex items-center justify-between flex-wrap gap-4">
+                      <div className="flex flex-wrap gap-2">
+                        {filters.status.length > 0 && (
+                          <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 shadow-sm border border-blue-200">
+                            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                            <span className="text-sm font-medium text-gray-700">Status:</span>
+                            <span className="text-sm text-blue-700 font-semibold">{filters.status.join(", ")}</span>
+                          </div>
+                        )}
+                        {filters.assignee.length > 0 && (
+                          <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 shadow-sm border border-green-200">
+                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                            <span className="text-sm font-medium text-gray-700">Assignee:</span>
+                            <span className="text-sm text-green-700 font-semibold">{filters.assignee.length} selected</span>
+                          </div>
+                        )}
+                        {filters.priority.length > 0 && (
+                          <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 shadow-sm border border-orange-200">
+                            <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
+                            <span className="text-sm font-medium text-gray-700">Priority:</span>
+                            <span className="text-sm text-orange-700 font-semibold">{filters.priority.join(", ")}</span>
+                          </div>
+                        )}
+                        {filters.labels.length > 0 && (
+                          <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 shadow-sm border border-purple-200">
+                            <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                            <span className="text-sm font-medium text-gray-700">Labels:</span>
+                            <span className="text-sm text-purple-700 font-semibold">{filters.labels.length} selected</span>
+                          </div>
+                        )}
+                        {(filters.createdDateFrom || filters.createdDateTo) && (
+                          <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 shadow-sm border border-indigo-200">
+                            <div className="w-2 h-2 bg-indigo-500 rounded-full"></div>
+                            <span className="text-sm font-medium text-gray-700">Date Range:</span>
+                            <span className="text-sm text-indigo-700 font-semibold">
+                              {filters.createdDateFrom || '...'} - {filters.createdDateTo || '...'}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="bg-white rounded-lg px-4 py-2 shadow-sm border border-gray-200">
+                          <span className="text-sm text-gray-600">Results: </span>
+                          <span className="text-sm font-bold text-gray-900">
+                            {filteredTasks.length + filteredBacklogTasks.length} tasks
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Sprint Section */}
           <div className="px-4 py-2">
@@ -1410,308 +1977,298 @@ export default function BacklogPage() {
               <>
                 {/* Sprint Rows - Dynamic from API */}
                 {Array.isArray(sprints) && sprints.length > 0 ? (
-                  sprints.map((sprint) => (
-                    <div className="mb-6" key={sprint.id}>
-                      <div className="flex items-center py-2">
-                        <input 
-                          type="checkbox" 
-                          className="mr-2" 
-                          checked={checkboxState.sprintHeader}
-                          onChange={() => handleCheckboxChange('sprintHeader')}
-                        />
-                        <button 
-                          onClick={() => toggleSprint(sprint.id)}
-                          className="flex items-center"
-                        >
-                          {expandedSprint === sprint.id ? 
-                            <ChevronDown className="h-4 w-4 mr-2" /> : 
-                            <ChevronRight className="h-4 w-4 mr-2" />
-                          }
-                          <span className="font-medium">{sprint.name}</span>
-                          <span className="text-sm text-gray-500 ml-2">
-                            {sprint.startDate && sprint.endDate ? 
-                              `${formatDate(sprint.startDate)} - ${formatDate(sprint.endDate)}` : 
-                              ''
-                            }
-                            ({tasks.filter(task => task.sprintId === sprint.id && (task.parentTaskId === null || task.parentTaskId === undefined)).length} work items)
-                            {getSprintStoryPoints(sprint.id) > 0 && (
-                              <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
-                                {getCompletedSprintStoryPoints(sprint.id)}/{getSprintStoryPoints(sprint.id)} SP
+                  sprints.map((sprint) => {
+                    // Get filtered tasks for this sprint
+                    const sprintTasks = hasActiveFilters() 
+                      ? filteredTasks.filter(task => task.sprintId === sprint.id && (task.parentTaskId === null || task.parentTaskId === undefined))
+                      : tasks.filter(task => task.sprintId === sprint.id && (task.parentTaskId === null || task.parentTaskId === undefined));
+                    
+                    // Hide sprint if no tasks match filters
+                    if (hasActiveFilters() && sprintTasks.length === 0) {
+                      return null;
+                    }
+
+                    return (
+                      <div className="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden transition-all duration-200 hover:shadow-md" key={sprint.id}>
+                        <div className="flex items-center py-4 px-6 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
+                          <input 
+                            type="checkbox" 
+                            className="mr-3 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" 
+                            checked={checkboxState.sprintHeader}
+                            onChange={() => handleCheckboxChange('sprintHeader')}
+                          />
+                          <button 
+                            onClick={() => toggleSprint(sprint.id)}
+                            className="flex items-center group flex-1 text-left"
+                          >
+                            <div className={`transition-transform duration-200 ${expandedSprint === sprint.id ? 'rotate-0' : '-rotate-90'}`}>
+                              <ChevronDown className="h-5 w-5 mr-3 text-gray-600" />
+                            </div>
+                            <div className="flex-1">
+                              <span className="font-semibold text-gray-900 text-lg group-hover:text-blue-600 transition-colors">
+                                {sprint.name}
                               </span>
-                            )}
-                          </span>
-                        </button>
-                        <div className="ml-auto flex space-x-2">
-                          <div className="flex items-center text-xs">
-                            <span className="flex items-center justify-center w-5 h-5 text-center bg-gray-200 rounded mx-0.5">
-                              {tasks.filter(task => task.sprintId === sprint.id && task.status === "TODO" && (task.parentTaskId === null || task.parentTaskId === undefined)).length}
-                            </span>
-                            <span className="flex items-center justify-center w-5 h-5 text-center bg-blue-200 rounded mx-0.5">
-                              {tasks.filter(task => task.sprintId === sprint.id && task.status === "IN_PROGRESS" && (task.parentTaskId === null || task.parentTaskId === undefined)).length}
-                            </span>
-                            <span className="flex items-center justify-center w-5 h-5 text-center bg-purple-200 rounded mx-0.5">
-                              {tasks.filter(task => task.sprintId === sprint.id && task.status === "REVIEW" && (task.parentTaskId === null || task.parentTaskId === undefined)).length}
-                            </span>
-                            <span className="flex items-center justify-center w-5 h-5 text-center bg-green-200 rounded mx-0.5">
-                              {tasks.filter(task => task.sprintId === sprint.id && task.status === "DONE" && (task.parentTaskId === null || task.parentTaskId === undefined)).length}
-                            </span>
-                          </div>
-                          {(() => {
-                            const canStart = canStartEndSprints(userPermissions);
-                            console.log('🔍 SPRINT BUTTON DEBUG:', {
-                              sprintId: sprint.id,
-                              sprintStatus: sprint.status,
-                              userPermissions,
-                              canStartEndSprints: canStart,
-                              canManageSprints: userPermissions?.canManageSprints,
-                              isScrumMaster: userPermissions?.isScrumMaster,
-                              role: userPermissions?.role
-                            });
-                            return canStart;
-                          })() && (
-                            <>
-                              {sprint.status === "ACTIVE" ? (
-                                <Button 
-                                  variant="secondary" 
-                                  size="sm"
-                                  onClick={() => handleCompleteSprint(sprint.id)}
-                                  className="bg-orange-100 text-orange-700 border-orange-200 hover:bg-orange-200"
-                                >
-                                  Complete sprint
-                                </Button>
-                              ) : sprint.status === "COMPLETED" ? (
-                                <Button 
-                                  variant="secondary" 
-                                  size="sm"
-                                  disabled
-                                  className="bg-green-100 text-green-700 border-green-200"
-                                >
-                                  Completed
-                                </Button>
-                              ) : (
-                                <Button 
-                                  variant="secondary" 
-                                  size="sm"
-                                  onClick={() => handleStartSprint(sprint.id)}
-                                >
-                                  Start sprint
-                                </Button>
-                              )}
-                            </>
-                          )}
-                          {canManageSprints(userPermissions) && (
-                            <div className="relative">
-                              <Button 
-                                variant="ghost" 
-                                size="icon" 
-                                className="h-8 w-8 sprint-edit-button"
-                                onClick={() => setOpenSprintMenu(openSprintMenu === sprint.id ? null : sprint.id)}
-                              >
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                              
-                              {openSprintMenu === sprint.id && (
-                                <div 
-                                  ref={sprintMenuRef}
-                                  className="absolute right-0 top-full mt-1 w-48 bg-white rounded shadow-lg z-10 py-1 border"
-                                >
-                                  <button
-                                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center"
-                                    onClick={() => handleMoveSprint(sprint.id, 'up')}
-                                  >
-                                    <ChevronUp className="h-4 w-4 mr-2" />
-                                    Move up
-                                  </button>
-                                  <button
-                                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center"
-                                    onClick={() => handleMoveSprint(sprint.id, 'down')}
-                                  >
-                                    <ChevronDown className="h-4 w-4 mr-2" />
-                                    Move down
-                                  </button>
-                                  <button
-                                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center"
-                                    onClick={() => handleEditSprint(sprint)}
-                                  >
-                                    <Edit className="h-4 w-4 mr-2" />
-                                    Edit
-                                  </button>
-                                  
-                                  {/* Show different actions based on sprint status */}
-                                  {sprint.status === "ACTIVE" ? (
-                                    <button
-                                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center text-yellow-600"
-                                      onClick={() => handleCancelSprint(sprint.id)}
-                                    >
-                                      <X className="h-4 w-4 mr-2" />
-                                      Cancel Sprint
-                                    </button>
-                                  ) : sprint.status === "NOT_STARTED" ? (
-                                    <button
-                                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center text-red-600"
-                                      onClick={() => handleDeleteSprint(sprint.id)}
-                                    >
-                                      <Trash2 className="h-4 w-4 mr-2" />
-                                      Delete
-                                    </button>
-                                  ) : sprint.status === "COMPLETED" || sprint.status === "ARCHIVED" ? (
-                                    <div className="px-3 py-2 text-sm text-gray-400 italic">
-                                      Cannot modify completed sprint
-                                    </div>
-                                  ) : (
-                                    <button
-                                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center text-red-600"
-                                      onClick={() => handleDeleteSprint(sprint.id)}
-                                    >
-                                      <Trash2 className="h-4 w-4 mr-2" />
-                                      Delete
-                                    </button>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {expandedSprint === sprint.id && (
-                        <div className="ml-6 mt-2">
-                          {/* Task Items - Sort by priority */}
-                          {tasks.filter(task => task.sprintId === sprint.id && (task.parentTaskId === null || task.parentTaskId === undefined)).length > 0 ? (
-                            sortTasksByPriority(tasks.filter(task => task.sprintId === sprint.id && (task.parentTaskId === null || task.parentTaskId === undefined))).map(task => (
-                              <div className={`border rounded-sm mb-2 ${isTaskDimmed(task.priority) ? 'opacity-50' : ''}`} key={task.id}>
-                                <div className="flex items-center p-3">
-                                  <input 
-                                    type="checkbox" 
-                                    className="mr-3" 
-                                    checked={task.status === "DONE"}
-                                    onChange={(e) => {
-                                      if (e.target.checked) {
-                                        handleStatusChange(task.id, "DONE");
-                                      } else {
-                                        handleStatusChange(task.id, "TODO");
-                                      }
-                                    }} 
-                                    disabled={isTaskDimmed(task.priority)}
-                                  />
-                                  
-                                  {/* Priority indicator */}
-                                  <div className={`w-6 h-6 rounded text-xs flex items-center justify-center mr-2 border ${getPriorityColorClass(task.priority)}`}>
-                                    {getPriorityIcon(task.priority)}
-                                  </div>
-                                  
-                                  <span className={`text-blue-600 font-medium text-sm mr-2 ${isTaskDimmed(task.priority) ? 'text-gray-400' : ''}`}>{task.shortKey || task.id.substring(0, 8)}</span>
-                                  <span className={`text-sm ${isTaskDimmed(task.priority) ? 'text-gray-400' : ''}`}>{task.title}</span>
-                                  {isTaskDimmed(task.priority) && (
-                                    <span className="ml-2 text-xs text-gray-500 italic">
-                                      ({task.priority === 'BLOCK' ? 'Blocked' : 'Rejected'})
-                                    </span>
-                                  )}
-                                  {task.label && (
-                                    <div className={`ml-2 px-2 py-0.5 rounded text-xs font-medium ${isTaskDimmed(task.priority) ? 'bg-gray-100 text-gray-500' : 'bg-blue-100 text-blue-800'}`}>
-                                      {task.label}
-                                    </div>
-                                  )}
-                                  <div className="ml-auto flex items-center space-x-2">
-                                    <div className="relative">
-                                      <button 
-                                        className={`px-2 py-1 ${getStatusColorClass(task.status)} rounded text-sm flex items-center`}
-                                        onClick={() => setOpenStatusDropdown(openStatusDropdown === task.id ? null : task.id)}
-                                      >
-                                        {task.status} <ChevronDown className="h-3 w-3 ml-1" />
-                                      </button>
-                                      
-                                      {openStatusDropdown === task.id && (
-                                        <div 
-                                          ref={statusDropdownRef}
-                                          className="absolute right-0 mt-1 w-36 bg-white rounded shadow-lg z-10 py-1 border"
-                                        >
-                                          {statusOptions.map(option => (
-                                            <button
-                                              key={option.value}
-                                              className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center ${option.value === task.status ? 'font-medium' : ''}`}
-                                              onClick={() => {
-                                                handleStatusChange(task.id, option.value);
-                                                setOpenStatusDropdown(null);
-                                              }}
-                                            >
-                                              <div className={`h-3 w-3 rounded-full ${getStatusColorClass(option.value)} mr-2`}></div>
-                                              {option.label}
-                                              {option.value === task.status && (
-                                                <Check className="h-3 w-3 ml-auto" />
-                                              )}
-                                            </button>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
-                                    <Button size="sm" variant="ghost" className="h-8 w-8">
-                                      <span className="sr-only">Assign</span>
-                                      <svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                        <circle cx="10" cy="10" r="9" stroke="currentColor" strokeWidth="2"/>
-                                        <circle cx="10" cy="7" r="3" stroke="currentColor" strokeWidth="2"/>
-                                        <path d="M3 17C3 13.6863 6.13401 11 10 11C13.866 11 17 13.6863 17 17" stroke="currentColor" strokeWidth="2"/>
-                                      </svg>
-                                    </Button>
-                                    <span className="h-5 w-5 flex items-center justify-center">
-                                      {task.storyPoint || "-"}
-                                    </span>
-                                    <Button 
-                                      variant="ghost" 
-                                      size="sm" 
-                                      className="h-8 w-8 text-purple-600 hover:bg-purple-50"
-                                      onClick={() => estimateStoryPoints(task.id)}
-                                      title="AI Estimate Story Points"
-                                    >
-                                      🤖
-                                    </Button>
-                                    <Button variant="ghost" size="sm" className="h-8 w-8">
-                                      <Edit className="h-4 w-4" />
-                                    </Button>
-                                    <Button variant="ghost" size="sm" className="h-8 w-8">
-                                      <MoreHorizontal className="h-4 w-4" />
-                                    </Button>
-                                  </div>
-                                </div>
+                              <div className="flex items-center mt-1 text-sm text-gray-600 space-x-4">
+                                {sprint.startDate && sprint.endDate && (
+                                  <span className="flex items-center gap-1">
+                                    <Calendar className="h-4 w-4" />
+                                    {formatDate(sprint.startDate)} - {formatDate(sprint.endDate)}
+                                  </span>
+                                )}
+                                <span className="flex items-center gap-1">
+                                  <Users className="h-4 w-4" />
+                                  {sprintTasks.length} work items
+                                </span>
+                                {hasActiveFilters() && (
+                                  <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
+                                    filtered
+                                  </span>
+                                )}
+                                {getSprintStoryPoints(sprint.id) > 0 && (
+                                  <span className="px-3 py-1 bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-800 rounded-full text-xs font-semibold">
+                                    {getCompletedSprintStoryPoints(sprint.id)}/{getSprintStoryPoints(sprint.id)} SP
+                                  </span>
+                                )}
                               </div>
-                            ))
-                          ) : (
-                            <div className="p-8 border border-dashed rounded-md text-center">
-                              <p className="text-gray-500">No tasks in this sprint yet. Add tasks from the backlog or create new ones.</p>
                             </div>
-                          )}
-
-                          {/* Create new task input */}
-                          <div className="border border-blue-300 rounded-sm p-3 flex items-center mt-3">
-                            <input type="checkbox" className="mr-3" disabled />
-                            <ChevronDown className="h-4 w-4 mr-2 text-gray-400" />
-                            <Input 
-                              className="border-none text-sm h-7 flex-1"
-                              placeholder="What needs to be done?"
-                              value={newTaskTitle}
-                              onChange={(e) => setNewTaskTitle(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' && !isCreating) {
-                                  handleCreateTask();
-                                }
-                              }}
-                            />
-                            {isCreating && <div className="ml-2 animate-spin h-4 w-4 border-2 border-blue-500 rounded-full border-t-transparent"></div>}
-                            {newTaskTitle && !isCreating && (
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="ml-2 text-blue-500"
-                                onClick={handleCreateTask}
-                              >
-                                Add
-                              </Button>
+                          </button>
+                          
+                          <div className="ml-auto flex items-center space-x-4">
+                            {/* Status Count Badges */}
+                            <div className="flex items-center space-x-2">
+                              <div className="flex items-center gap-1">
+                                <div className="w-3 h-3 bg-gray-300 rounded-full"></div>
+                                <span className="text-sm font-medium text-gray-600">
+                                  {sprintTasks.filter(task => task.status === "TODO").length}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <div className="w-3 h-3 bg-blue-400 rounded-full"></div>
+                                <span className="text-sm font-medium text-blue-600">
+                                  {sprintTasks.filter(task => task.status === "IN_PROGRESS").length}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <div className="w-3 h-3 bg-purple-400 rounded-full"></div>
+                                <span className="text-sm font-medium text-purple-600">
+                                  {sprintTasks.filter(task => task.status === "REVIEW").length}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <div className="w-3 h-3 bg-green-400 rounded-full"></div>
+                                <span className="text-sm font-medium text-green-600">
+                                  {sprintTasks.filter(task => task.status === "DONE").length}
+                                </span>
+                              </div>
+                            </div>
+                            
+                            {/* Sprint action buttons */}
+                            {canStartEndSprints(userPermissions) && (
+                              <div className="flex items-center space-x-2">
+                                {sprint.status === "ACTIVE" ? (
+                                  <Button 
+                                    variant="secondary" 
+                                    size="sm"
+                                    onClick={() => handleCompleteSprint(sprint.id)}
+                                    className="bg-gradient-to-r from-orange-100 to-orange-200 text-orange-700 border-orange-300 hover:from-orange-200 hover:to-orange-300 transition-all duration-200 font-medium"
+                                  >
+                                    Complete sprint
+                                  </Button>
+                                ) : sprint.status === "COMPLETED" ? (
+                                  <Button 
+                                    variant="secondary" 
+                                    size="sm"
+                                    disabled
+                                    className="bg-green-100 text-green-700 border-green-200"
+                                  >
+                                    Completed
+                                  </Button>
+                                ) : (
+                                  <Button 
+                                    variant="secondary" 
+                                    size="sm"
+                                    onClick={() => handleStartSprint(sprint.id)}
+                                  >
+                                    Start sprint
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                            {canManageSprints(userPermissions) && (
+                              <div className="relative">
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  className="h-8 w-8 sprint-edit-button"
+                                  onClick={() => setOpenSprintMenu(openSprintMenu === sprint.id ? null : sprint.id)}
+                                >
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                                
+                                {openSprintMenu === sprint.id && (
+                                  <div 
+                                    ref={sprintMenuRef}
+                                    className="absolute right-0 top-full mt-1 w-48 bg-white rounded shadow-lg z-10 py-1 border"
+                                  >
+                                    <button
+                                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center"
+                                      onClick={() => handleMoveSprint(sprint.id, 'up')}
+                                    >
+                                      <ChevronUp className="h-4 w-4 mr-2" />
+                                      Move up
+                                    </button>
+                                    <button
+                                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center"
+                                      onClick={() => handleMoveSprint(sprint.id, 'down')}
+                                    >
+                                      <ChevronDown className="h-4 w-4 mr-2" />
+                                      Move down
+                                    </button>
+                                    <button
+                                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center"
+                                      onClick={() => handleEditSprint(sprint)}
+                                    >
+                                      <Edit className="h-4 w-4 mr-2" />
+                                      Edit
+                                    </button>
+                                    
+                                    {/* Show different actions based on sprint status */}
+                                    {sprint.status === "ACTIVE" ? (
+                                      <button
+                                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center text-yellow-600"
+                                        onClick={() => handleCancelSprint(sprint.id)}
+                                      >
+                                        <X className="h-4 w-4 mr-2" />
+                                        Cancel Sprint
+                                      </button>
+                                    ) : sprint.status === "NOT_STARTED" ? (
+                                      <button
+                                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center text-red-600"
+                                        onClick={() => handleDeleteSprint(sprint.id)}
+                                      >
+                                        <Trash2 className="h-4 w-4 mr-2" />
+                                        Delete
+                                      </button>
+                                    ) : sprint.status === "COMPLETED" || sprint.status === "ARCHIVED" ? (
+                                      <div className="px-3 py-2 text-sm text-gray-400 italic">
+                                        Cannot modify completed sprint
+                                      </div>
+                                    ) : (
+                                      <button
+                                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center text-red-600"
+                                        onClick={() => handleDeleteSprint(sprint.id)}
+                                      >
+                                        <Trash2 className="h-4 w-4 mr-2" />
+                                        Delete
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </div>
                         </div>
-                      )}
-                    </div>
-                  ))
+
+                        {expandedSprint === sprint.id && (
+                          <div className="ml-6 mt-2">
+                            {/* Task Items - Sort by priority */}
+                            {sprintTasks.length > 0 ? (
+                              sortTasksByPriority(sprintTasks).map(task => (
+                                <div className={`border rounded-sm mb-2 ${isTaskDimmed(task.priority) ? 'opacity-50' : ''}`} key={task.id}>
+                                  <div className="flex items-center p-3">
+                                    <input 
+                                      type="checkbox" 
+                                      className="mr-3" 
+                                      checked={task.status === "DONE"}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          handleStatusChange(task.id, "DONE");
+                                        } else {
+                                          handleStatusChange(task.id, "TODO");
+                                        }
+                                      }} 
+                                      disabled={isTaskDimmed(task.priority)}
+                                    />
+                                    
+                                    {/* Priority indicator */}
+                                    <div className={`w-6 h-6 rounded text-xs flex items-center justify-center mr-2 border ${getPriorityColorClass(task.priority)}`}>
+                                      {getPriorityIcon(task.priority)}
+                                    </div>
+                                    
+                                    <span className={`text-blue-600 font-medium text-sm mr-2 ${isTaskDimmed(task.priority) ? 'text-gray-400' : ''}`}>{task.shortKey || task.id.substring(0, 8)}</span>
+                                    <span className={`text-sm flex-1 ${isTaskDimmed(task.priority) ? 'text-gray-400' : ''}`}>{task.title}</span>
+                                    {isTaskDimmed(task.priority) && (
+                                      <span className="ml-2 text-xs text-gray-500 italic">
+                                        ({task.priority === 'BLOCK' ? 'Blocked' : 'Rejected'})
+                                      </span>
+                                    )}
+                                    
+                                    {/* Assignee Avatar */}
+                                    {task.assigneeId && (() => {
+                                      const assignee = projectUsers.find(user => user.id === task.assigneeId);
+                                      const assigneeName = assignee?.username || assignee?.email || "Unknown";
+                                      return (
+                                        <div className="ml-2 flex items-center gap-2" title={`Assigned to: ${assigneeName}`}>
+                                          <AvatarDisplay 
+                                            avatarUrl={assignee?.avatarUrl}
+                                            displayName={assigneeName}
+                                            size="small"
+                                          />
+                                        </div>
+                                      );
+                                    })()}
+                                    
+                                    <div className="ml-auto flex items-center space-x-2">
+                                      <Button size="sm" variant="ghost" className="h-8 w-8">
+                                        <Edit className="h-4 w-4" />
+                                      </Button>
+                                      <Button variant="ghost" size="sm" className="h-8 w-8">
+                                        <MoreHorizontal className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="p-8 border border-dashed rounded-md text-center">
+                                <p className="text-gray-500">
+                                  {hasActiveFilters() ? "No tasks match the current filters" : "No tasks in this sprint yet. Add tasks from the backlog or create new ones."}
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Create new task input */}
+                            <div className="border border-blue-300 rounded-sm p-3 flex items-center mt-3">
+                              <input type="checkbox" className="mr-3" disabled />
+                              <ChevronDown className="h-4 w-4 mr-2 text-gray-400" />
+                              <Input 
+                                className="border-none text-sm h-7 flex-1"
+                                placeholder="What needs to be done?"
+                                value={newTaskTitle}
+                                onChange={(e) => setNewTaskTitle(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' && !isCreating) {
+                                    handleCreateTask();
+                                  }
+                                }}
+                              />
+                              {isCreating && <div className="ml-2 animate-spin h-4 w-4 border-2 border-blue-500 rounded-full border-t-transparent"></div>}
+                              {newTaskTitle && !isCreating && (
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  className="ml-2 text-blue-500"
+                                  onClick={handleCreateTask}
+                                >
+                                  Add
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
                 ) : (
                   <div className="mb-6 p-6 border border-dashed rounded text-center">
                     <p className="text-gray-500 mb-2">No sprints found for this project.</p>
@@ -1748,7 +2305,10 @@ export default function BacklogPage() {
                       }
                       <span className="font-medium">Backlog</span>
                       <span className="text-sm text-gray-500 ml-2">
-                        ({backlogTasks.length} work items)
+                        ({hasActiveFilters() ? filteredBacklogTasks.length : backlogTasks.length} work items)
+                        {hasActiveFilters() && (
+                          <span className="ml-2 text-blue-600 font-medium">filtered</span>
+                        )}
                         {getBacklogStoryPoints() > 0 && (
                           <span className="ml-2 px-2 py-1 bg-gray-100 text-gray-800 rounded-full text-xs font-medium">
                             {getCompletedBacklogStoryPoints()}/{getBacklogStoryPoints()} SP
@@ -1759,16 +2319,16 @@ export default function BacklogPage() {
                     <div className="ml-auto flex space-x-2">
                       <div className="flex items-center text-xs">
                         <span className="flex items-center justify-center w-5 h-5 text-center bg-gray-200 rounded mx-0.5">
-                          {backlogTasks.filter(task => task.status === "TODO").length}
+                          {(hasActiveFilters() ? filteredBacklogTasks : backlogTasks).filter(task => task.status === "TODO").length}
                         </span>
                         <span className="flex items-center justify-center w-5 h-5 text-center bg-blue-200 rounded mx-0.5">
-                          {backlogTasks.filter(task => task.status === "IN_PROGRESS").length}
+                          {(hasActiveFilters() ? filteredBacklogTasks : backlogTasks).filter(task => task.status === "IN_PROGRESS").length}
                         </span>
                         <span className="flex items-center justify-center w-5 h-5 text-center bg-purple-200 rounded mx-0.5">
-                          {backlogTasks.filter(task => task.status === "REVIEW").length}
+                          {(hasActiveFilters() ? filteredBacklogTasks : backlogTasks).filter(task => task.status === "REVIEW").length}
                         </span>
                         <span className="flex items-center justify-center w-5 h-5 text-center bg-green-200 rounded mx-0.5">
-                          {backlogTasks.filter(task => task.status === "DONE").length}
+                          {(hasActiveFilters() ? filteredBacklogTasks : backlogTasks).filter(task => task.status === "DONE").length}
                         </span>
                       </div>
                     </div>
@@ -1777,8 +2337,8 @@ export default function BacklogPage() {
                   {expandedSprint === 'backlog' && (
                     <div className="ml-6 mt-2">
                       {/* Backlog Task Items - Sort by priority */}
-                      {backlogTasks.length > 0 ? (
-                        sortTasksByPriority(backlogTasks).map(task => (
+                      {(hasActiveFilters() ? filteredBacklogTasks : backlogTasks).length > 0 ? (
+                        sortTasksByPriority(hasActiveFilters() ? filteredBacklogTasks : backlogTasks).map(task => (
                           <div className={`border rounded-sm mb-2 ${isTaskDimmed(task.priority) ? 'opacity-50' : ''}`} key={task.id}>
                             <div className="flex items-center p-3">
                               <input 
@@ -1801,79 +2361,30 @@ export default function BacklogPage() {
                               </div>
                               
                               <span className={`text-blue-600 font-medium text-sm mr-2 ${isTaskDimmed(task.priority) ? 'text-gray-400' : ''}`}>{task.shortKey || task.id.substring(0, 8)}</span>
-                              <span className={`text-sm ${isTaskDimmed(task.priority) ? 'text-gray-400' : ''}`}>{task.title}</span>
+                              <span className={`text-sm flex-1 ${isTaskDimmed(task.priority) ? 'text-gray-400' : ''}`}>{task.title}</span>
                               {isTaskDimmed(task.priority) && (
                                 <span className="ml-2 text-xs text-gray-500 italic">
                                   ({task.priority === 'BLOCK' ? 'Blocked' : 'Rejected'})
                                 </span>
                               )}
-                              {task.label && (
-                                <div className={`ml-2 px-2 py-0.5 rounded text-xs font-medium ${isTaskDimmed(task.priority) ? 'bg-gray-100 text-gray-500' : 'bg-blue-100 text-blue-800'}`}>
-                                  {task.label}
-                                </div>
-                              )}
+                              
+                              {/* Assignee Avatar */}
+                              {task.assigneeId && (() => {
+                                const assignee = projectUsers.find(user => user.id === task.assigneeId);
+                                const assigneeName = assignee?.username || assignee?.email || "Unknown";
+                                return (
+                                  <div className="ml-2 flex items-center gap-2" title={`Assigned to: ${assigneeName}`}>
+                                    <AvatarDisplay 
+                                      avatarUrl={assignee?.avatarUrl}
+                                      displayName={assigneeName}
+                                      size="small"
+                                    />
+                                  </div>
+                                );
+                              })()}
+                              
                               <div className="ml-auto flex items-center space-x-2">
-                                <div className="relative">
-                                  <button 
-                                    className={`px-2 py-1 ${getStatusColorClass(task.status)} rounded text-sm flex items-center`}
-                                    onClick={() => setOpenStatusDropdown(openStatusDropdown === task.id ? null : task.id)}
-                                  >
-                                    {task.status} <ChevronDown className="h-3 w-3 ml-1" />
-                                  </button>
-                                  
-                                  {openStatusDropdown === task.id && (
-                                    <div 
-                                      ref={statusDropdownRef}
-                                      className="absolute right-0 mt-1 w-36 bg-white rounded shadow-lg z-10 py-1 border"
-                                    >
-                                      {statusOptions.map(option => (
-                                        <button
-                                          key={option.value}
-                                          className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center ${option.value === task.status ? 'font-medium' : ''}`}
-                                          onClick={() => {
-                                            handleStatusChange(task.id, option.value);
-                                            setOpenStatusDropdown(null);
-                                          }}
-                                        >
-                                          <div className={`h-3 w-3 rounded-full ${getStatusColorClass(option.value)} mr-2`}></div>
-                                          {option.label}
-                                          {option.value === task.status && (
-                                            <Check className="h-3 w-3 ml-auto" />
-                                          )}
-                                        </button>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                                
-                                {/* Sprint assignment dropdown */}
-                                <div className="relative">
-                                  <button className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-sm hover:bg-gray-200">
-                                    Move to Sprint
-                                  </button>
-                                </div>
-                                
                                 <Button size="sm" variant="ghost" className="h-8 w-8">
-                                  <span className="sr-only">Assign</span>
-                                  <svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <circle cx="10" cy="10" r="9" stroke="currentColor" strokeWidth="2"/>
-                                    <circle cx="10" cy="7" r="3" stroke="currentColor" strokeWidth="2"/>
-                                    <path d="M3 17C3 13.6863 6.13401 11 10 11C13.866 11 17 13.6863 17 17" stroke="currentColor" strokeWidth="2"/>
-                                  </svg>
-                                </Button>
-                                <span className="h-5 w-5 flex items-center justify-center">
-                                  {task.storyPoint || "-"}
-                                </span>
-                                <Button 
-                                  variant="ghost" 
-                                  size="sm" 
-                                  className="h-8 w-8 text-purple-600 hover:bg-purple-50"
-                                  onClick={() => estimateStoryPoints(task.id)}
-                                  title="AI Estimate Story Points"
-                                >
-                                  🤖
-                                </Button>
-                                <Button variant="ghost" size="sm" className="h-8 w-8">
                                   <Edit className="h-4 w-4" />
                                 </Button>
                                 <Button variant="ghost" size="sm" className="h-8 w-8">
@@ -1885,7 +2396,9 @@ export default function BacklogPage() {
                         ))
                       ) : (
                         <div className="p-8 border border-dashed rounded-md text-center">
-                          <p className="text-gray-500">No tasks in backlog. Create new tasks to get started.</p>
+                          <p className="text-gray-500">
+                            {hasActiveFilters() ? "No backlog tasks match the current filters" : "No tasks in backlog. Create new tasks to get started."}
+                          </p>
                         </div>
                       )}
 
@@ -1950,20 +2463,19 @@ export default function BacklogPage() {
                 />
               </div>
             
-              
               <div className="mb-4">
                 <label className="block text-gray-700 text-sm font-medium mb-2">Start date</label>
-                <Input 
+                <Input
                   type="date"
                   value={currentSprint.startDate ? new Date(currentSprint.startDate).toISOString().split('T')[0] : ''}
                   onChange={(e) => setCurrentSprint({...currentSprint, startDate: new Date(e.target.value).toISOString()})}
                   className="w-full p-2 border rounded"
                 />
               </div>
-              
+
               <div className="mb-4">
                 <label className="block text-gray-700 text-sm font-medium mb-2">End date</label>
-                <Input 
+                <Input
                   type="date"
                   value={currentSprint.endDate ? new Date(currentSprint.endDate).toISOString().split('T')[0] : ''}
                   onChange={(e) => setCurrentSprint({...currentSprint, endDate: new Date(e.target.value).toISOString()})}
@@ -1979,7 +2491,7 @@ export default function BacklogPage() {
                   className="w-full p-2 border rounded h-32"
                 />
               </div>
-              
+
               <div className="flex justify-end mt-6 space-x-2">
                 <Button 
                   variant="outline"
@@ -1998,7 +2510,7 @@ export default function BacklogPage() {
         </div>
       )}
 
-      {/* ✅ NEW: Task Migration Modal */}
+      {/* Task Migration Modal */}
       {showTaskMigrationModal && sprintToDelete && (
         <TaskMigrationModal
           isOpen={showTaskMigrationModal}

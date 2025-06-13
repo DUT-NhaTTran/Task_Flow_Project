@@ -4,7 +4,6 @@ import Link from "next/link"
 import {
     Search,
     Bell,
-    Settings,
     ChevronDown,
     LayoutGrid,
     FolderPlus,
@@ -69,6 +68,9 @@ export function TopNavigation() {
     const [userProjects, setUserProjects] = useState<Project[]>([]);
     const [isLoadingProjects, setIsLoadingProjects] = useState(false);
 
+    // Add mounted effect to prevent hydration mismatch
+    const [isMounted, setIsMounted] = useState(false);
+
     // Function to fetch user projects
     const fetchUserProjects = async () => {
         if (!currentUser?.id || isLoadingProjects) return;
@@ -116,6 +118,11 @@ export function TopNavigation() {
         }
     }, [currentUser?.id]);
 
+    // Add mounted effect to prevent hydration mismatch
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
+
     // Generate dynamic menu items based on user projects
     const getMenuItems = (): MenuSection[] => {
         const projectItems: MenuItem[] = [
@@ -148,8 +155,8 @@ export function TopNavigation() {
     const menuItems = getMenuItems();
 
     const [openDropdown, setOpenDropdown] = useState<string | null>(null)
-    const [menuTimeoutId, setMenuTimeoutId] = useState<ReturnType<typeof setTimeout> | null>(null)
-    const [searchTimeoutId, setSearchTimeoutId] = useState<ReturnType<typeof setTimeout> | null>(null)
+    const [menuTimeoutId, setMenuTimeoutId] = useState<NodeJS.Timeout | null>(null)
+    const [searchTimeoutId, setSearchTimeoutId] = useState<NodeJS.Timeout | null>(null)
 
     const getCurrentUserId = () => {
         return currentUser?.id || null;
@@ -439,87 +446,12 @@ export function TopNavigation() {
 
                     {/* Right */}
                     <div className="flex items-center space-x-4">
-                        {/* Global Search - moved to right with more spacing */}
-                        <div ref={searchRef} className="relative">
-                            <form onSubmit={handleSearchSubmit} className="bg-white border border-gray-300 rounded-md flex items-center px-2">
-                                <Search className="h-4 w-4 text-gray-500" />
-                                <Input
-                                    type="text"
-                                    placeholder="Search projects..."
-                                    value={searchTerm}
-                                    onChange={handleSearchChange}
-                                    className="border-0 text-xs focus-visible:ring-0 focus-visible:ring-offset-0 w-64"
-                                />
-                            </form>
-
-                            {/* Search Results Dropdown */}
-                            {showSearchResults && (
-                                <div className="absolute left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-white border rounded-md shadow-lg z-50">
-                                    {isSearching ? (
-                                        <div className="p-4 text-center text-gray-500">
-                                            <div className="flex items-center justify-center space-x-2">
-                                                <div className="animate-spin h-4 w-4 border-2 border-blue-500 rounded-full border-t-transparent"></div>
-                                                <span className="text-sm">Searching projects...</span>
-                                            </div>
-                                        </div>
-                                    ) : searchResults.length > 0 ? (
-                                        searchResults.map(project => (
-                                            <div
-                                                key={project.id}
-                                                onClick={() => handleProjectSelect(project)}
-                                                className="p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
-                                            >
-                                                <div className="flex items-start gap-3">
-                                                    {/* Project Avatar */}
-                                                    <div className="w-8 h-8 bg-blue-100 rounded-sm flex items-center justify-center text-blue-600 text-xs font-semibold">
-                                                        {project.key || project.name.substring(0, 2).toUpperCase()}
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        {/* Project Name */}
-                                                        <div className="text-sm font-medium text-gray-900 truncate">
-                                                            {project.name}
-                                                        </div>
-                                                        {/* Project Details */}
-                                                        <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                                                            <span className="flex items-center gap-1">
-                                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                                                                </svg>
-                                                                {project.projectType || "Team-managed"}
-                                                            </span>
-                                                            <span className="flex items-center gap-1">
-                                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" fill="currentColor"/>
-                                                                </svg>
-                                                                {project.access || "Private"}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))
-                                    ) : searchTerm.trim() ? (
-                                        <div className="p-3 text-gray-500 text-center">
-                                            <div className="flex justify-center mb-2">
-                                                <Search className="h-5 w-5" />
-                                            </div>
-                                            No projects found matching &quot;<strong>{searchTerm}</strong>&quot;
-                                        </div>
-                                    ) : null}
-                                </div>
-                            )}
-                        </div>
-
                         {/* Notification Dropdown - only render on client-side with valid userId */}
-                        {currentUser && <NotificationDropdown userId={currentUser.id} />}
-
-                        <button className="p-2 hover:bg-gray-100 rounded">
-                            <Settings className="h-4 w-4" />
-                        </button>
+                        {isMounted && currentUser && <NotificationDropdown userId={currentUser.id} />}
 
                         <div className="relative">
                             {/* Use UserAvatar component instead of static Avatar */}
-                            {currentUser ? (
+                            {isMounted && currentUser ? (
                                 <div
                                     className="cursor-pointer"
                                     onMouseEnter={() => handleMenuEnter("user-menu")}
@@ -540,7 +472,7 @@ export function TopNavigation() {
                             )}
 
                             {/* User dropdown */}
-                            {openDropdown === "user-menu" && (
+                            {isMounted && openDropdown === "user-menu" && (
                                 <div
                                     className="absolute right-0 top-full mt-1 w-48 bg-white border rounded shadow-md p-2 z-50"
                                     onMouseEnter={() => handleMenuEnter("user-menu")}

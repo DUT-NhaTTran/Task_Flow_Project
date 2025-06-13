@@ -44,9 +44,40 @@ public class AuthController {
         } catch (SQLException e) {
             return ResponseEntity.badRequest().body(Map.of("error", "System error: " + e.getMessage()));
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
+
+    @GetMapping("/account-id/{email}")
+    public ResponseEntity<?> getAccountIdByEmail(@PathVariable String email) {
+        try {
+            UUID accountId = authService.getAccountIdByEmail(email);
+            return ResponseEntity.ok(Map.of("accountId", accountId.toString()));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/link-user")
+    public ResponseEntity<?> linkUserToAccount(@RequestBody Map<String, String> payload) {
+        try {
+            String accountIdStr = payload.get("accountId");
+            String userIdStr = payload.get("userId");
+
+            if (accountIdStr == null || userIdStr == null) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Account ID and User ID are required"));
+            }
+
+            UUID accountId = UUID.fromString(accountIdStr);
+            UUID userId = UUID.fromString(userIdStr);
+
+            authService.linkUserIdToAccount(accountId, userId);
+            return ResponseEntity.ok(Map.of("message", "User linked to account successfully", "success", true));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest loginRequest) {
         try {

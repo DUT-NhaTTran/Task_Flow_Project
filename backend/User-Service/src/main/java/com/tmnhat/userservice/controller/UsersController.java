@@ -11,10 +11,13 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-
+import com.cloudinary.Cloudinary;
+import com.cloudinary.utils.ObjectUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.Map;
 
 @Import(WebConfig.class)
 @RestController
@@ -22,17 +25,20 @@ import java.util.UUID;
 public class UsersController {
 
     private final UserService userService;
+    private final Cloudinary cloudinary;
 
-    public UsersController() {
-        this.userService = new UserServiceImpl();
+    @Autowired
+    public UsersController(UserService userService, Cloudinary cloudinary) {
+        this.userService = userService;
+        this.cloudinary = cloudinary;
     }
 
     // Create user
     @PostMapping
     public ResponseEntity<ResponseDataAPI> createUser(@RequestBody Users user) {
         UserValidator.validateUser(user);
-        userService.createUser(user);
-        return ResponseEntity.ok(ResponseDataAPI.successWithoutMetaAndData());
+        Users createdUser = userService.createUser(user);
+        return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(createdUser));
     }
 
     // Update user
@@ -119,8 +125,23 @@ public class UsersController {
         if (avatar == null || avatar.isEmpty()) {
             throw new BadRequestException("Avatar file cannot be empty");
         }
-        userService.updateAvatar(userId, avatar);
-        return ResponseEntity.ok(ResponseDataAPI.successWithoutMetaAndData());
+        
+        try {
+            // Upload to Cloudinary first
+            Map<String, Object> uploadResult = cloudinary.uploader().upload(avatar.getBytes(), ObjectUtils.asMap(
+                "folder", "avatars",
+                "public_id", userId.toString()
+            ));
+            String avatarUrl = uploadResult.get("secure_url").toString();
+
+            // Update user avatar URL in database
+            userService.updateAvatar(userId, avatarUrl);
+            
+            // Return the Cloudinary URL
+            return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(Map.of("url", avatarUrl)));
+        } catch (Exception e) {
+            throw new BadRequestException("Failed to upload avatar: " + e.getMessage());
+        }
     }
     // Get users by project ID
     @GetMapping("/project/{projectId}")

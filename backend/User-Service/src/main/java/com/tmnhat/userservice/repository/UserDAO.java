@@ -17,18 +17,19 @@ import org.springframework.stereotype.Repository;
 public class UserDAO extends BaseDAO {
 
     public void createUser(Users user) {
-        String query = "INSERT INTO users (username, email, user_role, avatar, phone, created_at, updated_at) " +
-                       "VALUES (?, ?, ?, ?, ?, ?, ?)";
+        String query = "INSERT INTO users (id, username, email, user_role, avatar, phone, created_at, updated_at) " +
+                       "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
 
         try {
             executeUpdate(query, stmt -> {
-                stmt.setString(1, user.getUsername());
-                stmt.setString(2, user.getEmail());
-                stmt.setString(3, user.getUserRole().name());
-                stmt.setString(4, user.getAvatar());
-                stmt.setString(5, user.getPhone());
-                stmt.setTimestamp(6, Timestamp.valueOf(user.getCreatedAt()));
-                stmt.setTimestamp(7, user.getUpdatedAt() != null ? Timestamp.valueOf(user.getUpdatedAt()) : null);
+                stmt.setObject(1, user.getId());
+                stmt.setString(2, user.getUsername());
+                stmt.setString(3, user.getEmail());
+                stmt.setString(4, user.getUserRole().name());
+                stmt.setString(5, user.getAvatar());
+                stmt.setString(6, user.getPhone());
+                stmt.setTimestamp(7, Timestamp.valueOf(user.getCreatedAt()));
+                stmt.setTimestamp(8, user.getUpdatedAt() != null ? Timestamp.valueOf(user.getUpdatedAt()) : null);
             });
         } catch (SQLException e) {
             throw new DatabaseException("Error creating user: " + e.getMessage());

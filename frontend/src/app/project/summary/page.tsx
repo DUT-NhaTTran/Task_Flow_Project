@@ -752,7 +752,7 @@ export default function ProjectSummaryPage() {
     const fetchUserProjects = async (userId: string) => {
         try {
             setIsLoadingProjects(true)
-            console.log(`🔍 Fetching projects for user: ${userId}`)
+            console.log(` Fetching projects for user: ${userId}`)
             
             // Fetch both owned projects and member projects
             const [ownedResponse, memberResponse] = await Promise.allSettled([
@@ -787,13 +787,13 @@ export default function ProjectSummaryPage() {
                 index === self.findIndex(p => p.id === project.id)
             );
 
-            console.log(`✅ Total unique projects found: ${uniqueProjects.length}`);
+            console.log(` Total unique projects found: ${uniqueProjects.length}`);
             uniqueProjects.forEach(p => console.log(`  - ${p.name} (${p.id})`));
 
             setUserProjects(uniqueProjects);
             setFilteredProjects(uniqueProjects);
             
-            console.log(`✅ Loaded ${uniqueProjects.length} projects (owned + member) for user ${userId}`);
+            console.log(` Loaded ${uniqueProjects.length} projects (owned + member) for user ${userId}`);
             
         } catch (error) {
             console.error("❌ Error fetching user projects:", error);
@@ -832,7 +832,7 @@ export default function ProjectSummaryPage() {
         // Reset loading state to fetch new project data
         setIsLoading(true)
         
-        console.log(`🔄 Switched to project: ${selectedProject.name} (${selectedProject.id})`)
+        console.log(` Switched to project: ${selectedProject.name} (${selectedProject.id})`)
     }
 
     const getProjectTypeIcon = (projectType?: string) => {

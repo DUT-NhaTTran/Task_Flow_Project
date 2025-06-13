@@ -24,6 +24,7 @@ public enum NotificationType {
     SPRINT_ENDED,
     SPRINT_COMPLETED,
     SPRINT_GOAL_UPDATED,
+    SPRINT_OVERDUE,
     FILE_ATTACHED,
     TAGGED_IN_TASK,
     REMINDER

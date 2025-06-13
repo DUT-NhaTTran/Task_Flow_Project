@@ -17,6 +17,7 @@ import {
   BarChart3,
   Layout,
   Archive,
+  Search,
 } from "lucide-react";
 import { useNavigation } from "@/contexts/NavigationContext";
 import { useUser } from "@/contexts/UserContext";
@@ -112,7 +113,9 @@ export function Sidebar({ projectId }: SidebarProps) {
     if (path.includes("/project/calendar")) {
       return pathname.includes("/project/calendar");
     }
-
+    if (path.includes("/project/search-tasks")) {
+      return pathname.includes("/project/search-tasks");
+    }
 
     return pathname.includes(path);
   };
@@ -137,6 +140,7 @@ export function Sidebar({ projectId }: SidebarProps) {
       'board': '/project/project_homescreen',
       'backlog': '/project/backlog',
       'calendar': '/project/calendar',
+      'search': '/project/search-tasks',
       'audit': '/project/audit'
     };
     

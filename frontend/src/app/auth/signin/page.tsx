@@ -7,6 +7,7 @@ import axios from "axios"
 import { useRouter } from "next/navigation"
 import { useUser } from "@/contexts/UserContext"
 import UserStorageService from "@/services/userStorageService"
+import { toast } from "sonner"
 
 export default function SignInPage() {
     const router = useRouter()
@@ -22,6 +23,21 @@ export default function SignInPage() {
     useEffect(() => {
         console.log("🔄 SignIn page: Force refreshing UserContext...");
         refreshCurrentUser();
+    }, []);
+
+    useEffect(() => {
+        // Check for any messages from URL params
+        const urlParams = new URLSearchParams(window.location.search);
+        const message = urlParams.get('message');
+        
+        if (message === 'profile_completed') {
+            toast.success("Welcome! Your profile is now complete", {
+                description: "Please sign in to start using TaskFlow"
+            });
+            
+            // Clean up URL
+            window.history.replaceState({}, '', '/auth/signin');
+        }
     }, []);
 
     // Debug function to clear all data

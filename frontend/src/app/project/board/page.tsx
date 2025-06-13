@@ -73,7 +73,6 @@ export default function BoardPage() {
   // Fetch tasks
   useEffect(() => {
     if (!projectId) {
-      toast.error("No project ID provided");
       return;
     }
     

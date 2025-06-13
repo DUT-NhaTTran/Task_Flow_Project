@@ -860,6 +860,9 @@ export default function CalendarPage() {
           setPermissionsLoading(false);
         }
       } else {
+        // No projectId or user data - set minimal permissions for empty calendar
+        console.log('📅 CALENDAR: No project or user data, setting minimal permissions');
+        setUserPermissions(null);
         setPermissionsLoading(false);
       }
     };
@@ -1265,13 +1268,21 @@ export default function CalendarPage() {
     setCalendarData(weeks);
   }, [sprints, currentDate]);
   
+  // Main data fetch effect
   useEffect(() => {
-    if (!projectId) return;
-    
     const fetchData = async () => {
       setLoading(true);
       try {
-        // Fetch all sprints
+        // If no projectId, show empty calendar
+        if (!projectId) {
+          console.log('📅 CALENDAR: No project ID provided, showing empty calendar');
+          setAllSprints([]);
+          setSprints([]);
+          setLoading(false);
+          return;
+        }
+
+        // Fetch all sprints for the project
         const sprintsResponse = await axios.get(
           `http://localhost:8084/api/sprints/project/${projectId}`
         );
@@ -1281,6 +1292,9 @@ export default function CalendarPage() {
       } catch (error) {
         console.error("Error fetching data:", error);
         toast.error("Lỗi khi tải dữ liệu");
+        // Set empty arrays on error
+        setAllSprints([]);
+        setSprints([]);
       } finally {
         setLoading(false);
       }
@@ -1644,6 +1658,15 @@ export default function CalendarPage() {
             <Loading />
           ) : (
             <>
+              {/* Show empty state message when no project or no sprints */}
+              {!projectId && (
+                <div className="flex flex-col items-center justify-center h-32 text-gray-500 bg-white mx-4 mb-4 rounded-lg border border-gray-200">
+                  <CalendarIcon className="h-8 w-8 mb-2 text-gray-300" />
+                  <p className="text-lg font-medium">Calendar View</p>
+                  <p className="text-sm">Select a project to view its sprints on the calendar</p>
+                </div>
+              )}
+              
               {searchTerm && sprints.length === 0 && (
                 <div className="flex flex-col items-center justify-center h-64 text-gray-500">
                   <Search className="h-12 w-12 mb-4 text-gray-300" />
@@ -1651,6 +1674,8 @@ export default function CalendarPage() {
                   <p className="text-sm">Try adjusting your search terms</p>
                 </div>
               )}
+              
+              {/* Always show calendar grid */}
               <CalendarView 
                 calendarData={calendarData} 
                 currentDate={currentDate} 
