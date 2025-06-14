@@ -1709,9 +1709,9 @@ export default function BacklogPage() {
           {/* Search and Controls Header */}
           <div className="bg-white border-b border-gray-200 shadow-sm">
             <div className="px-6 py-4 flex items-center justify-between">
-              <div className="relative flex-1 max-w-md">
+            <div className="relative flex-1 max-w-md">
                 <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                <Input 
+              <Input 
                   className="pl-12 h-11 bg-gray-50 border-gray-200 rounded-xl placeholder-gray-500 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 text-sm font-medium" 
                   placeholder="Search tasks, sprints, or assignees..." 
                   value={filters.searchText}
@@ -1725,7 +1725,7 @@ export default function BacklogPage() {
                     <X className="h-4 w-4 text-gray-500" />
                   </button>
                 )}
-              </div>
+            </div>
               
               <div className="flex items-center gap-3 ml-6">
                 {/* Filter Toggle */}
@@ -1756,7 +1756,7 @@ export default function BacklogPage() {
                 )}
 
                 {/* Create Sprint Button */}
-                <Button
+                <Button 
                   onClick={handleCreateSprint}
                   className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-3 rounded-xl font-semibold shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 transition-all duration-200 flex items-center gap-2"
                 >
@@ -1926,21 +1926,21 @@ export default function BacklogPage() {
                             <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                             <span className="text-sm font-medium text-gray-700">Assignee:</span>
                             <span className="text-sm text-green-700 font-semibold">{filters.assignee.length} selected</span>
-                          </div>
+              </div>
                         )}
                         {filters.priority.length > 0 && (
                           <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 shadow-sm border border-orange-200">
                             <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
                             <span className="text-sm font-medium text-gray-700">Priority:</span>
                             <span className="text-sm text-orange-700 font-semibold">{filters.priority.join(", ")}</span>
-                          </div>
+            </div>
                         )}
                         {filters.labels.length > 0 && (
                           <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 shadow-sm border border-purple-200">
                             <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
                             <span className="text-sm font-medium text-gray-700">Labels:</span>
                             <span className="text-sm text-purple-700 font-semibold">{filters.labels.length} selected</span>
-                          </div>
+          </div>
                         )}
                         {(filters.createdDateFrom || filters.createdDateTo) && (
                           <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 shadow-sm border border-indigo-200">
@@ -1991,14 +1991,14 @@ export default function BacklogPage() {
                     return (
                       <div className="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden transition-all duration-200 hover:shadow-md" key={sprint.id}>
                         <div className="flex items-center py-4 px-6 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
-                          <input 
-                            type="checkbox" 
+                        <input 
+                          type="checkbox" 
                             className="mr-3 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" 
-                            checked={checkboxState.sprintHeader}
-                            onChange={() => handleCheckboxChange('sprintHeader')}
-                          />
-                          <button 
-                            onClick={() => toggleSprint(sprint.id)}
+                          checked={checkboxState.sprintHeader}
+                          onChange={() => handleCheckboxChange('sprintHeader')}
+                        />
+                        <button 
+                          onClick={() => toggleSprint(sprint.id)}
                             className="flex items-center group flex-1 text-left"
                           >
                             <div className={`transition-transform duration-200 ${expandedSprint === sprint.id ? 'rotate-0' : '-rotate-90'}`}>
@@ -2024,14 +2024,14 @@ export default function BacklogPage() {
                                     filtered
                                   </span>
                                 )}
-                                {getSprintStoryPoints(sprint.id) > 0 && (
+                            {getSprintStoryPoints(sprint.id) > 0 && (
                                   <span className="px-3 py-1 bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-800 rounded-full text-xs font-semibold">
-                                    {getCompletedSprintStoryPoints(sprint.id)}/{getSprintStoryPoints(sprint.id)} SP
-                                  </span>
-                                )}
+                                {getCompletedSprintStoryPoints(sprint.id)}/{getSprintStoryPoints(sprint.id)} SP
+                              </span>
+                            )}
                               </div>
                             </div>
-                          </button>
+                        </button>
                           
                           <div className="ml-auto flex items-center space-x-4">
                             {/* Status Count Badges */}
@@ -2040,168 +2040,168 @@ export default function BacklogPage() {
                                 <div className="w-3 h-3 bg-gray-300 rounded-full"></div>
                                 <span className="text-sm font-medium text-gray-600">
                                   {sprintTasks.filter(task => task.status === "TODO").length}
-                                </span>
+                            </span>
                               </div>
                               <div className="flex items-center gap-1">
                                 <div className="w-3 h-3 bg-blue-400 rounded-full"></div>
                                 <span className="text-sm font-medium text-blue-600">
                                   {sprintTasks.filter(task => task.status === "IN_PROGRESS").length}
-                                </span>
+                            </span>
                               </div>
                               <div className="flex items-center gap-1">
                                 <div className="w-3 h-3 bg-purple-400 rounded-full"></div>
                                 <span className="text-sm font-medium text-purple-600">
                                   {sprintTasks.filter(task => task.status === "REVIEW").length}
-                                </span>
+                            </span>
                               </div>
                               <div className="flex items-center gap-1">
                                 <div className="w-3 h-3 bg-green-400 rounded-full"></div>
                                 <span className="text-sm font-medium text-green-600">
                                   {sprintTasks.filter(task => task.status === "DONE").length}
-                                </span>
-                              </div>
+                            </span>
+                          </div>
                             </div>
                             
                             {/* Sprint action buttons */}
                             {canStartEndSprints(userPermissions) && (
                               <div className="flex items-center space-x-2">
-                                {sprint.status === "ACTIVE" ? (
-                                  <Button 
-                                    variant="secondary" 
-                                    size="sm"
-                                    onClick={() => handleCompleteSprint(sprint.id)}
-                                    className="bg-gradient-to-r from-orange-100 to-orange-200 text-orange-700 border-orange-300 hover:from-orange-200 hover:to-orange-300 transition-all duration-200 font-medium"
-                                  >
-                                    Complete sprint
-                                  </Button>
-                                ) : sprint.status === "COMPLETED" ? (
-                                  <Button 
-                                    variant="secondary" 
-                                    size="sm"
-                                    disabled
-                                    className="bg-green-100 text-green-700 border-green-200"
-                                  >
-                                    Completed
-                                  </Button>
-                                ) : (
-                                  <Button 
-                                    variant="secondary" 
-                                    size="sm"
-                                    onClick={() => handleStartSprint(sprint.id)}
-                                  >
-                                    Start sprint
-                                  </Button>
-                                )}
-                              </div>
-                            )}
-                            {canManageSprints(userPermissions) && (
-                              <div className="relative">
+                              {sprint.status === "ACTIVE" ? (
                                 <Button 
-                                  variant="ghost" 
-                                  size="icon" 
-                                  className="h-8 w-8 sprint-edit-button"
-                                  onClick={() => setOpenSprintMenu(openSprintMenu === sprint.id ? null : sprint.id)}
+                                  variant="secondary" 
+                                  size="sm"
+                                  onClick={() => handleCompleteSprint(sprint.id)}
+                                    className="bg-gradient-to-r from-orange-100 to-orange-200 text-orange-700 border-orange-300 hover:from-orange-200 hover:to-orange-300 transition-all duration-200 font-medium"
                                 >
-                                  <MoreHorizontal className="h-4 w-4" />
+                                  Complete sprint
                                 </Button>
-                                
-                                {openSprintMenu === sprint.id && (
-                                  <div 
-                                    ref={sprintMenuRef}
-                                    className="absolute right-0 top-full mt-1 w-48 bg-white rounded shadow-lg z-10 py-1 border"
-                                  >
-                                    <button
-                                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center"
-                                      onClick={() => handleMoveSprint(sprint.id, 'up')}
-                                    >
-                                      <ChevronUp className="h-4 w-4 mr-2" />
-                                      Move up
-                                    </button>
-                                    <button
-                                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center"
-                                      onClick={() => handleMoveSprint(sprint.id, 'down')}
-                                    >
-                                      <ChevronDown className="h-4 w-4 mr-2" />
-                                      Move down
-                                    </button>
-                                    <button
-                                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center"
-                                      onClick={() => handleEditSprint(sprint)}
-                                    >
-                                      <Edit className="h-4 w-4 mr-2" />
-                                      Edit
-                                    </button>
-                                    
-                                    {/* Show different actions based on sprint status */}
-                                    {sprint.status === "ACTIVE" ? (
-                                      <button
-                                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center text-yellow-600"
-                                        onClick={() => handleCancelSprint(sprint.id)}
-                                      >
-                                        <X className="h-4 w-4 mr-2" />
-                                        Cancel Sprint
-                                      </button>
-                                    ) : sprint.status === "NOT_STARTED" ? (
-                                      <button
-                                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center text-red-600"
-                                        onClick={() => handleDeleteSprint(sprint.id)}
-                                      >
-                                        <Trash2 className="h-4 w-4 mr-2" />
-                                        Delete
-                                      </button>
-                                    ) : sprint.status === "COMPLETED" || sprint.status === "ARCHIVED" ? (
-                                      <div className="px-3 py-2 text-sm text-gray-400 italic">
-                                        Cannot modify completed sprint
-                                      </div>
-                                    ) : (
-                                      <button
-                                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center text-red-600"
-                                        onClick={() => handleDeleteSprint(sprint.id)}
-                                      >
-                                        <Trash2 className="h-4 w-4 mr-2" />
-                                        Delete
-                                      </button>
-                                    )}
-                                  </div>
-                                )}
+                              ) : sprint.status === "COMPLETED" ? (
+                                <Button 
+                                  variant="secondary" 
+                                  size="sm"
+                                  disabled
+                                  className="bg-green-100 text-green-700 border-green-200"
+                                >
+                                  Completed
+                                </Button>
+                              ) : (
+                                <Button 
+                                  variant="secondary" 
+                                  size="sm"
+                                  onClick={() => handleStartSprint(sprint.id)}
+                                >
+                                  Start sprint
+                                </Button>
+                              )}
                               </div>
-                            )}
-                          </div>
+                          )}
+                          {canManageSprints(userPermissions) && (
+                            <div className="relative">
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-8 w-8 sprint-edit-button"
+                                onClick={() => setOpenSprintMenu(openSprintMenu === sprint.id ? null : sprint.id)}
+                              >
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                              
+                              {openSprintMenu === sprint.id && (
+                                <div 
+                                  ref={sprintMenuRef}
+                                  className="absolute right-0 top-full mt-1 w-48 bg-white rounded shadow-lg z-10 py-1 border"
+                                >
+                                  <button
+                                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center"
+                                    onClick={() => handleMoveSprint(sprint.id, 'up')}
+                                  >
+                                    <ChevronUp className="h-4 w-4 mr-2" />
+                                    Move up
+                                  </button>
+                                  <button
+                                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center"
+                                    onClick={() => handleMoveSprint(sprint.id, 'down')}
+                                  >
+                                    <ChevronDown className="h-4 w-4 mr-2" />
+                                    Move down
+                                  </button>
+                                  <button
+                                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center"
+                                    onClick={() => handleEditSprint(sprint)}
+                                  >
+                                    <Edit className="h-4 w-4 mr-2" />
+                                    Edit
+                                  </button>
+                                  
+                                  {/* Show different actions based on sprint status */}
+                                  {sprint.status === "ACTIVE" ? (
+                                    <button
+                                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center text-yellow-600"
+                                      onClick={() => handleCancelSprint(sprint.id)}
+                                    >
+                                      <X className="h-4 w-4 mr-2" />
+                                      Cancel Sprint
+                                    </button>
+                                  ) : sprint.status === "NOT_STARTED" ? (
+                                    <button
+                                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center text-red-600"
+                                      onClick={() => handleDeleteSprint(sprint.id)}
+                                    >
+                                      <Trash2 className="h-4 w-4 mr-2" />
+                                      Delete
+                                    </button>
+                                  ) : sprint.status === "COMPLETED" || sprint.status === "ARCHIVED" ? (
+                                    <div className="px-3 py-2 text-sm text-gray-400 italic">
+                                      Cannot modify completed sprint
+                                    </div>
+                                  ) : (
+                                    <button
+                                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center text-red-600"
+                                      onClick={() => handleDeleteSprint(sprint.id)}
+                                    >
+                                      <Trash2 className="h-4 w-4 mr-2" />
+                                      Delete
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
+                      </div>
 
-                        {expandedSprint === sprint.id && (
-                          <div className="ml-6 mt-2">
-                            {/* Task Items - Sort by priority */}
+                      {expandedSprint === sprint.id && (
+                        <div className="ml-6 mt-2">
+                          {/* Task Items - Sort by priority */}
                             {sprintTasks.length > 0 ? (
                               sortTasksByPriority(sprintTasks).map(task => (
-                                <div className={`border rounded-sm mb-2 ${isTaskDimmed(task.priority) ? 'opacity-50' : ''}`} key={task.id}>
-                                  <div className="flex items-center p-3">
-                                    <input 
-                                      type="checkbox" 
-                                      className="mr-3" 
-                                      checked={task.status === "DONE"}
-                                      onChange={(e) => {
-                                        if (e.target.checked) {
-                                          handleStatusChange(task.id, "DONE");
-                                        } else {
-                                          handleStatusChange(task.id, "TODO");
-                                        }
-                                      }} 
-                                      disabled={isTaskDimmed(task.priority)}
-                                    />
-                                    
-                                    {/* Priority indicator */}
-                                    <div className={`w-6 h-6 rounded text-xs flex items-center justify-center mr-2 border ${getPriorityColorClass(task.priority)}`}>
-                                      {getPriorityIcon(task.priority)}
-                                    </div>
-                                    
-                                    <span className={`text-blue-600 font-medium text-sm mr-2 ${isTaskDimmed(task.priority) ? 'text-gray-400' : ''}`}>{task.shortKey || task.id.substring(0, 8)}</span>
+                              <div className={`border rounded-sm mb-2 ${isTaskDimmed(task.priority) ? 'opacity-50' : ''}`} key={task.id}>
+                                <div className="flex items-center p-3">
+                                  <input 
+                                    type="checkbox" 
+                                    className="mr-3" 
+                                    checked={task.status === "DONE"}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        handleStatusChange(task.id, "DONE");
+                                      } else {
+                                        handleStatusChange(task.id, "TODO");
+                                      }
+                                    }} 
+                                    disabled={isTaskDimmed(task.priority)}
+                                  />
+                                  
+                                  {/* Priority indicator */}
+                                  <div className={`w-6 h-6 rounded text-xs flex items-center justify-center mr-2 border ${getPriorityColorClass(task.priority)}`}>
+                                    {getPriorityIcon(task.priority)}
+                                  </div>
+                                  
+                                  <span className={`text-blue-600 font-medium text-sm mr-2 ${isTaskDimmed(task.priority) ? 'text-gray-400' : ''}`}>{task.shortKey || task.id.substring(0, 8)}</span>
                                     <span className={`text-sm flex-1 ${isTaskDimmed(task.priority) ? 'text-gray-400' : ''}`}>{task.title}</span>
-                                    {isTaskDimmed(task.priority) && (
-                                      <span className="ml-2 text-xs text-gray-500 italic">
-                                        ({task.priority === 'BLOCK' ? 'Blocked' : 'Rejected'})
-                                      </span>
-                                    )}
+                                  {isTaskDimmed(task.priority) && (
+                                    <span className="ml-2 text-xs text-gray-500 italic">
+                                      ({task.priority === 'BLOCK' ? 'Blocked' : 'Rejected'})
+                                    </span>
+                                  )}
                                     
                                     {/* Assignee Avatar */}
                                     {task.assigneeId && (() => {
@@ -2219,54 +2219,54 @@ export default function BacklogPage() {
                                     })()}
                                     
                                     <div className="ml-auto flex items-center space-x-2">
-                                      <Button size="sm" variant="ghost" className="h-8 w-8">
-                                        <Edit className="h-4 w-4" />
-                                      </Button>
-                                      <Button variant="ghost" size="sm" className="h-8 w-8">
-                                        <MoreHorizontal className="h-4 w-4" />
-                                      </Button>
-                                    </div>
+                                    <Button size="sm" variant="ghost" className="h-8 w-8">
+                                      <Edit className="h-4 w-4" />
+                                    </Button>
+                                    <Button variant="ghost" size="sm" className="h-8 w-8">
+                                      <MoreHorizontal className="h-4 w-4" />
+                                    </Button>
                                   </div>
                                 </div>
-                              ))
-                            ) : (
-                              <div className="p-8 border border-dashed rounded-md text-center">
+                              </div>
+                            ))
+                          ) : (
+                            <div className="p-8 border border-dashed rounded-md text-center">
                                 <p className="text-gray-500">
                                   {hasActiveFilters() ? "No tasks match the current filters" : "No tasks in this sprint yet. Add tasks from the backlog or create new ones."}
                                 </p>
-                              </div>
-                            )}
-
-                            {/* Create new task input */}
-                            <div className="border border-blue-300 rounded-sm p-3 flex items-center mt-3">
-                              <input type="checkbox" className="mr-3" disabled />
-                              <ChevronDown className="h-4 w-4 mr-2 text-gray-400" />
-                              <Input 
-                                className="border-none text-sm h-7 flex-1"
-                                placeholder="What needs to be done?"
-                                value={newTaskTitle}
-                                onChange={(e) => setNewTaskTitle(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter' && !isCreating) {
-                                    handleCreateTask();
-                                  }
-                                }}
-                              />
-                              {isCreating && <div className="ml-2 animate-spin h-4 w-4 border-2 border-blue-500 rounded-full border-t-transparent"></div>}
-                              {newTaskTitle && !isCreating && (
-                                <Button 
-                                  variant="ghost" 
-                                  size="sm" 
-                                  className="ml-2 text-blue-500"
-                                  onClick={handleCreateTask}
-                                >
-                                  Add
-                                </Button>
-                              )}
                             </div>
+                          )}
+
+                          {/* Create new task input */}
+                          <div className="border border-blue-300 rounded-sm p-3 flex items-center mt-3">
+                            <input type="checkbox" className="mr-3" disabled />
+                            <ChevronDown className="h-4 w-4 mr-2 text-gray-400" />
+                            <Input 
+                              className="border-none text-sm h-7 flex-1"
+                              placeholder="What needs to be done?"
+                              value={newTaskTitle}
+                              onChange={(e) => setNewTaskTitle(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !isCreating) {
+                                  handleCreateTask();
+                                }
+                              }}
+                            />
+                            {isCreating && <div className="ml-2 animate-spin h-4 w-4 border-2 border-blue-500 rounded-full border-t-transparent"></div>}
+                            {newTaskTitle && !isCreating && (
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="ml-2 text-blue-500"
+                                onClick={handleCreateTask}
+                              >
+                                Add
+                              </Button>
+                            )}
                           </div>
-                        )}
-                      </div>
+                        </div>
+                      )}
+                    </div>
                     );
                   })
                 ) : (
@@ -2379,7 +2379,7 @@ export default function BacklogPage() {
                                       displayName={assigneeName}
                                       size="small"
                                     />
-                                  </div>
+                                    </div>
                                 );
                               })()}
                               
@@ -2462,20 +2462,20 @@ export default function BacklogPage() {
                   className="w-full p-2 border rounded"
                 />
               </div>
-            
+              
               <div className="mb-4">
                 <label className="block text-gray-700 text-sm font-medium mb-2">Start date</label>
-                <Input
+                <Input 
                   type="date"
                   value={currentSprint.startDate ? new Date(currentSprint.startDate).toISOString().split('T')[0] : ''}
                   onChange={(e) => setCurrentSprint({...currentSprint, startDate: new Date(e.target.value).toISOString()})}
                   className="w-full p-2 border rounded"
                 />
               </div>
-
+              
               <div className="mb-4">
                 <label className="block text-gray-700 text-sm font-medium mb-2">End date</label>
-                <Input
+                <Input 
                   type="date"
                   value={currentSprint.endDate ? new Date(currentSprint.endDate).toISOString().split('T')[0] : ''}
                   onChange={(e) => setCurrentSprint({...currentSprint, endDate: new Date(e.target.value).toISOString()})}
@@ -2491,7 +2491,7 @@ export default function BacklogPage() {
                   className="w-full p-2 border rounded h-32"
                 />
               </div>
-
+              
               <div className="flex justify-end mt-6 space-x-2">
                 <Button 
                   variant="outline"

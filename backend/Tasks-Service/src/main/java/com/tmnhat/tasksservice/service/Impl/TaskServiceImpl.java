@@ -441,12 +441,13 @@ public class TaskServiceImpl implements TaskService {
                 throw new ResourceNotFoundException("Task not found with ID " + taskId);
             }
 
-            // Prepare request for AI service
+            // Prepare request for AI service - send fields directly without "task" wrapper
             Map<String, Object> requestBody = new HashMap<>();
-            Map<String, Object> taskData = new HashMap<>();
-            taskData.put("title", task.getTitle());
-            taskData.put("description", task.getDescription() != null ? task.getDescription() : "");
-            requestBody.put("task", taskData);
+            requestBody.put("title", task.getTitle());
+            requestBody.put("description", task.getDescription() != null ? task.getDescription() : "");
+            requestBody.put("label", ""); // Default empty label
+            requestBody.put("priority", task.getPriority() != null ? task.getPriority() : "MEDIUM");
+            requestBody.put("attachments_count", 0); // Default 0 attachments
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);

@@ -412,7 +412,7 @@ export default function ProjectBoardPage() {
       
       // ✅ Final check before state update
       if (mountedRef.current) {
-        setUserProjects(combinedProjects);
+      setUserProjects(combinedProjects);
         hasFetchedProjectsRef.current = true;
         lastFetchedUserIdRef.current = currentUserId;
         console.log('✅ [PROJECTS] User projects loaded:', combinedProjects.length);
@@ -420,13 +420,13 @@ export default function ProjectBoardPage() {
     } catch (error) {
       console.log('📝 [PROJECTS] Failed to fetch user projects - using recent projects only');
       if (mountedRef.current) {
-        setUserProjects(getRecentProjects());
+      setUserProjects(getRecentProjects());
         hasFetchedProjectsRef.current = true;
         lastFetchedUserIdRef.current = currentUserId;
       }
     } finally {
       if (mountedRef.current) {
-        setLoadingProjects(false);
+      setLoadingProjects(false);
       }
     }
   };
@@ -3156,7 +3156,7 @@ export default function ProjectBoardPage() {
                       <svg width="20" height="20" className="mr-2" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M12 6V18M6 12H18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                       </svg>
-                      Create Your First Project
+                      Create Your Project
                     </Button>
                     <Button 
                       variant="outline"
@@ -3193,11 +3193,11 @@ export default function ProjectBoardPage() {
                 <div className="text-center max-w-4xl p-10 bg-white rounded-2xl shadow-lg border border-gray-100">
                   {/* Header */}
                   <div className="w-20 h-20 mx-auto mb-6 flex items-center justify-center bg-gradient-to-br from-green-500 to-blue-600 rounded-full text-white shadow-lg">
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M9 12L11 14L15 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      <path d="M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </div>
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M9 12L11 14L15 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </div>
                   <h2 className="text-2xl font-bold text-gray-900 mb-4">Select a Project</h2>
                   <p className="text-gray-600 mb-8 text-lg leading-relaxed">
                     You have <span className="font-semibold text-blue-600">{userProjects.length}</span> project{userProjects.length !== 1 ? 's' : ''} available. Choose one to continue working.
@@ -3257,31 +3257,31 @@ export default function ProjectBoardPage() {
                     </div>
                     
                     <div className="max-h-80 overflow-y-auto bg-gray-50 border-2 border-gray-200 rounded-xl">
-                      {userProjects.map((proj, index) => {
-                        const isRecent = isMounted && getRecentProjects().some(r => r.id === proj.id);
-                        return (
-                          <div
-                            key={proj.id}
+                        {userProjects.map((proj, index) => {
+                          const isRecent = isMounted && getRecentProjects().some(r => r.id === proj.id);
+                          return (
+                            <div
+                              key={proj.id}
                             className={`p-4 hover:bg-blue-50 cursor-pointer border-b border-gray-200 last:border-b-0 transition-all duration-150 ${
                               index === 0 ? 'rounded-t-xl' : ''
                             } ${
                               index === userProjects.length - 1 ? 'rounded-b-xl' : ''
                             }`}
-                            onClick={() => router.push(`/project/project_homescreen?projectId=${proj.id}`)}
-                          >
-                            <div className="flex items-center">
+                              onClick={() => router.push(`/project/project_homescreen?projectId=${proj.id}`)}
+                            >
+                              <div className="flex items-center">
                               <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center text-white font-bold mr-4 text-sm shadow-md">
-                                {proj.name.substring(0, 2).toUpperCase()}
-                              </div>
-                              <div className="text-left flex-1">
+                                  {proj.name.substring(0, 2).toUpperCase()}
+                                </div>
+                                <div className="text-left flex-1">
                                 <div className="flex items-center gap-3 mb-1">
                                   <div className="font-semibold text-gray-900">{proj.name}</div>
-                                  {isRecent && (
+                                    {isRecent && (
                                     <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-semibold">
                                       🕒 Recent
-                                    </span>
-                                  )}
-                                </div>
+                                      </span>
+                                    )}
+                                  </div>
                                 <div className="flex items-center gap-2 text-xs text-gray-500">
                                   <span className="bg-gray-200 px-2 py-1 rounded">{proj.projectType || 'Software'}</span>
                                   <span className="bg-gray-200 px-2 py-1 rounded">{proj.access || 'Private'}</span>
@@ -3296,17 +3296,17 @@ export default function ProjectBoardPage() {
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                                   <path d="M9 18L15 12L9 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                                 </svg>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                          );
+                        })}
+                      </div>
                   </div>
                   
                   {/* Action Buttons */}
                   <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                    <Button 
+                      <Button 
                       className="bg-blue-600 text-white hover:bg-blue-700 px-6 py-3 text-sm font-semibold rounded-lg shadow-md transform hover:scale-105 transition-all duration-200"
                       onClick={() => {
                         window.location.href = '/project/view_all_projects';
