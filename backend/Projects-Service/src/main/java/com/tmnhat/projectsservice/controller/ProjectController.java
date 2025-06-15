@@ -39,8 +39,14 @@ public class ProjectController {
     @GetMapping("/search/member")
     public ResponseEntity<?> searchProjectsByUserMembership(
             @RequestParam String keyword, 
-            @RequestParam UUID userId) {
-        List<Projects> results = projectService.searchProjectsByUserMembership(keyword, userId);
+            @RequestParam UUID userId,
+            @RequestParam(required = false, defaultValue = "false") boolean includeDeleted) {
+        List<Projects> results;
+        if (includeDeleted) {
+            results = projectService.searchProjectsByUserMembershipIncludeDeleted(keyword, userId);
+        } else {
+            results = projectService.searchProjectsByUserMembership(keyword, userId);
+        }
         return ResponseEntity.ok(Map.of("data", results));
     }
 
@@ -104,9 +110,28 @@ public class ProjectController {
     }
 
     @GetMapping("/{id:[0-9a-fA-F\\-]{36}}")
-    public ResponseEntity<ResponseDataAPI> getProjectById(@PathVariable UUID id) {
+    public ResponseEntity<ResponseDataAPI> getProjectById(
+            @PathVariable UUID id,
+            @RequestParam(required = false, defaultValue = "false") boolean includeDeleted) {
         ProjectValidator.validateProjectId(id);
-        Projects projects = projectService.getProjectById(id);
+        Projects projects;
+        
+        if (includeDeleted) {
+            // Use the method that includes deleted projects
+            try {
+                projects = projectService.getProjectByIdIncludeDeleted(id);
+            } catch (Exception e) {
+                return ResponseEntity.status(404).body(ResponseDataAPI.error("Project not found"));
+            }
+        } else {
+            // Use the regular method that excludes deleted projects
+            projects = projectService.getProjectById(id);
+        }
+        
+        if (projects == null) {
+            return ResponseEntity.status(404).body(ResponseDataAPI.error("Project not found"));
+        }
+        
         return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(projects));
     }
 
@@ -203,6 +228,27 @@ public class ProjectController {
         } catch (Exception e) {
             return ResponseEntity.status(500).body(ResponseDataAPI.error("Error checking permissions: " + e.getMessage()));
         }
+    }
+
+    @PutMapping("/{id:[0-9a-fA-F\\-]{36}}/soft-delete")
+    public ResponseEntity<ResponseDataAPI> softDeleteProject(@PathVariable UUID id) {
+        ProjectValidator.validateProjectId(id);
+        projectService.softDeleteProject(id);
+        return ResponseEntity.ok(ResponseDataAPI.successWithoutMetaAndData());
+    }
+
+    @PutMapping("/{id:[0-9a-fA-F\\-]{36}}/restore")
+    public ResponseEntity<ResponseDataAPI> restoreProject(@PathVariable UUID id) {
+        ProjectValidator.validateProjectId(id);
+        projectService.restoreProject(id);
+        return ResponseEntity.ok(ResponseDataAPI.successWithoutMetaAndData());
+    }
+
+    @DeleteMapping("/{id:[0-9a-fA-F\\-]{36}}/permanent")
+    public ResponseEntity<ResponseDataAPI> permanentDeleteProject(@PathVariable UUID id) {
+        ProjectValidator.validateProjectId(id);
+        projectService.permanentDeleteProject(id);
+        return ResponseEntity.ok(ResponseDataAPI.successWithoutMetaAndData());
     }
 
 }

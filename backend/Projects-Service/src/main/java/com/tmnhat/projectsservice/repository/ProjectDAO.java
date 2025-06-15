@@ -172,6 +172,7 @@ public class ProjectDAO extends BaseDAO {
                 .key(rs.getString("key"))
                 .projectType(rs.getString("project_type"))
                 .access(rs.getString("access"))
+                .deletedAt(rs.getTimestamp("deleted_at") != null ? rs.getTimestamp("deleted_at").toLocalDateTime() : null)
                 .build();
     }
     public UUID getLastInsertedProjectId() throws SQLException {
@@ -234,6 +235,52 @@ public class ProjectDAO extends BaseDAO {
                     return null;
                 }
             }
+        });
+    }
+
+    // ✅ NEW: Soft delete methods
+    public void softDeleteProject(UUID id) throws SQLException {
+        String sql = "UPDATE projects SET deleted_at = NOW() WHERE id = ?";
+        executeUpdate(sql, stmt -> stmt.setObject(1, id));
+    }
+    
+    public void restoreProject(UUID id) throws SQLException {
+        String sql = "UPDATE projects SET deleted_at = NULL WHERE id = ?";
+        executeUpdate(sql, stmt -> stmt.setObject(1, id));
+    }
+    
+    public void permanentDeleteProject(UUID id) throws SQLException {
+        String sql = "DELETE FROM projects WHERE id = ?";
+        executeUpdate(sql, stmt -> stmt.setObject(1, id));
+    }
+    
+    public Projects getProjectByIdIncludeDeleted(UUID id) throws SQLException {
+        String sql = "SELECT * FROM projects WHERE id = ?";
+        return executeQuery(sql, stmt -> {
+            stmt.setObject(1, id);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                return mapResultSetToProject(rs);
+            }
+            return null;
+        });
+    }
+    
+    public List<Projects> searchProjectsByUserMembershipIncludeDeleted(String keyword, UUID userId) throws SQLException {
+        String sql = "SELECT DISTINCT p.* FROM projects p " +
+                     "INNER JOIN project_members pm ON p.id = pm.project_id " +
+                     "WHERE pm.user_id = ? " +
+                     "AND p.name ILIKE ? " +
+                     "ORDER BY p.created_at DESC";
+        return executeQuery(sql, stmt -> {
+            stmt.setObject(1, userId);
+            stmt.setString(2, "%" + keyword + "%");
+            List<Projects> projects = new ArrayList<>();
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                projects.add(mapResultSetToProject(rs));
+            }
+            return projects;
         });
     }
 }

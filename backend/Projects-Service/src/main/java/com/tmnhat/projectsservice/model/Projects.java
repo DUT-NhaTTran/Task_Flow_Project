@@ -14,6 +14,8 @@ public class Projects {
     private LocalDateTime createdAt;
     private String key;
     private String projectType;
+    private String access;
+    private LocalDateTime deletedAt;
 
     public String getKey() {
         return key;
@@ -39,8 +41,13 @@ public class Projects {
         this.access = access;
     }
 
-    private String access;
+    public LocalDateTime getDeletedAt() {
+        return deletedAt;
+    }
 
+    public void setDeletedAt(LocalDateTime deletedAt) {
+        this.deletedAt = deletedAt;
+    }
 
     public Projects() {
     }
@@ -52,9 +59,10 @@ public class Projects {
         this.ownerId = builder.ownerId;
         this.deadline = builder.deadline;
         this.createdAt = builder.createdAt;
-        this.key=builder.key;
-        this.projectType=builder.projectType;
-        this.access=builder.access;
+        this.key = builder.key;
+        this.projectType = builder.projectType;
+        this.access = builder.access;
+        this.deletedAt = builder.deletedAt;
     }
 
     // Getters & Setters
@@ -118,7 +126,7 @@ public class Projects {
         private String key;
         private String projectType;
         private String access;
-
+        private LocalDateTime deletedAt;
 
         public Builder() {}
 
@@ -151,20 +159,27 @@ public class Projects {
             this.createdAt = createdAt;
             return this;
         }
+        
         public Builder key(String key) {
             this.key = key;
             return this;
         }
+        
         public Builder projectType(String projectType) {
             this.projectType = projectType;
             return this;
-
         }
+        
         public Builder access(String access) {
             this.access = access;
             return this;
-
         }
+
+        public Builder deletedAt(LocalDateTime deletedAt) {
+            this.deletedAt = deletedAt;
+            return this;
+        }
+        
         public Projects build() {
             return new Projects(this);
         }

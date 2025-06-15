@@ -901,6 +901,107 @@ export default function ProjectSummaryPage() {
         }
     }
 
+    // Show project selection interface when no projectId is available
+    if (!projectId && !isLoading) {
+        return (
+            <div className="min-h-screen bg-gray-50 flex">
+                <NavigationProgress />
+                <Sidebar projectId={undefined} />
+                
+                <div className="flex-1 flex flex-col">
+                    <TopNavigation />
+                    
+                    <main className="flex-1 p-6 overflow-y-auto">
+                        <div className="max-w-4xl mx-auto">
+                            <div className="text-center mb-8">
+                                <FolderOpen className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                                <h1 className="text-3xl font-bold text-gray-900 mb-2">Select a Project</h1>
+                                <p className="text-gray-600">Choose a project to view its summary and analytics</p>
+                            </div>
+                            
+                            {/* Project Selection Grid */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {userProjects.length > 0 ? (
+                                    userProjects.map((proj) => (
+                                        <Card 
+                                            key={proj.id} 
+                                            className="hover:shadow-lg transition-shadow cursor-pointer border-2 hover:border-blue-300"
+                                            onClick={() => handleProjectChange(proj)}
+                                        >
+                                            <CardContent className="p-6">
+                                                <div className="flex items-start gap-4">
+                                                    <div className={`w-12 h-12 ${getProjectTypeColor(proj.projectType)} rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm`}>
+                                                        <span className="text-white font-bold text-lg">
+                                                            {proj.key || proj.name?.charAt(0)?.toUpperCase() || 'P'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <h3 className="font-semibold text-gray-900 text-lg mb-1 truncate">
+                                                            {proj.name}
+                                                        </h3>
+                                                        <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
+                                                            <span>{getProjectTypeIcon(proj.projectType)}</span>
+                                                            <span>{proj.projectType || 'Software'}</span>
+                                                            {proj.key && (
+                                                                <>
+                                                                    <span>•</span>
+                                                                    <span className="font-mono">{proj.key}</span>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                        {proj.description && (
+                                                            <p className="text-sm text-gray-600 line-clamp-2">
+                                                                {proj.description}
+                                                            </p>
+                                                        )}
+                                                        {isRecentProject(proj.id) && (
+                                                            <Badge variant="outline" className="mt-2 text-xs">
+                                                                Recent
+                                                            </Badge>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="mt-4 pt-4 border-t border-gray-100">
+                                                    <div className="flex items-center justify-between text-sm text-gray-500">
+                                                        <span>Click to view summary</span>
+                                                        <ChevronRight className="h-4 w-4" />
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    ))
+                                ) : (
+                                    <div className="col-span-full">
+                                        <Card className="p-8">
+                                            <CardContent className="text-center">
+                                                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                                    <FolderOpen className="h-8 w-8 text-gray-400" />
+                                                </div>
+                                                <h3 className="text-lg font-medium text-gray-900 mb-2">No Projects Found</h3>
+                                                <p className="text-gray-500 mb-4">
+                                                    You don't have access to any projects yet.
+                                                </p>
+                                                <Button 
+                                                    className="bg-blue-600 text-white hover:bg-blue-700"
+                                                    onClick={() => {
+                                                        window.location.href = '/project/view_all_projects';
+                                                    }}
+                                                >
+                                                    Browse All Projects
+                                                </Button>
+                                            </CardContent>
+                                        </Card>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </main>
+                </div>
+            </div>
+        )
+    }
+
     if (isLoading) {
         return (
             <div className="min-h-screen bg-gray-50 flex">

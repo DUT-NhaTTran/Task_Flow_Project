@@ -49,7 +49,7 @@ interface Project {
 type FilterType = "recent-views" | "assigned-to-me" | "created-by-me" | "done" | "overdue";
 type SortType = "updated" | "created" | "due-date" | "status" | "title";
 
-// Badge component (inline to avoid dependency issues)
+// Badge component
 interface BadgeProps {
   children: React.ReactNode;
   variant?: "default" | "secondary" | "destructive" | "outline";
@@ -76,43 +76,33 @@ export default function AllWorkPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   
-  // Enhanced userId retrieval with better fallbacks
+  // Get userId from localStorage
   const [userId, setUserId] = useState<string | null>(null);
   
   useEffect(() => {
-    // Try multiple sources for userId
-    const getUserId = () => {
-      // 1. From URL params
-      const urlUserId = searchParams?.get("userId");
-      if (urlUserId) {
-        console.log("📍 Found userId from URL params:", urlUserId);
-        return urlUserId;
+    if (typeof window !== "undefined") {
+      const localUserIds = [
+        localStorage.getItem("userId"),
+        localStorage.getItem("ownerId"), 
+        localStorage.getItem("currentUserId"),
+        localStorage.getItem("user_id")
+      ];
+      
+      for (const id of localUserIds) {
+        if (id && id.trim()) {
+          setUserId(id);
+          break;
+        }
       }
       
-      // 2. From localStorage - try different keys
-      if (typeof window !== "undefined") {
-        const localUserIds = [
-          localStorage.getItem("userId"),
-          localStorage.getItem("ownerId"), 
-          localStorage.getItem("currentUserId"),
-          localStorage.getItem("user_id")
-        ];
-        
-        for (const id of localUserIds) {
-          if (id && id.trim()) {
-            console.log("📍 Found userId from localStorage:", id);
-            return id;
-          }
-        }
-        
-        // 3. Try parsing userInfo object
+      // Try parsing userInfo object
+      if (!userId) {
         const userInfo = localStorage.getItem("userInfo");
         if (userInfo) {
           try {
             const parsed = JSON.parse(userInfo);
             if (parsed.id) {
-              console.log("📍 Found userId from userInfo:", parsed.id);
-              return parsed.id;
+              setUserId(parsed.id);
             }
           } catch (e) {
             console.warn("Failed to parse userInfo from localStorage");
@@ -120,23 +110,16 @@ export default function AllWorkPage() {
         }
       }
       
-      console.warn("⚠️ No userId found in any source");
-      return null;
-    };
-    
-    const foundUserId = getUserId();
-    setUserId(foundUserId);
-    console.log("🔍 Final userId set:", foundUserId);
-  }, [searchParams]);
-  
-  console.log("🔍 Current Work page userId:", userId);
+      // Check URL params as fallback  
+      const urlUserId = searchParams?.get("userId");
+      if (urlUserId && !userId) {
+        setUserId(urlUserId);
+      }
+    }
+  }, [searchParams, userId]);
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(true);
-  const hasFetchedRef = useRef(false); // Use ref instead of state to avoid re-renders
-  const mountedRef = useRef(true); // Track if component is mounted
-  const lastFetchedUserIdRef = useRef<string | null>(null); // Track last successfully fetched userId
   const [searchTerm, setSearchTerm] = useState("");
   const [activeFilter, setActiveFilter] = useState<FilterType>("recent-views");
   const [sortBy, setSortBy] = useState<SortType>("updated");
@@ -155,171 +138,47 @@ export default function AllWorkPage() {
     }
   }, []);
 
-  useEffect(() => {
-    // Reset fetch flag when userId changes to a different value
-    if (userId && userId !== lastFetchedUserIdRef.current) {
-      console.log("🔄 UserId changed from", lastFetchedUserIdRef.current, "to", userId);
-      hasFetchedRef.current = false;
-      setLoading(true);
-    }
-  }, [userId]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  // Fetch user's tasks from all projects - memoized with useCallback
-  const fetchAllTasks = useCallback(async () => {
-    if (!userId) {
-      console.log("⏹️ No userId available, skipping fetch");
-      setLoading(false);
-      return;
-    }
-    
-    // Prevent multiple simultaneous calls or re-fetching
-    if (hasFetchedRef.current) {
-      console.log("⏸️ Data already fetched, skipping fetch");
-      return;
-    }
-    
-    // Prevent re-fetching the same userId
-    if (userId === lastFetchedUserIdRef.current) {
-      console.log("⏸️ Already fetched data for this userId, skipping fetch");
-      return;
-    }
-    
-    // Check if component is still mounted
-    if (!mountedRef.current) {
-      console.log("⏸️ Component unmounted, skipping fetch");
-      return;
-    }
-    
-    console.log("🚀 Starting to fetch projects and tasks for userId:", userId);
+  // Fetch all data
+  const fetchAllData = useCallback(async () => {
+    if (!userId) return;
     
     try {
-      setLoading(true);
+      // Fetch projects using the correct API
+      const projectsRes = await axios.get(`http://localhost:8083/api/projects/search/member?keyword=&userId=${userId}`);
+      const userProjects = Array.isArray(projectsRes.data?.data) ? projectsRes.data.data : [];
+      setProjects(userProjects);
       
-      // Add timeout for API call
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => {
-        controller.abort();
-        console.error("❌ API call timed out after 10 seconds");
-      }, 10000);
-      
-      console.log("📡 Making API call to fetch projects...");
-      
-      // First, get all projects where user is a member
-      const projectsRes = await axios.get(
-        `http://localhost:8083/api/projects/search/member?keyword=&userId=${userId}`,
-        { 
-          signal: controller.signal,
-          timeout: 8000 // 8 second timeout
-        }
-      );
-      
-      clearTimeout(timeoutId);
-      
-      console.log("📡 Projects API response:", projectsRes.status, projectsRes.data);
-      
-      const userProjects = projectsRes.data?.data || [];
-      if (mountedRef.current) {
-        setProjects(userProjects);
-      }
-      
-      console.log(`📋 Fetching user projects for: ${userId}`);
-      console.log(`✅ User projects loaded: ${userProjects.length}`);
-      
-      // If no projects, no tasks to fetch - this is normal for new users
-      if (userProjects.length === 0) {
-        console.log("ℹ️ New user with no projects - showing welcome UI");
-        if (mountedRef.current) {
-          setTasks([]);
-          setLoading(false);
-        }
-        return;
-      }
-      
-      // Then fetch tasks from all these projects
-      console.log("📋 Fetching tasks from projects...");
+      // Fetch tasks from all projects
       const allTasks: Task[] = [];
-      
       for (const project of userProjects) {
         try {
-          console.log(`📄 Fetching tasks for project: ${project.name} (${project.id})`);
-          const tasksRes = await axios.get(`http://localhost:8085/api/tasks/project/${project.id}`, {
-            timeout: 5000 // 5 second timeout per project
-          });
-          
-          // This endpoint returns data directly, not wrapped in ResponseDataAPI
+          const tasksRes = await axios.get(`http://localhost:8085/api/tasks/project/${project.id}`);
           const projectTasks = Array.isArray(tasksRes.data) ? tasksRes.data : [];
-          console.log(`📄 Got ${projectTasks.length} tasks from ${project.name}`);
           
-          // Add project info to tasks
           const tasksWithProjectInfo = projectTasks.map((task: Task) => ({
             ...task,
             projectId: project.id,
             projectName: project.name,
             status: task.status?.toUpperCase().replace(" ", "_") as Task["status"],
-            // If task is assigned to current user but no assigneeName, set it
             assigneeName: task.assigneeId === userId && !task.assigneeName ? "You" : task.assigneeName
           }));
           
           allTasks.push(...tasksWithProjectInfo);
         } catch (projectErr) {
-          console.warn(`⚠️ Error fetching tasks for project ${project.name}:`, projectErr);
-          // Continue with other projects instead of failing completely
+          console.warn(`Error fetching tasks for project ${project.name}:`, projectErr);
         }
       }
       
-      console.log(`📦 All tasks fetched: ${allTasks.length} tasks from ${userProjects.length} projects`);
-      if (mountedRef.current) {
-        setTasks(allTasks);
-      }
-      
+      setTasks(allTasks);
     } catch (err) {
-      console.error("❌ Error fetching projects or tasks:", err);
-      
-      // More specific error handling
-      if (axios.isAxiosError(err)) {
-        if (err.code === 'ECONNABORTED') {
-          toast.error("Request timed out. Please check your internet connection.");
-        } else if (err.response?.status === 500) {
-          toast.error("Server error. Please try again later.");
-        } else if (err.response?.status === 404) {
-          console.log("ℹ️ User not found in any projects - treating as new user");
-          if (mountedRef.current) {
-            setProjects([]);
-            setTasks([]);
-          }
-        } else {
-          toast.error("Failed to load tasks. Please try again.");
-        }
-      } else {
-        toast.error("An unexpected error occurred.");
-      }
-    } finally {
-      console.log("🏁 Fetch completed, setting loading to false");
-      if (mountedRef.current) {
-        setLoading(false);
-        hasFetchedRef.current = true;
-        lastFetchedUserIdRef.current = userId; // Record successful fetch for this userId
-      }
+      console.error("Error fetching data:", err);
+      toast.error("Failed to load data");
     }
   }, [userId]);
 
-  // Trigger fetch when conditions are met
   useEffect(() => {
-    console.log("🔄 useEffect triggered - userId:", userId, "hasFetched:", hasFetchedRef.current, "lastFetched:", lastFetchedUserIdRef.current);
-    if (userId && !hasFetchedRef.current && userId !== lastFetchedUserIdRef.current) {
-      console.log("✅ Conditions met, calling fetchAllTasks");
-      fetchAllTasks();
-    } else {
-      console.log("❌ Conditions not met, skipping fetch");
-    }
-  }, [userId]); // Remove fetchAllTasks dependency to break the loop
+    fetchAllData();
+  }, [fetchAllData]);
 
   // Filter tasks based on active filter - memoized
   const filteredTasks = useMemo(() => {
@@ -415,13 +274,6 @@ export default function AllWorkPage() {
           if (!b.dueDate) return -1;
           return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
         });
-      // case "priority":
-      //   return sorted.sort((a, b) => {
-      //     // Use storyPoint as priority (higher story point = higher priority)
-      //     const aStory = a.storyPoint || 0;
-      //     const bStory = b.storyPoint || 0;
-      //     return bStory - aStory;
-      //   });
       case "status":
         return sorted.sort((a, b) => {
           const aStatus = a.status || "";
@@ -531,10 +383,9 @@ export default function AllWorkPage() {
                   <Button 
                     variant="outline" 
                     size="sm"
-                    onClick={fetchAllTasks}
-                    disabled={loading}
+                    onClick={fetchAllData}
                   >
-                    <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+                    <RefreshCw className="h-4 w-4 mr-2" />
                     Refresh
                   </Button>
                   <Button 
@@ -546,14 +397,6 @@ export default function AllWorkPage() {
                     Filters
                     <ChevronDown className="h-4 w-4 ml-1" />
                   </Button>
-                  
-                  {/* Debug Info */}
-                  <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                    User: {userId ? `${userId.substring(0, 8)}...` : 'None'} | 
-                    Projects: {projects.length} | 
-                    Tasks: {tasks.length}
-                    {loading && " | Loading..."}
-                  </div>
                 </div>
               )}
             </div>
@@ -561,180 +404,143 @@ export default function AllWorkPage() {
             {/* Search and Filters */}
             {userId && (
               <div className="mt-4 space-y-4">
-                {/* New User Welcome - Show if no projects */}
-                {projects.length === 0 ? (
-                  <div className="text-center py-12 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
-                    <div className="w-20 h-20 mx-auto mb-6 flex items-center justify-center bg-blue-100 rounded-full text-blue-600">
-                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M12 2L13.09 8.26L20 9L13.09 9.74L12 16L10.91 9.74L4 9L10.91 8.26L12 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        <path d="M8 21L9.09 15.26L15 14L9.09 13.74L8 8L6.91 13.74L1 14L6.91 15.26L8 21Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
+                {/* Projects Section - Full Width */}
+                <div className="w-full">
+                  {/* Project Cards - Full Width Grid with Fixed Card Width */}
+                  <div className="flex flex-wrap gap-4 mb-6">
+                    {/* All Projects Card */}
+                    <div 
+                      className={`border rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer w-64 h-48 flex-shrink-0 ${
+                        selectedProjectForView === null 
+                          ? 'bg-blue-100 border-blue-300 ring-2 ring-blue-500' 
+                          : 'bg-gray-100 border-gray-300'
+                      }`}
+                      onClick={() => setSelectedProjectForView(null)}
+                    >
+                      <div className="flex items-start space-x-3 h-full">
+                        <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center flex-shrink-0">
+                          <span className="text-white font-medium text-xs">All</span>
+                        </div>
+                        <div className="flex-1 min-w-0 flex flex-col h-full">
+                          <h4 className="text-sm font-medium text-gray-900 truncate">
+                            All Projects
+                          </h4>
+                          <p className="text-xs text-gray-600 mt-1">
+                            View tasks from all projects
+                          </p>
+                          <div className="mt-2 flex-1">
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-gray-600">Total open items</span>
+                                <span className="bg-gray-200 text-gray-800 px-1.5 py-0.5 rounded-full text-xs font-medium">
+                                  {tasks.filter(t => t.status !== "DONE" && t.assigneeId === userId).length}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-gray-600">Total done items</span>
+                                <span className="text-gray-600 text-xs">
+                                  {tasks.filter(t => t.status === "DONE" && t.assigneeId === userId).length}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    <h3 className="text-xl font-semibold text-gray-900 mb-3">Welcome to TaskFlow!</h3>
-                    <p className="text-gray-600 mb-6 max-w-md mx-auto leading-relaxed">
-                      You haven't joined any projects yet. Create your first project or ask a team member to invite you to get started.
-                    </p>
-                    
-                    <div className="flex gap-3 justify-center">
-                      <Button 
-                        className="bg-blue-600 text-white hover:bg-blue-700 px-6 py-2 text-sm font-medium"
-                        onClick={() => router.push('/project/create_project')}
-                      >
-                        Create Your First Project
-                      </Button>
-                      <Button 
-                        variant="outline"
-                        className="px-6 py-2 text-sm font-medium"
-                        onClick={() => router.push('/project/view_all_projects')}
-                      >
-                        Browse Public Projects
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    {/* Projects Section - Full Width */}
-                    <div className="w-full">
-                      {/* Header with View all projects on far right */}
-                     
+
+                    {projects.slice(0, 7).map(project => {
+                      const projectTasks = tasks.filter(t => t.projectId === project.id);
+                      const openTasks = projectTasks.filter(t => t.status !== "DONE" && t.assigneeId === userId).length;
+                      const doneTasks = projectTasks.filter(t => t.status === "DONE" && t.assigneeId === userId).length;
+                      const isSelected = selectedProjectForView === project.id;
                       
-                      {/* Project Cards - Full Width Grid with Fixed Card Width */}
-                      <div className="flex flex-wrap gap-4 mb-6">
-                        {/* All Projects Card */}
+                      return (
                         <div 
+                          key={project.id} 
                           className={`border rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer w-64 h-48 flex-shrink-0 ${
-                            selectedProjectForView === null 
-                              ? 'bg-blue-100 border-blue-300 ring-2 ring-blue-500' 
-                              : 'bg-gray-100 border-gray-300'
+                            isSelected 
+                              ? 'bg-yellow-100 border-yellow-300 ring-2 ring-yellow-500' 
+                              : 'bg-yellow-50 border-yellow-200'
                           }`}
-                          onClick={() => setSelectedProjectForView(null)}
+                          onClick={() => setSelectedProjectForView(project.id)}
                         >
                           <div className="flex items-start space-x-3 h-full">
-                            <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center flex-shrink-0">
-                              <span className="text-white font-medium text-xs">All</span>
+                            {/* Project Icon - Smaller */}
+                            <div className="w-8 h-8 bg-orange-600 rounded flex items-center justify-center flex-shrink-0">
+                              <span className="text-white font-medium text-xs">
+                                {project.name.charAt(0).toUpperCase()}
+                              </span>
                             </div>
+                            
+                            {/* Project Info - Compact */}
                             <div className="flex-1 min-w-0 flex flex-col h-full">
                               <h4 className="text-sm font-medium text-gray-900 truncate">
-                                All Projects
+                                {project.name}
                               </h4>
                               <p className="text-xs text-gray-600 mt-1">
-                                View tasks from all projects
+                                Team-managed software
                               </p>
+                              
+                              {/* Quick Links - Compact */}
                               <div className="mt-2 flex-1">
+                                <h5 className="text-xs font-medium text-gray-700 mb-1">Quick links</h5>
                                 <div className="space-y-1">
                                   <div className="flex items-center justify-between text-xs">
-                                    <span className="text-gray-600">Total open items</span>
+                                    <span className="text-gray-600">My open work items</span>
                                     <span className="bg-gray-200 text-gray-800 px-1.5 py-0.5 rounded-full text-xs font-medium">
-                                      {tasks.filter(t => t.status !== "DONE" && t.assigneeId === userId).length}
+                                      {openTasks}
                                     </span>
                                   </div>
                                   <div className="flex items-center justify-between text-xs">
-                                    <span className="text-gray-600">Total done items</span>
-                                    <span className="text-gray-600 text-xs">
-                                      {tasks.filter(t => t.status === "DONE" && t.assigneeId === userId).length}
-                                    </span>
+                                    <span className="text-gray-600">Done work items</span>
+                                    <span className="text-gray-600 text-xs">{doneTasks}</span>
                                   </div>
+                                </div>
+                              </div>
+                              
+                              {/* Board Info - Compact - At bottom */}
+                              <div className="pt-2 border-t border-yellow-300 mt-auto">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs text-gray-600">1 board</span>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      localStorage.setItem("currentProjectId", project.id);
+                                      router.push(`/project/project_homescreen?projectId=${project.id}`);
+                                    }}
+                                    className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                                  >
+                                    View Board
+                                  </button>
                                 </div>
                               </div>
                             </div>
                           </div>
                         </div>
+                      );
+                    })}
+                  </div>
+                </div>
 
-                        {projects.slice(0, 7).map(project => {
-                          const projectTasks = tasks.filter(t => t.projectId === project.id);
-                          const openTasks = projectTasks.filter(t => t.status !== "DONE" && t.assigneeId === userId).length;
-                          const doneTasks = projectTasks.filter(t => t.status === "DONE" && t.assigneeId === userId).length;
-                          const isSelected = selectedProjectForView === project.id;
-                          
-                          return (
-                            <div 
-                              key={project.id} 
-                              className={`border rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer w-64 h-48 flex-shrink-0 ${
-                                isSelected 
-                                  ? 'bg-yellow-100 border-yellow-300 ring-2 ring-yellow-500' 
-                                  : 'bg-yellow-50 border-yellow-200'
-                              }`}
-                              onClick={() => setSelectedProjectForView(project.id)}
-                            >
-                              <div className="flex items-start space-x-3 h-full">
-                                {/* Project Icon - Smaller */}
-                                <div className="w-8 h-8 bg-orange-600 rounded flex items-center justify-center flex-shrink-0">
-                                  <span className="text-white font-medium text-xs">
-                                    {project.name.charAt(0).toUpperCase()}
-                                  </span>
-                                </div>
-                                
-                                {/* Project Info - Compact */}
-                                <div className="flex-1 min-w-0 flex flex-col h-full">
-                                  <h4 className="text-sm font-medium text-gray-900 truncate">
-                                    {project.name}
-                                  </h4>
-                                  <p className="text-xs text-gray-600 mt-1">
-                                    Team-managed software
-                                  </p>
-                                  
-                                  {/* Quick Links - Compact */}
-                                  <div className="mt-2 flex-1">
-                                    <h5 className="text-xs font-medium text-gray-700 mb-1">Quick links</h5>
-                                    <div className="space-y-1">
-                                      <div className="flex items-center justify-between text-xs">
-                                        <span className="text-gray-600">My open work items</span>
-                                        <span className="bg-gray-200 text-gray-800 px-1.5 py-0.5 rounded-full text-xs font-medium">
-                                          {openTasks}
-                                        </span>
-                                      </div>
-                                      <div className="flex items-center justify-between text-xs">
-                                        <span className="text-gray-600">Done work items</span>
-                                        <span className="text-gray-600 text-xs">{doneTasks}</span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                  
-                                  {/* Board Info - Compact - At bottom */}
-                                  <div className="pt-2 border-t border-yellow-300 mt-auto">
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-xs text-gray-600">1 board</span>
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          localStorage.setItem("currentProjectId", project.id);
-                                          router.push(`/project/project_homescreen?projectId=${project.id}`);
-                                        }}
-                                        className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
-                                      >
-                                        View Board
-                                      </button>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Search Bar */}
-                    <div className="flex items-center space-x-4">
-                      <div className="relative flex-1 max-w-md">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                        <Input
-                          placeholder="Search tasks..."
-                          value={searchTerm}
-                          onChange={(e) => setSearchTerm(e.target.value)}
-                          className="pl-10"
-                        />
-                      </div>
-                      
-                      <div className="flex items-center space-x-2">
-                        <SortDropdown
-                          value={sortBy}
-                          onSelect={(value) => setSortBy(value as SortType)}
-                        />
-                      </div>
-                    </div>
-                  </>
-                )}
+                {/* Search Bar */}
+                <div className="flex items-center space-x-4">
+                  <div className="relative flex-1 max-w-md">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                    <Input
+                      placeholder="Search tasks..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <SortDropdown
+                      value={sortBy}
+                      onSelect={(value) => setSortBy(value as SortType)}
+                    />
+                  </div>
+                </div>
               </div>
             )}
 
@@ -834,6 +640,7 @@ export default function AllWorkPage() {
                 </div>
               </div>
             )}
+
             {!userId ? (
               <div className="text-center py-12">
                 <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center bg-gray-100 rounded-full text-gray-400">
@@ -841,11 +648,6 @@ export default function AllWorkPage() {
                 </div>
                 <h3 className="text-lg font-medium text-gray-900 mb-1">No user selected</h3>
                 <p className="text-gray-500">Please log in to view your work items.</p>
-              </div>
-            ) : loading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="animate-spin h-8 w-8 border-2 border-blue-600 rounded-full border-t-transparent"></div>
-                <span className="ml-3 text-gray-600">Loading your tasks...</span>
               </div>
             ) : projects.length === 0 ? (
               <div className="text-center py-12">

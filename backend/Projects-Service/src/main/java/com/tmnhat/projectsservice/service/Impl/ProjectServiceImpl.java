@@ -269,10 +269,77 @@ public class ProjectServiceImpl implements ProjectService {
     @Override
     public UUID getScrumMasterId(UUID projectId) {
         try {
-            ProjectValidator.validateProjectId(projectId);
             return projectMemberDAO.getScrumMasterId(projectId);
         } catch (Exception e) {
-            throw new DatabaseException("Error getting scrum master ID: " + e.getMessage());
+            throw new DatabaseException("Error retrieving scrum master ID: " + e.getMessage());
+        }
+    }
+
+    // ✅ NEW: Soft delete methods implementation
+    @Override
+    public void softDeleteProject(UUID id) {
+        try {
+            ProjectValidator.validateProjectId(id);
+            Projects existingProject = projectDAO.getProjectById(id);
+            if (existingProject == null) {
+                throw new ResourceNotFoundException("Project not found with ID " + id);
+            }
+            projectDAO.softDeleteProject(id);
+        } catch (Exception e) {
+            throw new DatabaseException("Error soft deleting project: " + e.getMessage());
+        }
+    }
+    
+    @Override
+    public void restoreProject(UUID id) {
+        try {
+            ProjectValidator.validateProjectId(id);
+            // Check if project exists in deleted state
+            Projects existingProject = projectDAO.getProjectByIdIncludeDeleted(id);
+            if (existingProject == null) {
+                throw new ResourceNotFoundException("Project not found with ID " + id);
+            }
+            projectDAO.restoreProject(id);
+        } catch (Exception e) {
+            throw new DatabaseException("Error restoring project: " + e.getMessage());
+        }
+    }
+    
+    @Override
+    public void permanentDeleteProject(UUID id) {
+        try {
+            ProjectValidator.validateProjectId(id);
+            // Check if project exists (including deleted ones)
+            Projects existingProject = projectDAO.getProjectByIdIncludeDeleted(id);
+            if (existingProject == null) {
+                throw new ResourceNotFoundException("Project not found with ID " + id);
+            }
+            projectDAO.permanentDeleteProject(id);
+        } catch (Exception e) {
+            throw new DatabaseException("Error permanently deleting project: " + e.getMessage());
+        }
+    }
+    
+    @Override
+    public Projects getProjectByIdIncludeDeleted(UUID id) {
+        try {
+            ProjectValidator.validateProjectId(id);
+            Projects project = projectDAO.getProjectByIdIncludeDeleted(id);
+            if (project == null) {
+                throw new ResourceNotFoundException("Project not found with ID " + id);
+            }
+            return project;
+        } catch (Exception e) {
+            throw new DatabaseException("Error retrieving project including deleted: " + e.getMessage());
+        }
+    }
+    
+    @Override
+    public List<Projects> searchProjectsByUserMembershipIncludeDeleted(String keyword, UUID userId) {
+        try {
+            return projectDAO.searchProjectsByUserMembershipIncludeDeleted(keyword, userId);
+        } catch (Exception e) {
+            throw new DatabaseException("Error searching projects by user membership including deleted: " + e.getMessage());
         }
     }
 }

@@ -52,4 +52,14 @@ public interface ProjectService {
 
     UUID getScrumMasterId(UUID projectId);
 
+    void softDeleteProject(UUID id);
+    
+    void restoreProject(UUID id);
+    
+    void permanentDeleteProject(UUID id);
+    
+    Projects getProjectByIdIncludeDeleted(UUID id);
+    
+    List<Projects> searchProjectsByUserMembershipIncludeDeleted(String keyword, UUID userId);
+
 }
