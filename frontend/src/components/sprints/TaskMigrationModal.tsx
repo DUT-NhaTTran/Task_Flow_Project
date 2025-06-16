@@ -267,11 +267,7 @@ export function TaskMigrationModal({
             const backendMessage = sprintError?.response?.data?.message || sprintError?.response?.data?.error;
             toast.error(`Access denied: ${backendMessage || 'Permission check failed'}`);
             
-            // Additional debug info
-            console.log('🔍 PERMISSION DEBUG:');
-            console.log('- Check if this userId has PROJECT_OWNER role in this project');
-            console.log('- Sprint status should be NOT_STARTED for delete');
-            console.log('- Compare this userId with Postman success userId');
+           
           } else {
             toast.error(`Failed to cancel sprint: ${sprintError?.response?.data?.message || sprintError?.message || 'Unknown error'}`);
           }

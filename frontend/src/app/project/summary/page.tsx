@@ -179,12 +179,19 @@ export default function ProjectSummaryPage() {
         }
     }, [projectId])
 
-    // Fetch activity after tasks are loaded
+    // ✅ NEW: Calculate team workload when both tasks and project members are available
     useEffect(() => {
         if (allTasks.length > 0) {
+            calculateTeamWorkload(allTasks)
+        }
+    }, [allTasks, projectMembers])
+
+    // ✅ UPDATED: Fetch activity when both tasks and project members are available for PO fallback
+    useEffect(() => {
+        if (allTasks.length > 0 && projectMembers.length > 0) {
             fetchRecentActivity()
         }
-    }, [allTasks])
+    }, [allTasks, projectMembers])
 
     // Calculate priority breakdown when both tasks and sprints are loaded, or when selected sprint changes
     useEffect(() => {
@@ -315,58 +322,38 @@ export default function ProjectSummaryPage() {
 
     // Handle different error scenarios with appropriate UI
     const handleProjectNotFound = () => {
-        console.log('📝 Project not found - showing error state');
-        setErrorState({
-            type: 'not_found',
-            title: 'Project Not Found',
-            message: 'This project could not be found. Please check the project ID or select a different project.',
-            showProjectSelector: true
-        });
-        setIsLoading(false);
+        console.log('📝 Project not found - redirecting to project homescreen');
+        setTimeout(() => {
+            window.location.href = '/project/project_homescreen';
+        }, 1000);
     };
 
     const handleServerError = () => {
-        console.log('📝 Server error - showing error state');
-        setErrorState({
-            type: 'server_error',
-            title: 'Server Error',
-            message: 'Unable to connect to the server. Please try again later.',
-            showProjectSelector: false
-        });
-        setIsLoading(false);
+        console.log('📝 Server error - redirecting to project homescreen');
+        setTimeout(() => {
+            window.location.href = '/project/project_homescreen';
+        }, 1000);
     };
 
     const handleAccessDenied = () => {
-        console.log('📝 Access denied - showing error state');
-        setErrorState({
-            type: 'access_denied',
-            title: 'Access Denied',
-            message: 'You do not have permission to view this project.',
-            showProjectSelector: true
-        });
-        setIsLoading(false);
+        console.log('📝 Access denied - redirecting to project homescreen');
+        setTimeout(() => {
+            window.location.href = '/project/project_homescreen';
+        }, 1000);
     };
 
     const handleNetworkError = () => {
-        console.log('📝 Network error - showing error state');
-        setErrorState({
-            type: 'network_error',
-            title: 'Network Error',
-            message: 'Please check your internet connection and try again.',
-            showProjectSelector: false
-        });
-        setIsLoading(false);
+        console.log('📝 Network error - redirecting to project homescreen');
+        setTimeout(() => {
+            window.location.href = '/project/project_homescreen';
+        }, 1000);
     };
 
     const handleUnknownError = () => {
-        console.log('📝 Unknown error - showing error state');
-        setErrorState({
-            type: 'unknown_error',
-            title: 'Something went wrong',
-            message: 'An unexpected error occurred. Please try again.',
-            showProjectSelector: false
-        });
-        setIsLoading(false);
+        console.log('📝 Unknown error - redirecting to project homescreen');
+        setTimeout(() => {
+            window.location.href = '/project/project_homescreen';
+        }, 1000);
     };
 
     const fetchProjectMembers = async () => {
@@ -376,6 +363,8 @@ export default function ProjectSummaryPage() {
             // This endpoint returns ResponseDataAPI with users in data field
             const users = response.data?.data || []
             
+            console.log("📋 Raw project users from API:", users);
+            
             // Map Users to ProjectMember format
             const members = users.map((user: any) => ({
                 id: user.id,
@@ -384,6 +373,27 @@ export default function ProjectSummaryPage() {
                 roleInProject: user.roleInProject || 'Member',
                 avatar: user.avatar
             }))
+            
+            console.log("👥 Mapped project members:", members);
+            
+            // Log who is the Project Owner
+            const projectOwner = members.find((member: ProjectMember) => 
+                member.roleInProject === 'OWNER' || 
+                member.roleInProject === 'Project Lead' || 
+                member.roleInProject === 'PRODUCT_OWNER'
+            );
+            
+            if (projectOwner) {
+                console.log("👑 Found Project Owner:", {
+                    id: projectOwner.id,
+                    username: projectOwner.username,
+                    email: projectOwner.email,
+                    role: projectOwner.roleInProject,
+                    avatar: projectOwner.avatar
+                });
+            } else {
+                console.warn("❌ No Project Owner found in members. Available roles:", members.map((m: ProjectMember) => m.roleInProject));
+            }
             
             setProjectMembers(members)
         } catch (error) {
@@ -587,17 +597,70 @@ export default function ProjectSummaryPage() {
             const assignedTasks = tasks.filter(task => task.assigneeId)
             const unassignedTasks = tasks.filter(task => !task.assigneeId)
             
-            // Group by assignee
+            console.log(`📊 Calculating team workload for ${assignedTasks.length} assigned tasks and ${unassignedTasks.length} unassigned tasks`);
+            
+            // ✅ IMPROVED: Properly find assignee info from projectMembers first, then fallback
             const assigneeGroups = assignedTasks.reduce((acc: any, task: any) => {
-                const assigneeId = task.assigneeId
-                if (!acc[assigneeId]) {
-                    acc[assigneeId] = {
-                        id: assigneeId,
-                        name: task.assigneeName || 'Unknown User',
-                        tasks: []
+                let assigneeName = 'Unknown User';
+                let assigneeAvatar = null;
+                let groupKey = task.assigneeId;
+                
+                // ✅ STEP 1: Try to find the actual user in projectMembers by assigneeId
+                const actualAssignee = projectMembers.find(member => member.id === task.assigneeId);
+                
+                if (actualAssignee) {
+                    // ✅ Found the real assignee - use their info
+                    assigneeName = actualAssignee.username || actualAssignee.email?.split('@')[0] || 'User';
+                    assigneeAvatar = actualAssignee.avatar;
+                    groupKey = actualAssignee.id; // Use their actual ID
+                    console.log(`✅ Found real assignee: ${assigneeName} (${actualAssignee.id}) for task ${task.title}`);
+                } else {
+                    // ✅ STEP 2: Try using task's assigneeName if it exists and looks valid
+                    if (task.assigneeName && 
+                        task.assigneeName !== 'Unknown User' && 
+                        !task.assigneeName.includes('Unknown') &&
+                        task.assigneeName.trim().length > 0) {
+                        assigneeName = task.assigneeName;
+                        assigneeAvatar = task.assigneeAvatar || null;
+                        groupKey = task.assigneeId; // Keep using the ID
+                        console.log(`📝 Using task assigneeName: ${assigneeName} for task ${task.title}`);
+                    } else {
+                        // ✅ STEP 3: Last resort - fallback to Project Owner
+                        const projectOwner = projectMembers.find(member => 
+                            member.roleInProject === 'OWNER' || 
+                            member.roleInProject === 'Project Lead' || 
+                            member.roleInProject === 'PRODUCT_OWNER'
+                        );
+                        
+                        if (projectOwner) {
+                            assigneeName = projectOwner.username || projectOwner.email?.split('@')[0] || 'Product Owner';
+                            assigneeAvatar = projectOwner.avatar;
+                            groupKey = `po-fallback-${task.assigneeId}`; // Unique key per missing user
+                            console.log(`⚠️ Fallback to PO: ${assigneeName} for missing user ${task.assigneeId} in task ${task.title}`);
+                        } else {
+                            // ✅ Final fallback to generic PO
+                            assigneeName = 'Product Owner';
+                            assigneeAvatar = null;
+                            groupKey = `generic-po-${task.assigneeId}`; // Unique key
+                            console.log(`❌ Using generic PO fallback for completely unknown user ${task.assigneeId} in task ${task.title}`);
+                        }
                     }
                 }
-                acc[assigneeId].tasks.push(task)
+                
+                // ✅ Group by the actual user (not by name to avoid duplicates)
+                if (!acc[groupKey]) {
+                    acc[groupKey] = {
+                        id: groupKey,
+                        name: assigneeName,
+                        avatar: assigneeAvatar,
+                        tasks: []
+                    }
+                } else {
+                    // Merge with existing group (shouldn't happen now but safety check)
+                    console.log(`🔄 Merging tasks for existing user: ${assigneeName}`);
+                }
+                
+                acc[groupKey].tasks.push(task)
                 return acc
             }, {})
             
@@ -609,6 +672,7 @@ export default function ProjectSummaryPage() {
                 workloadData.push({
                     id: 'unassigned',
                     name: 'Unassigned',
+                    avatar: null,
                     taskCount: unassignedTasks.length,
                     percentage: totalTasks > 0 ? Math.round((unassignedTasks.length / totalTasks) * 100) : 0,
                     isUnassigned: true
@@ -620,12 +684,14 @@ export default function ProjectSummaryPage() {
                 workloadData.push({
                     id: assignee.id,
                     name: assignee.name,
+                    avatar: assignee.avatar,
                     taskCount: assignee.tasks.length,
                     percentage: totalTasks > 0 ? Math.round((assignee.tasks.length / totalTasks) * 100) : 0,
                     isUnassigned: false
                 })
             })
             
+            console.log('✅ Final team workload calculated:', workloadData);
             setTeamWorkload(workloadData)
             
         } catch (error) {
@@ -645,11 +711,93 @@ export default function ProjectSummaryPage() {
             console.log("Parsed activities:", activities)
             
             if (Array.isArray(activities) && activities.length > 0) {
-                // Add timeAgo calculation to each activity
-                const activitiesWithTimeAgo = activities.map(activity => ({
+                // Add timeAgo calculation and PO fallback to each activity
+                const activitiesWithTimeAgo = activities.map(activity => {
+                    // ✅ IMPROVED: Find real user info from projectMembers first
+                    let userName = 'Unknown User';
+                    let userAvatar = null;
+                    
+                    console.log(`🔍 Processing activity:`, {
+                        activityUser: activity.user,
+                        activityUserId: activity.userId,
+                        activityUserAvatar: activity.userAvatar
+                    });
+                    
+                    // ✅ STEP 1: Try to find actual user in projectMembers (if activity has userId)
+                    if (activity.userId) {
+                        const actualUser = projectMembers.find(member => member.id === activity.userId);
+                        if (actualUser) {
+                            userName = actualUser.username || actualUser.email?.split('@')[0] || 'User';
+                            userAvatar = actualUser.avatar;
+                            console.log(`✅ Found real user for activity: ${userName} (${actualUser.id}) with avatar: ${userAvatar}`);
+                            return {
                     ...activity,
+                                user: userName,
+                                userAvatar: userAvatar,
                     timeAgo: getTimeAgo(activity.timestamp)
-                }))
+                            }
+                        }
+                    }
+                    
+                    // ✅ STEP 1.5: Try to find user by name matching if no userId
+                    if (activity.user && activity.user !== 'Unknown User') {
+                        const userByName = projectMembers.find(member => 
+                            member.username === activity.user || 
+                            member.email?.split('@')[0] === activity.user ||
+                            member.username?.includes(activity.user) ||
+                            activity.user.includes(member.username || '')
+                        );
+                        
+                        if (userByName) {
+                            userName = userByName.username || userByName.email?.split('@')[0] || 'User';
+                            userAvatar = userByName.avatar;
+                            console.log(`✅ Found user by name matching: ${userName} with avatar: ${userAvatar}`);
+                            return {
+                                ...activity,
+                                user: userName,
+                                userAvatar: userAvatar,
+                                timeAgo: getTimeAgo(activity.timestamp)
+                            }
+                        }
+                    }
+                    
+                    // ✅ STEP 2: Use activity.user if it exists and looks valid
+                    if (activity.user && 
+                        activity.user !== 'Unknown User' && 
+                        !activity.user.includes('Unknown') &&
+                        activity.user.trim().length > 0) {
+                        userName = activity.user;
+                        userAvatar = activity.userAvatar || null;
+                        console.log(`📝 Using activity user: ${userName} with avatar: ${userAvatar}`);
+                    } else {
+                        // ✅ STEP 3: Fallback to Project Owner only as last resort
+                        const projectOwner = projectMembers.find(member => 
+                            member.roleInProject === 'OWNER' || 
+                            member.roleInProject === 'Project Lead' || 
+                            member.roleInProject === 'PRODUCT_OWNER'
+                        );
+                        
+                        if (projectOwner) {
+                            userName = projectOwner.username || projectOwner.email?.split('@')[0] || 'Product Owner';
+                            userAvatar = projectOwner.avatar;
+                            console.log(`⚠️ Activity fallback to PO: ${userName} with avatar: ${userAvatar}`);
+                        } else {
+                            // Final fallback to generic PO
+                            userName = 'Product Owner';
+                            userAvatar = null;
+                            console.log(`❌ Using generic PO fallback in activity`);
+                        }
+                    }
+                    
+                    console.log(`✅ Final activity data: user=${userName}, avatar=${userAvatar}`);
+                    
+                    return {
+                        ...activity,
+                        user: userName,
+                        userAvatar: userAvatar,
+                        timeAgo: getTimeAgo(activity.timestamp)
+                    }
+                })
                 
                 setRecentActivity(activitiesWithTimeAgo)
                 console.log("Set recent activity:", activitiesWithTimeAgo)
@@ -666,16 +814,108 @@ export default function ProjectSummaryPage() {
                         })
                         .slice(0, 5)
                     
-                    const activityData = recentTasks.map(task => ({
+                    const activityData = recentTasks.map(task => {
+                        // ✅ IMPROVED: Find real assignee from projectMembers first
+                        let userName = 'Unknown User';
+                        let userAvatar = null;
+                        
+                        console.log(`🔍 Processing fallback task:`, {
+                            taskTitle: task.title,
+                            assigneeId: task.assigneeId,
+                            assigneeName: task.assigneeName,
+                            assigneeAvatar: task.assigneeAvatar
+                        });
+                        
+                        // ✅ STEP 1: Try to find the actual assignee in projectMembers
+                        if (task.assigneeId) {
+                            const actualAssignee = projectMembers.find(member => member.id === task.assigneeId);
+                            if (actualAssignee) {
+                                userName = actualAssignee.username || actualAssignee.email?.split('@')[0] || 'User';
+                                userAvatar = actualAssignee.avatar;
+                                console.log(`✅ Found real assignee for task activity: ${userName} (${actualAssignee.id}) with avatar: ${userAvatar} for task ${task.title}`);
+                                return {
                         id: task.id,
                         type: 'task_updated',
-                        user: task.assigneeName || 'Unknown User',
+                                    user: userName,
+                                    userAvatar: userAvatar,
                         task: task.title,
                         taskKey: task.shortKey || `TASK-${task.id?.toString().substring(0, 8)}`,
                         status: task.status,
                         timestamp: task.updatedAt || task.createdAt,
                         timeAgo: getTimeAgo(task.updatedAt || task.createdAt)
-                    }))
+                                }
+                            }
+                        }
+                        
+                        // ✅ STEP 1.5: Try to find assignee by name matching
+                        if (task.assigneeName && task.assigneeName !== 'Unknown User') {
+                            const assigneeByName = projectMembers.find(member => 
+                                member.username === task.assigneeName || 
+                                member.email?.split('@')[0] === task.assigneeName ||
+                                member.username?.includes(task.assigneeName) ||
+                                task.assigneeName.includes(member.username || '')
+                            );
+                            
+                            if (assigneeByName) {
+                                userName = assigneeByName.username || assigneeByName.email?.split('@')[0] || 'User';
+                                userAvatar = assigneeByName.avatar;
+                                console.log(`✅ Found assignee by name matching: ${userName} with avatar: ${userAvatar} for task ${task.title}`);
+                                return {
+                                    id: task.id,
+                                    type: 'task_updated',
+                                    user: userName,
+                                    userAvatar: userAvatar,
+                                    task: task.title,
+                                    taskKey: task.shortKey || `TASK-${task.id?.toString().substring(0, 8)}`,
+                                    status: task.status,
+                                    timestamp: task.updatedAt || task.createdAt,
+                                    timeAgo: getTimeAgo(task.updatedAt || task.createdAt)
+                                }
+                            }
+                        }
+                        
+                        // ✅ STEP 2: Use task.assigneeName if it exists and looks valid
+                        if (task.assigneeName && 
+                            task.assigneeName !== 'Unknown User' && 
+                            !task.assigneeName.includes('Unknown') &&
+                            task.assigneeName.trim().length > 0) {
+                            userName = task.assigneeName;
+                            userAvatar = task.assigneeAvatar || null;
+                            console.log(`📝 Using task assigneeName for activity: ${userName} with avatar: ${userAvatar} for task ${task.title}`);
+                        } else {
+                            // ✅ STEP 3: Fallback to Project Owner only as last resort
+                            const projectOwner = projectMembers.find(member => 
+                                member.roleInProject === 'OWNER' || 
+                                member.roleInProject === 'Project Lead' || 
+                                member.roleInProject === 'PRODUCT_OWNER'
+                            );
+                            
+                            if (projectOwner) {
+                                userName = projectOwner.username || projectOwner.email?.split('@')[0] || 'Product Owner';
+                                userAvatar = projectOwner.avatar;
+                                console.log(`⚠️ Fallback to PO for task activity: ${userName} with avatar: ${userAvatar} for task ${task.title}`);
+                            } else {
+                                // Final fallback to generic PO
+                                userName = 'Product Owner';
+                                userAvatar = null;
+                                console.log(`❌ Using generic PO fallback for task ${task.title}`);
+                            }
+                        }
+                        
+                        console.log(`✅ Final fallback activity data: user=${userName}, avatar=${userAvatar}, task=${task.title}`);
+                        
+                        return {
+                            id: task.id,
+                            type: 'task_updated',
+                            user: userName,
+                            userAvatar: userAvatar,
+                            task: task.title,
+                            taskKey: task.shortKey || `TASK-${task.id?.toString().substring(0, 8)}`,
+                            status: task.status,
+                            timestamp: task.updatedAt || task.createdAt,
+                            timeAgo: getTimeAgo(task.updatedAt || task.createdAt)
+                        }
+                    })
                     
                     setRecentActivity(activityData)
                     console.log("Set fallback activity:", activityData)
@@ -697,16 +937,108 @@ export default function ProjectSummaryPage() {
                     })
                     .slice(0, 5)
                 
-                const activityData = recentTasks.map(task => ({
+                const activityData = recentTasks.map(task => {
+                    // ✅ IMPROVED: Find real assignee from projectMembers first
+                    let userName = 'Unknown User';
+                    let userAvatar = null;
+                    
+                    console.log(`🔍 Processing fallback task:`, {
+                        taskTitle: task.title,
+                        assigneeId: task.assigneeId,
+                        assigneeName: task.assigneeName,
+                        assigneeAvatar: task.assigneeAvatar
+                    });
+                    
+                    // ✅ STEP 1: Try to find the actual assignee in projectMembers
+                    if (task.assigneeId) {
+                        const actualAssignee = projectMembers.find(member => member.id === task.assigneeId);
+                        if (actualAssignee) {
+                            userName = actualAssignee.username || actualAssignee.email?.split('@')[0] || 'User';
+                            userAvatar = actualAssignee.avatar;
+                            console.log(`✅ Found real assignee for task activity: ${userName} (${actualAssignee.id}) with avatar: ${userAvatar} for task ${task.title}`);
+                            return {
                     id: task.id,
                     type: 'task_updated',
-                    user: task.assigneeName || 'Unknown User',
+                                user: userName,
+                                userAvatar: userAvatar,
                     task: task.title,
                     taskKey: task.shortKey || `TASK-${task.id?.toString().substring(0, 8)}`,
                     status: task.status,
                     timestamp: task.updatedAt || task.createdAt,
                     timeAgo: getTimeAgo(task.updatedAt || task.createdAt)
-                }))
+                            }
+                        }
+                    }
+                    
+                    // ✅ STEP 1.5: Try to find assignee by name matching
+                    if (task.assigneeName && task.assigneeName !== 'Unknown User') {
+                        const assigneeByName = projectMembers.find(member => 
+                            member.username === task.assigneeName || 
+                            member.email?.split('@')[0] === task.assigneeName ||
+                            member.username?.includes(task.assigneeName) ||
+                            task.assigneeName.includes(member.username || '')
+                        );
+                        
+                        if (assigneeByName) {
+                            userName = assigneeByName.username || assigneeByName.email?.split('@')[0] || 'User';
+                            userAvatar = assigneeByName.avatar;
+                            console.log(`✅ Found assignee by name matching: ${userName} with avatar: ${userAvatar} for task ${task.title}`);
+                            return {
+                                id: task.id,
+                                type: 'task_updated',
+                                user: userName,
+                                userAvatar: userAvatar,
+                                task: task.title,
+                                taskKey: task.shortKey || `TASK-${task.id?.toString().substring(0, 8)}`,
+                                status: task.status,
+                                timestamp: task.updatedAt || task.createdAt,
+                                timeAgo: getTimeAgo(task.updatedAt || task.createdAt)
+                            }
+                        }
+                    }
+                    
+                    // ✅ STEP 2: Use task.assigneeName if it exists and looks valid
+                    if (task.assigneeName && 
+                        task.assigneeName !== 'Unknown User' && 
+                        !task.assigneeName.includes('Unknown') &&
+                        task.assigneeName.trim().length > 0) {
+                        userName = task.assigneeName;
+                        userAvatar = task.assigneeAvatar || null;
+                        console.log(`📝 Using task assigneeName for activity: ${userName} with avatar: ${userAvatar} for task ${task.title}`);
+                    } else {
+                        // ✅ STEP 3: Fallback to Project Owner only as last resort
+                        const projectOwner = projectMembers.find(member => 
+                            member.roleInProject === 'OWNER' || 
+                            member.roleInProject === 'Project Lead' || 
+                            member.roleInProject === 'PRODUCT_OWNER'
+                        );
+                        
+                        if (projectOwner) {
+                            userName = projectOwner.username || projectOwner.email?.split('@')[0] || 'Product Owner';
+                            userAvatar = projectOwner.avatar;
+                            console.log(`⚠️ Fallback to PO for task activity: ${userName} with avatar: ${userAvatar} for task ${task.title}`);
+                        } else {
+                            // Final fallback to generic PO
+                            userName = 'Product Owner';
+                            userAvatar = null;
+                            console.log(`❌ Using generic PO fallback for task ${task.title}`);
+                        }
+                    }
+                    
+                    console.log(`✅ Final fallback activity data: user=${userName}, avatar=${userAvatar}, task=${task.title}`);
+                    
+                    return {
+                        id: task.id,
+                        type: 'task_updated',
+                        user: userName,
+                        userAvatar: userAvatar,
+                        task: task.title,
+                        taskKey: task.shortKey || `TASK-${task.id?.toString().substring(0, 8)}`,
+                        status: task.status,
+                        timestamp: task.updatedAt || task.createdAt,
+                        timeAgo: getTimeAgo(task.updatedAt || task.createdAt)
+                    }
+                })
                 
                 setRecentActivity(activityData)
                 console.log("Set error fallback activity:", activityData)
@@ -752,7 +1084,7 @@ export default function ProjectSummaryPage() {
     const fetchUserProjects = async (userId: string) => {
         try {
             setIsLoadingProjects(true)
-            console.log(` Fetching projects for user: ${userId}`)
+            console.log(`🔍 Fetching projects for user: ${userId}`)
             
             // Fetch both owned projects and member projects
             const [ownedResponse, memberResponse] = await Promise.allSettled([
@@ -787,13 +1119,13 @@ export default function ProjectSummaryPage() {
                 index === self.findIndex(p => p.id === project.id)
             );
 
-            console.log(` Total unique projects found: ${uniqueProjects.length}`);
+            console.log(`✅ Total unique projects found: ${uniqueProjects.length}`);
             uniqueProjects.forEach(p => console.log(`  - ${p.name} (${p.id})`));
 
             setUserProjects(uniqueProjects);
             setFilteredProjects(uniqueProjects);
             
-            console.log(` Loaded ${uniqueProjects.length} projects (owned + member) for user ${userId}`);
+            console.log(`✅ Loaded ${uniqueProjects.length} projects (owned + member) for user ${userId}`);
             
         } catch (error) {
             console.error("❌ Error fetching user projects:", error);
@@ -832,7 +1164,7 @@ export default function ProjectSummaryPage() {
         // Reset loading state to fetch new project data
         setIsLoading(true)
         
-        console.log(` Switched to project: ${selectedProject.name} (${selectedProject.id})`)
+        console.log(`🔄 Switched to project: ${selectedProject.name} (${selectedProject.id})`)
     }
 
     const getProjectTypeIcon = (projectType?: string) => {
@@ -901,107 +1233,6 @@ export default function ProjectSummaryPage() {
         }
     }
 
-    // Show project selection interface when no projectId is available
-    if (!projectId && !isLoading) {
-        return (
-            <div className="min-h-screen bg-gray-50 flex">
-                <NavigationProgress />
-                <Sidebar projectId={undefined} />
-                
-                <div className="flex-1 flex flex-col">
-                    <TopNavigation />
-                    
-                    <main className="flex-1 p-6 overflow-y-auto">
-                        <div className="max-w-4xl mx-auto">
-                            <div className="text-center mb-8">
-                                <FolderOpen className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                                <h1 className="text-3xl font-bold text-gray-900 mb-2">Select a Project</h1>
-                                <p className="text-gray-600">Choose a project to view its summary and analytics</p>
-                            </div>
-                            
-                            {/* Project Selection Grid */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                {userProjects.length > 0 ? (
-                                    userProjects.map((proj) => (
-                                        <Card 
-                                            key={proj.id} 
-                                            className="hover:shadow-lg transition-shadow cursor-pointer border-2 hover:border-blue-300"
-                                            onClick={() => handleProjectChange(proj)}
-                                        >
-                                            <CardContent className="p-6">
-                                                <div className="flex items-start gap-4">
-                                                    <div className={`w-12 h-12 ${getProjectTypeColor(proj.projectType)} rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm`}>
-                                                        <span className="text-white font-bold text-lg">
-                                                            {proj.key || proj.name?.charAt(0)?.toUpperCase() || 'P'}
-                                                        </span>
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <h3 className="font-semibold text-gray-900 text-lg mb-1 truncate">
-                                                            {proj.name}
-                                                        </h3>
-                                                        <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
-                                                            <span>{getProjectTypeIcon(proj.projectType)}</span>
-                                                            <span>{proj.projectType || 'Software'}</span>
-                                                            {proj.key && (
-                                                                <>
-                                                                    <span>•</span>
-                                                                    <span className="font-mono">{proj.key}</span>
-                                                                </>
-                                                            )}
-                                                        </div>
-                                                        {proj.description && (
-                                                            <p className="text-sm text-gray-600 line-clamp-2">
-                                                                {proj.description}
-                                                            </p>
-                                                        )}
-                                                        {isRecentProject(proj.id) && (
-                                                            <Badge variant="outline" className="mt-2 text-xs">
-                                                                Recent
-                                                            </Badge>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                                
-                                                <div className="mt-4 pt-4 border-t border-gray-100">
-                                                    <div className="flex items-center justify-between text-sm text-gray-500">
-                                                        <span>Click to view summary</span>
-                                                        <ChevronRight className="h-4 w-4" />
-                                                    </div>
-                                                </div>
-                                            </CardContent>
-                                        </Card>
-                                    ))
-                                ) : (
-                                    <div className="col-span-full">
-                                        <Card className="p-8">
-                                            <CardContent className="text-center">
-                                                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                                    <FolderOpen className="h-8 w-8 text-gray-400" />
-                                                </div>
-                                                <h3 className="text-lg font-medium text-gray-900 mb-2">No Projects Found</h3>
-                                                <p className="text-gray-500 mb-4">
-                                                    You don't have access to any projects yet.
-                                                </p>
-                                                <Button 
-                                                    className="bg-blue-600 text-white hover:bg-blue-700"
-                                                    onClick={() => {
-                                                        window.location.href = '/project/view_all_projects';
-                                                    }}
-                                                >
-                                                    Browse All Projects
-                                                </Button>
-                                            </CardContent>
-                                        </Card>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </main>
-                </div>
-            </div>
-        )
-    }
-
     if (isLoading) {
         return (
             <div className="min-h-screen bg-gray-50 flex">
@@ -1038,7 +1269,7 @@ export default function ProjectSummaryPage() {
                         <div className="flex items-center justify-center h-64">
                             <div className="text-center max-w-lg p-6">
                                 <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center bg-red-100 rounded-full text-red-500">
-                                    {errorState.type === 'not_found' && (
+                                    {errorState.type === 'not-found' && (
                                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                                             <path d="M10 3H3V10H10V3Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                                             <path d="M21 3H14V10H21V3Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -1046,12 +1277,12 @@ export default function ProjectSummaryPage() {
                                             <path d="M10 14H3V21H10V14Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                                         </svg>
                                     )}
-                                    {errorState.type === 'server_error' && (
+                                    {errorState.type === 'server-error' && (
                                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                                             <path d="M12 8V12M12 16H12.01M22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                                         </svg>
                                     )}
-                                    {(errorState.type === 'access_denied' || errorState.type === 'network_error' || errorState.type === 'unknown_error') && (
+                                    {(errorState.type === 'access-denied' || errorState.type === 'network-error' || errorState.type === 'unknown-error') && (
                                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                                             <path d="M12 9V13M12 17H12.01M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                                         </svg>
@@ -1637,8 +1868,33 @@ export default function ProjectSummaryPage() {
                                                             {member.isUnassigned ? (
                                                                 <User className="h-4 w-4 text-gray-600" />
                                                             ) : (
-                                                                <div className="w-4 h-4 bg-green-500 rounded-full flex items-center justify-center text-white text-xs font-medium">
-                                                                    {member.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
+                                                                <div className="w-4 h-4 bg-green-500 rounded-full flex items-center justify-center text-white text-xs font-medium overflow-hidden">
+                                                                    {member.avatar ? (
+                                                                        <img 
+                                                                            src={member.avatar} 
+                                                                            alt={member.name} 
+                                                                            className="w-full h-full object-cover"
+                                                                            onError={(e) => {
+                                                                                // Fallback to initials if image fails to load
+                                                                                const target = e.target as HTMLImageElement;
+                                                                                target.style.display = 'none';
+                                                                                const parent = target.parentElement;
+                                                                                if (parent) {
+                                                                                    parent.classList.add('bg-green-500', 'text-white');
+                                                                                    const initials = member.name
+                                                                                        .split(' ')
+                                                                                        .map((n: string) => n[0])
+                                                                                        .join('')
+                                                                                        .slice(0, 2)
+                                                                                        .toUpperCase();
+                                                                                    parent.textContent = initials;
+                                                                                }
+                                                                            }}
+                                                                        />
+                                                                    ) : (
+                                                                        // Show initials if no avatar
+                                                                        member.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
+                                                                    )}
                                                                 </div>
                                                             )}
                                                             <span className="text-sm truncate">{member.name}</span>
@@ -1685,8 +1941,34 @@ export default function ProjectSummaryPage() {
                                                 <div className="space-y-3">
                                                     {recentActivity.map((activity, index) => (
                                                         <div key={activity.id || index} className="flex items-start gap-3">
-                                                            <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-white text-xs font-medium">
-                                                                {activity.user.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
+                                                            {/* ✅ IMPROVED: Use real avatar if available, fallback to initials */}
+                                                            <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-white text-xs font-medium overflow-hidden">
+                                                                {activity.userAvatar ? (
+                                                                    <img 
+                                                                        src={activity.userAvatar} 
+                                                                        alt={activity.user} 
+                                                                        className="w-full h-full object-cover"
+                                                                        onError={(e) => {
+                                                                            // Fallback to initials if image fails to load
+                                                                            const target = e.target as HTMLImageElement;
+                                                                            target.style.display = 'none';
+                                                                            const parent = target.parentElement;
+                                                                            if (parent) {
+                                                                                parent.classList.add('bg-green-500', 'text-white');
+                                                                                const initials = activity.user
+                                                                                    .split(' ')
+                                                                                    .map((n: string) => n[0])
+                                                                                    .join('')
+                                                                                    .slice(0, 2)
+                                                                                    .toUpperCase();
+                                                                                parent.textContent = initials;
+                                                                            }
+                                                                        }}
+                                                                    />
+                                                                ) : (
+                                                                    // Show initials if no avatar
+                                                                    activity.user.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
+                                                                )}
                                                             </div>
                                                             <div className="flex-1">
                                                                 <p className="text-sm">
