@@ -74,9 +74,20 @@ public class PermissionUtil {
         
         switch (permission) {
             case CREATE_SPRINT:
+                // ✅ FIXED: Only rely on canCreateSprint permission from Projects Service
+                // Projects Service already correctly sets this to true only for PO/Scrum Master
+                boolean canCreate = hasCreateSprintPermission;
+                System.out.println("- Result for CREATE_SPRINT (STRICT): " + canCreate);
+                if (!canCreate) {
+                    System.out.println("❌ CREATE_SPRINT DENIED: User must have canCreateSprint permission (PO/Scrum Master only)");
+                    System.out.println("   - canCreateSprint from Projects Service: " + hasCreateSprintPermission);
+                }
+                return canCreate;
+                
             case UPDATE_SPRINT:
             case START_SPRINT:
             case END_SPRINT:
+                // ✅ For other sprint management operations, keep existing logic
                 boolean canManage = hasOwnerRole || hasScrumMasterRole || hasCreateSprintPermission || hasManageSprintsPermission;
                 System.out.println("- Result for " + permission + ": " + canManage);
                 return canManage;

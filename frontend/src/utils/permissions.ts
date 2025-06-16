@@ -97,7 +97,30 @@ export const canManageMembers = (permissions: UserPermissions | null): boolean =
 };
 
 export const canCreateSprint = (permissions: UserPermissions | null): boolean => {
-  return permissions?.canCreateSprint || false;
+  // ✅ IMPROVED: More explicit check with logging for debugging
+  if (!permissions) {
+    console.log('🔍 canCreateSprint: No permissions data available');
+    return false;
+  }
+  
+  const canCreate = permissions.canCreateSprint || false;
+  const isOwner = permissions.isOwner || false;
+  const isScrumMaster = permissions.isScrumMaster || false;
+  
+  console.log('🔍 canCreateSprint check:', {
+    userId: permissions.userId,
+    role: permissions.role,
+    isOwner,
+    isScrumMaster,
+    canCreateSprint: permissions.canCreateSprint,
+    finalResult: canCreate
+  });
+  
+  if (!canCreate) {
+    console.log('❌ CREATE_SPRINT permission denied. Only Project Owners and Scrum Masters can create sprints');
+  }
+  
+  return canCreate;
 };
 
 export const canManageSprints = (permissions: UserPermissions | null): boolean => {

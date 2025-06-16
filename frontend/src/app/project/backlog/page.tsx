@@ -1755,14 +1755,16 @@ export default function BacklogPage() {
                   </div>
                 )}
 
-                {/* Create Sprint Button */}
-                <Button 
-                  onClick={handleCreateSprint}
-                  className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-3 rounded-xl font-semibold shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 transition-all duration-200 flex items-center gap-2"
-                >
-                  <Plus className="h-5 w-5" />
-                  Create Sprint
-                </Button>
+                {/* Create Sprint Button - Only for PO/Scrum Master */}
+                {canCreateSprint(userPermissions) && (
+                  <Button 
+                    onClick={handleCreateSprint}
+                    className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-3 rounded-xl font-semibold shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 transition-all duration-200 flex items-center gap-2"
+                  >
+                    <Plus className="h-5 w-5" />
+                    Create Sprint
+                  </Button>
+                )}
 
               
               </div>
@@ -2272,7 +2274,7 @@ export default function BacklogPage() {
                 ) : (
                   <div className="mb-6 p-6 border border-dashed rounded text-center">
                     <p className="text-gray-500 mb-2">No sprints found for this project.</p>
-                    {canCreateSprint(userPermissions) ? (
+                    {canCreateSprint(userPermissions) && (
                       <Button 
                         variant="secondary" 
                         size="sm"
@@ -2280,8 +2282,6 @@ export default function BacklogPage() {
                       >
                         Create Sprint
                       </Button>
-                    ) : (
-                      <p className="text-sm text-gray-400">Only project owners and scrum masters can create sprints.</p>
                     )}
                   </div>
                 )}
