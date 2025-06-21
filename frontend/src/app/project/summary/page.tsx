@@ -286,35 +286,27 @@ export default function ProjectSummaryPage() {
 
     const fetchProjectData = async () => {
         try {
-            const response = await axios.get(`http://localhost:8083/api/projects/${projectId}`)
+            setIsLoading(true);
+            const response = await axios.get(`http://localhost:8083/api/projects/${projectId}`);
             if (response.data?.status === "SUCCESS" && response.data?.data) {
-                setProject(response.data.data)
+                setProject(response.data.data);
             } else {
-                console.error('❌ Failed to fetch project:', response.data);
                 handleProjectNotFound();
             }
         } catch (error: any) {
-            console.error('❌ Error fetching project:', error);
-            
-            // Handle different error types gracefully
             if (axios.isAxiosError(error)) {
                 const status = error.response?.status;
                 
                 if (status === 404) {
-                    console.log('📝 Project not found (404) - showing project selection UI');
                     handleProjectNotFound();
                 } else if (status === 500) {
-                    console.log('📝 Server error (500) - showing project selection UI');
                     handleServerError();
                 } else if (status === 403) {
-                    console.log('📝 Access denied (403) - showing project selection UI');
                     handleAccessDenied();
                 } else {
-                    console.log('📝 Network or other error - showing project selection UI');
                     handleNetworkError();
                 }
             } else {
-                console.log('📝 Unknown error - showing project selection UI');
                 handleUnknownError();
             }
         }
@@ -322,35 +314,30 @@ export default function ProjectSummaryPage() {
 
     // Handle different error scenarios with appropriate UI
     const handleProjectNotFound = () => {
-        console.log('📝 Project not found - redirecting to project homescreen');
         setTimeout(() => {
             window.location.href = '/project/project_homescreen';
         }, 1000);
     };
 
     const handleServerError = () => {
-        console.log('📝 Server error - redirecting to project homescreen');
         setTimeout(() => {
             window.location.href = '/project/project_homescreen';
         }, 1000);
     };
 
     const handleAccessDenied = () => {
-        console.log('📝 Access denied - redirecting to project homescreen');
         setTimeout(() => {
             window.location.href = '/project/project_homescreen';
         }, 1000);
     };
 
     const handleNetworkError = () => {
-        console.log('📝 Network error - redirecting to project homescreen');
         setTimeout(() => {
             window.location.href = '/project/project_homescreen';
         }, 1000);
     };
 
     const handleUnknownError = () => {
-        console.log('📝 Unknown error - redirecting to project homescreen');
         setTimeout(() => {
             window.location.href = '/project/project_homescreen';
         }, 1000);
@@ -358,46 +345,19 @@ export default function ProjectSummaryPage() {
 
     const fetchProjectMembers = async () => {
         try {
-            // Use the correct endpoint from Project Controller
-            const response = await axios.get(`http://localhost:8083/api/projects/${projectId}/users`)
-            // This endpoint returns ResponseDataAPI with users in data field
-            const users = response.data?.data || []
+            const response = await axios.get(`http://localhost:8083/api/projects/${projectId}/users`);
+            const users = response.data?.data || [];
             
-            console.log("📋 Raw project users from API:", users);
-            
-            // Map Users to ProjectMember format
             const members = users.map((user: any) => ({
                 id: user.id,
                 username: user.username,
                 email: user.email,
                 roleInProject: user.roleInProject || 'Member',
                 avatar: user.avatar
-            }))
+            }));
             
-            console.log("👥 Mapped project members:", members);
-            
-            // Log who is the Project Owner
-            const projectOwner = members.find((member: ProjectMember) => 
-                member.roleInProject === 'OWNER' || 
-                member.roleInProject === 'Project Lead' || 
-                member.roleInProject === 'PRODUCT_OWNER'
-            );
-            
-            if (projectOwner) {
-                console.log("👑 Found Project Owner:", {
-                    id: projectOwner.id,
-                    username: projectOwner.username,
-                    email: projectOwner.email,
-                    role: projectOwner.roleInProject,
-                    avatar: projectOwner.avatar
-                });
-            } else {
-                console.warn("❌ No Project Owner found in members. Available roles:", members.map((m: ProjectMember) => m.roleInProject));
-            }
-            
-            setProjectMembers(members)
+            setProjectMembers(members);
         } catch (error) {
-            console.error("Error fetching project members:", error)
             setProjectMembers([
                 {
                     id: '1',
@@ -411,21 +371,19 @@ export default function ProjectSummaryPage() {
                     email: 'jane@example.com',
                     roleInProject: 'Developer'
                 }
-            ])
+            ]);
         }
     }
 
     const fetchCurrentSprint = async () => {
         try {
-            const response = await axios.get(`http://localhost:8084/api/sprints/project/${projectId}`)
-            // Sprint endpoint returns {data: [...]} structure 
-            const sprints = response.data?.data || []
-            const activeSprint = sprints.find((sprint: any) => sprint.status === 'ACTIVE') || sprints[0]
+            const response = await axios.get(`http://localhost:8084/api/sprints/project/${projectId}`);
+            const sprints = response.data?.data || [];
+            const activeSprint = sprints.find((sprint: any) => sprint.status === 'ACTIVE') || sprints[0];
             if (activeSprint) {
-                setCurrentSprint(activeSprint)
+                setCurrentSprint(activeSprint);
             }
         } catch (error) {
-            console.error("Error fetching sprints:", error)
             setCurrentSprint({
                 id: '1',
                 name: 'Sprint 1',
@@ -433,20 +391,19 @@ export default function ProjectSummaryPage() {
                 startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
                 endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
                 goal: 'Complete core features'
-            })
+            });
         }
     }
 
     const fetchTaskStatistics = async () => {
         try {
-            const response = await axios.get(`http://localhost:8085/api/tasks/project/${projectId}`)
-            // Tasks endpoint returns data directly, not wrapped in ResponseDataAPI
-            const tasks = Array.isArray(response.data) ? response.data : []
+            const response = await axios.get(`http://localhost:8085/api/tasks/project/${projectId}`);
+            const tasks = Array.isArray(response.data) ? response.data : [];
             
             // Calculate date thresholds
-            const now = new Date()
-            const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000)
-            const fourteenDaysFromNow = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000)
+            const now = new Date();
+            const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+            const fourteenDaysFromNow = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
             
             const stats = {
                 total: tasks.length,
@@ -454,42 +411,40 @@ export default function ProjectSummaryPage() {
                 inProgress: tasks.filter((task: any) => task.status === 'IN_PROGRESS').length,
                 done: tasks.filter((task: any) => task.status === 'DONE').length,
                 overdue: tasks.filter((task: any) => {
-                    if (!task.dueDate) return false
-                    return new Date(task.dueDate) < new Date() && task.status !== 'DONE'
+                    if (!task.dueDate) return false;
+                    return new Date(task.dueDate) < new Date() && task.status !== 'DONE';
                 }).length,
                 
                 // 14-day statistics
                 completedLast14Days: tasks.filter((task: any) => {
-                    if (task.status !== 'DONE') return false
-                    // Use completedAt if available, otherwise use updatedAt as fallback
-                    const dateToCheck = task.completedAt || task.updatedAt
-                    if (!dateToCheck) return false
-                    const completedDate = new Date(dateToCheck)
-                    return completedDate >= fourteenDaysAgo && completedDate <= now
+                    if (task.status !== 'DONE') return false;
+                    const dateToCheck = task.completedAt || task.updatedAt;
+                    if (!dateToCheck) return false;
+                    const completedDate = new Date(dateToCheck);
+                    return completedDate >= fourteenDaysAgo && completedDate <= now;
                 }).length,
                 
                 updatedLast14Days: tasks.filter((task: any) => {
-                    if (!task.updatedAt) return false
-                    const updatedDate = new Date(task.updatedAt)
-                    return updatedDate >= fourteenDaysAgo && updatedDate <= now
+                    if (!task.updatedAt) return false;
+                    const updatedDate = new Date(task.updatedAt);
+                    return updatedDate >= fourteenDaysAgo && updatedDate <= now;
                 }).length,
                 
                 createdLast14Days: tasks.filter((task: any) => {
-                    if (!task.createdAt) return false
-                    const createdDate = new Date(task.createdAt)
-                    return createdDate >= fourteenDaysAgo && createdDate <= now
+                    if (!task.createdAt) return false;
+                    const createdDate = new Date(task.createdAt);
+                    return createdDate >= fourteenDaysAgo && createdDate <= now;
                 }).length,
                 
                 dueSoon14Days: tasks.filter((task: any) => {
-                    if (!task.dueDate || task.status === 'DONE') return false
-                    const dueDate = new Date(task.dueDate)
-                    return dueDate >= now && dueDate <= fourteenDaysFromNow
+                    if (!task.dueDate || task.status === 'DONE') return false;
+                    const dueDate = new Date(task.dueDate);
+                    return dueDate >= now && dueDate <= fourteenDaysFromNow;
                 }).length
-            }
+            };
             
-            setTaskStats(stats)
+            setTaskStats(stats);
         } catch (error) {
-            console.error("Error fetching task statistics:", error)
             setTaskStats({
                 total: 12,
                 todo: 4,
@@ -500,36 +455,34 @@ export default function ProjectSummaryPage() {
                 updatedLast14Days: 5,
                 createdLast14Days: 1,
                 dueSoon14Days: 0
-            })
+            });
         } finally {
-            setIsLoading(false)
+            setIsLoading(false);
         }
     }
 
     const fetchAllTasksWithDetails = async () => {
         try {
-            console.log("Fetching all tasks for project:", projectId)
-            const response = await axios.get(`http://localhost:8085/api/tasks/project/${projectId}`)
-            const tasks = Array.isArray(response.data) ? response.data : []
-            console.log("Fetched tasks:", tasks)
-            setAllTasks(tasks)
+            const response = await axios.get(`http://localhost:8085/api/tasks/project/${projectId}`);
+            const tasks = Array.isArray(response.data) ? response.data : [];
+            setAllTasks(tasks);
             
             // Calculate work types breakdown based on actual logic
-            const totalTasks = tasks.length
+            const totalTasks = tasks.length;
             
             // Count subtasks (tasks with parentTaskId)
-            const subtasks = tasks.filter(task => task.parentTaskId !== null && task.parentTaskId !== undefined)
+            const subtasks = tasks.filter(task => task.parentTaskId !== null && task.parentTaskId !== undefined);
             
             // Count main tasks (tasks without parentTaskId and not specific types)
             const mainTasks = tasks.filter(task => 
                 (task.parentTaskId === null || task.parentTaskId === undefined) && 
                 task.type !== 'Epic' && 
                 task.type !== 'Bug'
-            )
+            );
             
             // Count epics and bugs based on type
-            const epics = tasks.filter(task => task.type === 'Epic')
-            const bugs = tasks.filter(task => task.type === 'Bug')
+            const epics = tasks.filter(task => task.type === 'Epic');
+            const bugs = tasks.filter(task => task.type === 'Bug');
             
             setWorkTypes([
                 {
@@ -545,87 +498,62 @@ export default function ProjectSummaryPage() {
                     percentage: totalTasks > 0 ? Math.round((subtasks.length / totalTasks) * 100) : 0,
                     icon: 'subtask',
                     color: 'blue'
-                },
-                // {
-                //     name: 'Epic',
-                //     count: epics.length,
-                //     percentage: totalTasks > 0 ? Math.round((epics.length / totalTasks) * 100) : 0,
-                //     icon: 'epic',
-                //     color: 'purple'
-                // },
-                // {
-                //     name: 'Bug',
-                //     count: bugs.length,
-                //     percentage: totalTasks > 0 ? Math.round((bugs.length / totalTasks) * 100) : 0,
-                //     icon: 'bug',
-                //     color: 'red'
-                // }
-            ])
+                }
+            ]);
             
             // Calculate team workload
-            await calculateTeamWorkload(tasks)
+            await calculateTeamWorkload(tasks);
             
             // Fetch recent activity immediately after tasks are loaded
             if (tasks.length > 0) {
-                console.log("Calling fetchRecentActivity with tasks:", tasks.length)
-                await fetchRecentActivity()
+                await fetchRecentActivity();
             }
             
         } catch (error) {
-            console.error("Error fetching all tasks with details:", error)
-            setAllTasks([])
+            setAllTasks([]);
         }
     }
 
     const fetchAllSprints = async () => {
         try {
-            console.log("Fetching all sprints for project:", projectId)
-            const response = await axios.get(`http://localhost:8084/api/sprints/project/${projectId}`)
-            const sprints = response.data?.data || []
-            console.log("Fetched sprints:", sprints)
-            setAllSprints(sprints)
+            const response = await axios.get(`http://localhost:8084/api/sprints/project/${projectId}`);
+            const sprints = response.data?.data || [];
+            setAllSprints(sprints);
             
         } catch (error) {
-            console.error("Error fetching sprints:", error)
-            setAllSprints([])
+            setAllSprints([]);
         }
     }
 
     const calculateTeamWorkload = async (tasks: any[]) => {
         try {
             // Get all assigned tasks
-            const assignedTasks = tasks.filter(task => task.assigneeId)
-            const unassignedTasks = tasks.filter(task => !task.assigneeId)
+            const assignedTasks = tasks.filter(task => task.assigneeId);
+            const unassignedTasks = tasks.filter(task => !task.assigneeId);
             
-            console.log(`📊 Calculating team workload for ${assignedTasks.length} assigned tasks and ${unassignedTasks.length} unassigned tasks`);
-            
-            // ✅ IMPROVED: Properly find assignee info from projectMembers first, then fallback
             const assigneeGroups = assignedTasks.reduce((acc: any, task: any) => {
                 let assigneeName = 'Unknown User';
                 let assigneeAvatar = null;
                 let groupKey = task.assigneeId;
                 
-                // ✅ STEP 1: Try to find the actual user in projectMembers by assigneeId
+                // Try to find the actual user in projectMembers first
                 const actualAssignee = projectMembers.find(member => member.id === task.assigneeId);
                 
                 if (actualAssignee) {
-                    // ✅ Found the real assignee - use their info
                     assigneeName = actualAssignee.username || actualAssignee.email?.split('@')[0] || 'User';
                     assigneeAvatar = actualAssignee.avatar;
-                    groupKey = actualAssignee.id; // Use their actual ID
-                    console.log(`✅ Found real assignee: ${assigneeName} (${actualAssignee.id}) for task ${task.title}`);
+                    groupKey = actualAssignee.id;
                 } else {
-                    // ✅ STEP 2: Try using task's assigneeName if it exists and looks valid
+                    // Try using task's assigneeName if it exists and looks valid
                     if (task.assigneeName && 
                         task.assigneeName !== 'Unknown User' && 
                         !task.assigneeName.includes('Unknown') &&
                         task.assigneeName.trim().length > 0) {
                         assigneeName = task.assigneeName;
                         assigneeAvatar = task.assigneeAvatar || null;
-                        groupKey = task.assigneeId; // Keep using the ID
-                        console.log(`📝 Using task assigneeName: ${assigneeName} for task ${task.title}`);
+                        groupKey = task.assigneeId;
                     } else {
-                        // ✅ STEP 3: Last resort - fallback to Project Owner
+                        // Fallback to Project Owner
                         const projectOwner = projectMembers.find(member => 
                             member.roleInProject === 'OWNER' || 
                             member.roleInProject === 'Project Lead' || 
@@ -635,37 +563,30 @@ export default function ProjectSummaryPage() {
                         if (projectOwner) {
                             assigneeName = projectOwner.username || projectOwner.email?.split('@')[0] || 'Product Owner';
                             assigneeAvatar = projectOwner.avatar;
-                            groupKey = `po-fallback-${task.assigneeId}`; // Unique key per missing user
-                            console.log(`⚠️ Fallback to PO: ${assigneeName} for missing user ${task.assigneeId} in task ${task.title}`);
+                            groupKey = `po-fallback-${task.assigneeId}`;
                         } else {
-                            // ✅ Final fallback to generic PO
                             assigneeName = 'Product Owner';
                             assigneeAvatar = null;
-                            groupKey = `generic-po-${task.assigneeId}`; // Unique key
-                            console.log(`❌ Using generic PO fallback for completely unknown user ${task.assigneeId} in task ${task.title}`);
+                            groupKey = `generic-po-${task.assigneeId}`;
                         }
                     }
                 }
                 
-                // ✅ Group by the actual user (not by name to avoid duplicates)
                 if (!acc[groupKey]) {
                     acc[groupKey] = {
                         id: groupKey,
                         name: assigneeName,
                         avatar: assigneeAvatar,
                         tasks: []
-                    }
-                } else {
-                    // Merge with existing group (shouldn't happen now but safety check)
-                    console.log(`🔄 Merging tasks for existing user: ${assigneeName}`);
+                    };
                 }
                 
-                acc[groupKey].tasks.push(task)
-                return acc
-            }, {})
+                acc[groupKey].tasks.push(task);
+                return acc;
+            }, {});
             
-            const totalTasks = tasks.length
-            const workloadData: any[] = []
+            const totalTasks = tasks.length;
+            const workloadData: any[] = [];
             
             // Add unassigned work
             if (unassignedTasks.length > 0) {
@@ -676,7 +597,7 @@ export default function ProjectSummaryPage() {
                     taskCount: unassignedTasks.length,
                     percentage: totalTasks > 0 ? Math.round((unassignedTasks.length / totalTasks) * 100) : 0,
                     isUnassigned: true
-                })
+                });
             }
             
             // Add assigned work
@@ -688,58 +609,45 @@ export default function ProjectSummaryPage() {
                     taskCount: assignee.tasks.length,
                     percentage: totalTasks > 0 ? Math.round((assignee.tasks.length / totalTasks) * 100) : 0,
                     isUnassigned: false
-                })
-            })
+                });
+            });
             
-            console.log('✅ Final team workload calculated:', workloadData);
-            setTeamWorkload(workloadData)
+            setTeamWorkload(workloadData);
             
         } catch (error) {
-            console.error("Error calculating team workload:", error)
-            setTeamWorkload([])
+            setTeamWorkload([]);
         }
     }
     
     const fetchRecentActivity = async () => {
         try {
-            console.log("Fetching recent activity for project:", projectId)
-            const response = await axios.get(`http://localhost:8085/api/tasks/project/${projectId}/activity`)
-            console.log("Activity API response:", response.data)
+            const response = await axios.get(`http://localhost:8085/api/tasks/project/${projectId}/activity`);
             
-            // Handle ResponseDataAPI format: {success: true, data: [...]}
-            const activities = response.data?.data || response.data || []
-            console.log("Parsed activities:", activities)
+            const activities = response.data?.data || response.data || [];
             
             if (Array.isArray(activities) && activities.length > 0) {
                 // Add timeAgo calculation and PO fallback to each activity
                 const activitiesWithTimeAgo = activities.map(activity => {
-                    // ✅ IMPROVED: Find real user info from projectMembers first
+                    // Find real user info from projectMembers first
                     let userName = 'Unknown User';
                     let userAvatar = null;
                     
-                    console.log(`🔍 Processing activity:`, {
-                        activityUser: activity.user,
-                        activityUserId: activity.userId,
-                        activityUserAvatar: activity.userAvatar
-                    });
-                    
-                    // ✅ STEP 1: Try to find actual user in projectMembers (if activity has userId)
+                    // Try to find actual user in projectMembers (if activity has userId)
                     if (activity.userId) {
                         const actualUser = projectMembers.find(member => member.id === activity.userId);
                         if (actualUser) {
                             userName = actualUser.username || actualUser.email?.split('@')[0] || 'User';
                             userAvatar = actualUser.avatar;
-                            console.log(`✅ Found real user for activity: ${userName} (${actualUser.id}) with avatar: ${userAvatar}`);
                             return {
-                    ...activity,
+                                ...activity,
                                 user: userName,
                                 userAvatar: userAvatar,
-                    timeAgo: getTimeAgo(activity.timestamp)
-                            }
+                                timeAgo: getTimeAgo(activity.timestamp)
+                            };
                         }
                     }
                     
-                    // ✅ STEP 1.5: Try to find user by name matching if no userId
+                    // Try to find user by name matching if no userId
                     if (activity.user && activity.user !== 'Unknown User') {
                         const userByName = projectMembers.find(member => 
                             member.username === activity.user || 
@@ -751,26 +659,24 @@ export default function ProjectSummaryPage() {
                         if (userByName) {
                             userName = userByName.username || userByName.email?.split('@')[0] || 'User';
                             userAvatar = userByName.avatar;
-                            console.log(`✅ Found user by name matching: ${userName} with avatar: ${userAvatar}`);
                             return {
                                 ...activity,
                                 user: userName,
                                 userAvatar: userAvatar,
                                 timeAgo: getTimeAgo(activity.timestamp)
-                            }
+                            };
                         }
                     }
                     
-                    // ✅ STEP 2: Use activity.user if it exists and looks valid
+                    // Use activity.user if it exists and looks valid
                     if (activity.user && 
                         activity.user !== 'Unknown User' && 
                         !activity.user.includes('Unknown') &&
                         activity.user.trim().length > 0) {
                         userName = activity.user;
                         userAvatar = activity.userAvatar || null;
-                        console.log(`📝 Using activity user: ${userName} with avatar: ${userAvatar}`);
                     } else {
-                        // ✅ STEP 3: Fallback to Project Owner only as last resort
+                        // Fallback to Project Owner only as last resort
                         const projectOwner = projectMembers.find(member => 
                             member.roleInProject === 'OWNER' || 
                             member.roleInProject === 'Project Lead' || 
@@ -780,74 +686,60 @@ export default function ProjectSummaryPage() {
                         if (projectOwner) {
                             userName = projectOwner.username || projectOwner.email?.split('@')[0] || 'Product Owner';
                             userAvatar = projectOwner.avatar;
-                            console.log(`⚠️ Activity fallback to PO: ${userName} with avatar: ${userAvatar}`);
                         } else {
                             // Final fallback to generic PO
                             userName = 'Product Owner';
                             userAvatar = null;
-                            console.log(`❌ Using generic PO fallback in activity`);
                         }
                     }
-                    
-                    console.log(`✅ Final activity data: user=${userName}, avatar=${userAvatar}`);
                     
                     return {
                         ...activity,
                         user: userName,
                         userAvatar: userAvatar,
                         timeAgo: getTimeAgo(activity.timestamp)
-                    }
-                })
+                    };
+                });
                 
-                setRecentActivity(activitiesWithTimeAgo)
-                console.log("Set recent activity:", activitiesWithTimeAgo)
+                setRecentActivity(activitiesWithTimeAgo);
             } else {
-                console.log("No activities found, using fallback...")
                 // Fallback: generate activity from recent task updates
                 if (allTasks.length > 0) {
                     const recentTasks = allTasks
                         .filter(task => task.createdAt || task.updatedAt)
                         .sort((a, b) => {
-                            const dateA = new Date(a.updatedAt || a.createdAt).getTime()
-                            const dateB = new Date(b.updatedAt || b.createdAt).getTime()
-                            return dateB - dateA
+                            const dateA = new Date(a.updatedAt || a.createdAt).getTime();
+                            const dateB = new Date(b.updatedAt || b.createdAt).getTime();
+                            return dateB - dateA;
                         })
-                        .slice(0, 5)
+                        .slice(0, 5);
                     
                     const activityData = recentTasks.map(task => {
-                        // ✅ IMPROVED: Find real assignee from projectMembers first
+                        // Find real assignee from projectMembers first
                         let userName = 'Unknown User';
                         let userAvatar = null;
                         
-                        console.log(`🔍 Processing fallback task:`, {
-                            taskTitle: task.title,
-                            assigneeId: task.assigneeId,
-                            assigneeName: task.assigneeName,
-                            assigneeAvatar: task.assigneeAvatar
-                        });
-                        
-                        // ✅ STEP 1: Try to find the actual assignee in projectMembers
+                        // Try to find the actual assignee in projectMembers
                         if (task.assigneeId) {
                             const actualAssignee = projectMembers.find(member => member.id === task.assigneeId);
                             if (actualAssignee) {
                                 userName = actualAssignee.username || actualAssignee.email?.split('@')[0] || 'User';
                                 userAvatar = actualAssignee.avatar;
-                                console.log(`✅ Found real assignee for task activity: ${userName} (${actualAssignee.id}) with avatar: ${userAvatar} for task ${task.title}`);
                                 return {
-                        id: task.id,
-                        type: 'task_updated',
+                                    id: task.id,
+                                    type: 'task_updated',
                                     user: userName,
                                     userAvatar: userAvatar,
-                        task: task.title,
-                        taskKey: task.shortKey || `TASK-${task.id?.toString().substring(0, 8)}`,
-                        status: task.status,
-                        timestamp: task.updatedAt || task.createdAt,
-                        timeAgo: getTimeAgo(task.updatedAt || task.createdAt)
-                                }
+                                    task: task.title,
+                                    taskKey: task.shortKey || `TASK-${task.id?.toString().substring(0, 8)}`,
+                                    status: task.status,
+                                    timestamp: task.updatedAt || task.createdAt,
+                                    timeAgo: getTimeAgo(task.updatedAt || task.createdAt)
+                                };
                             }
                         }
                         
-                        // ✅ STEP 1.5: Try to find assignee by name matching
+                        // Try to find assignee by name matching
                         if (task.assigneeName && task.assigneeName !== 'Unknown User') {
                             const assigneeByName = projectMembers.find(member => 
                                 member.username === task.assigneeName || 
@@ -859,7 +751,6 @@ export default function ProjectSummaryPage() {
                             if (assigneeByName) {
                                 userName = assigneeByName.username || assigneeByName.email?.split('@')[0] || 'User';
                                 userAvatar = assigneeByName.avatar;
-                                console.log(`✅ Found assignee by name matching: ${userName} with avatar: ${userAvatar} for task ${task.title}`);
                                 return {
                                     id: task.id,
                                     type: 'task_updated',
@@ -870,20 +761,19 @@ export default function ProjectSummaryPage() {
                                     status: task.status,
                                     timestamp: task.updatedAt || task.createdAt,
                                     timeAgo: getTimeAgo(task.updatedAt || task.createdAt)
-                                }
+                                };
                             }
                         }
                         
-                        // ✅ STEP 2: Use task.assigneeName if it exists and looks valid
+                        // Use task.assigneeName if it exists and looks valid
                         if (task.assigneeName && 
                             task.assigneeName !== 'Unknown User' && 
                             !task.assigneeName.includes('Unknown') &&
                             task.assigneeName.trim().length > 0) {
                             userName = task.assigneeName;
                             userAvatar = task.assigneeAvatar || null;
-                            console.log(`📝 Using task assigneeName for activity: ${userName} with avatar: ${userAvatar} for task ${task.title}`);
                         } else {
-                            // ✅ STEP 3: Fallback to Project Owner only as last resort
+                            // Fallback to Project Owner only as last resort
                             const projectOwner = projectMembers.find(member => 
                                 member.roleInProject === 'OWNER' || 
                                 member.roleInProject === 'Project Lead' || 
@@ -893,16 +783,12 @@ export default function ProjectSummaryPage() {
                             if (projectOwner) {
                                 userName = projectOwner.username || projectOwner.email?.split('@')[0] || 'Product Owner';
                                 userAvatar = projectOwner.avatar;
-                                console.log(`⚠️ Fallback to PO for task activity: ${userName} with avatar: ${userAvatar} for task ${task.title}`);
                             } else {
                                 // Final fallback to generic PO
                                 userName = 'Product Owner';
                                 userAvatar = null;
-                                console.log(`❌ Using generic PO fallback for task ${task.title}`);
                             }
                         }
-                        
-                        console.log(`✅ Final fallback activity data: user=${userName}, avatar=${userAvatar}, task=${task.title}`);
                         
                         return {
                             id: task.id,
@@ -914,63 +800,52 @@ export default function ProjectSummaryPage() {
                             status: task.status,
                             timestamp: task.updatedAt || task.createdAt,
                             timeAgo: getTimeAgo(task.updatedAt || task.createdAt)
-                        }
-                    })
+                        };
+                    });
                     
-                    setRecentActivity(activityData)
-                    console.log("Set fallback activity:", activityData)
+                    setRecentActivity(activityData);
                 } else {
-                    setRecentActivity([])
-                    console.log("No tasks available for fallback")
+                    setRecentActivity([]);
                 }
             }
         } catch (error) {
-            console.error("Error fetching recent activity:", error)
             // Fallback: generate activity from recent task updates
             if (allTasks.length > 0) {
                 const recentTasks = allTasks
                     .filter(task => task.createdAt || task.updatedAt)
                     .sort((a, b) => {
-                        const dateA = new Date(a.updatedAt || a.createdAt).getTime()
-                        const dateB = new Date(b.updatedAt || b.createdAt).getTime()
-                        return dateB - dateA
+                        const dateA = new Date(a.updatedAt || a.createdAt).getTime();
+                        const dateB = new Date(b.updatedAt || b.createdAt).getTime();
+                        return dateB - dateA;
                     })
-                    .slice(0, 5)
+                    .slice(0, 5);
                 
                 const activityData = recentTasks.map(task => {
-                    // ✅ IMPROVED: Find real assignee from projectMembers first
+                    // Find real assignee from projectMembers first
                     let userName = 'Unknown User';
                     let userAvatar = null;
                     
-                    console.log(`🔍 Processing fallback task:`, {
-                        taskTitle: task.title,
-                        assigneeId: task.assigneeId,
-                        assigneeName: task.assigneeName,
-                        assigneeAvatar: task.assigneeAvatar
-                    });
-                    
-                    // ✅ STEP 1: Try to find the actual assignee in projectMembers
+                    // Try to find the actual assignee in projectMembers
                     if (task.assigneeId) {
                         const actualAssignee = projectMembers.find(member => member.id === task.assigneeId);
                         if (actualAssignee) {
                             userName = actualAssignee.username || actualAssignee.email?.split('@')[0] || 'User';
                             userAvatar = actualAssignee.avatar;
-                            console.log(`✅ Found real assignee for task activity: ${userName} (${actualAssignee.id}) with avatar: ${userAvatar} for task ${task.title}`);
                             return {
-                    id: task.id,
-                    type: 'task_updated',
+                                id: task.id,
+                                type: 'task_updated',
                                 user: userName,
                                 userAvatar: userAvatar,
-                    task: task.title,
-                    taskKey: task.shortKey || `TASK-${task.id?.toString().substring(0, 8)}`,
-                    status: task.status,
-                    timestamp: task.updatedAt || task.createdAt,
-                    timeAgo: getTimeAgo(task.updatedAt || task.createdAt)
-                            }
+                                task: task.title,
+                                taskKey: task.shortKey || `TASK-${task.id?.toString().substring(0, 8)}`,
+                                status: task.status,
+                                timestamp: task.updatedAt || task.createdAt,
+                                timeAgo: getTimeAgo(task.updatedAt || task.createdAt)
+                            };
                         }
                     }
                     
-                    // ✅ STEP 1.5: Try to find assignee by name matching
+                    // Try to find assignee by name matching
                     if (task.assigneeName && task.assigneeName !== 'Unknown User') {
                         const assigneeByName = projectMembers.find(member => 
                             member.username === task.assigneeName || 
@@ -982,7 +857,6 @@ export default function ProjectSummaryPage() {
                         if (assigneeByName) {
                             userName = assigneeByName.username || assigneeByName.email?.split('@')[0] || 'User';
                             userAvatar = assigneeByName.avatar;
-                            console.log(`✅ Found assignee by name matching: ${userName} with avatar: ${userAvatar} for task ${task.title}`);
                             return {
                                 id: task.id,
                                 type: 'task_updated',
@@ -993,20 +867,19 @@ export default function ProjectSummaryPage() {
                                 status: task.status,
                                 timestamp: task.updatedAt || task.createdAt,
                                 timeAgo: getTimeAgo(task.updatedAt || task.createdAt)
-                            }
+                            };
                         }
                     }
                     
-                    // ✅ STEP 2: Use task.assigneeName if it exists and looks valid
+                    // Use task.assigneeName if it exists and looks valid
                     if (task.assigneeName && 
                         task.assigneeName !== 'Unknown User' && 
                         !task.assigneeName.includes('Unknown') &&
                         task.assigneeName.trim().length > 0) {
                         userName = task.assigneeName;
                         userAvatar = task.assigneeAvatar || null;
-                        console.log(`📝 Using task assigneeName for activity: ${userName} with avatar: ${userAvatar} for task ${task.title}`);
                     } else {
-                        // ✅ STEP 3: Fallback to Project Owner only as last resort
+                        // Fallback to Project Owner only as last resort
                         const projectOwner = projectMembers.find(member => 
                             member.roleInProject === 'OWNER' || 
                             member.roleInProject === 'Project Lead' || 
@@ -1016,16 +889,12 @@ export default function ProjectSummaryPage() {
                         if (projectOwner) {
                             userName = projectOwner.username || projectOwner.email?.split('@')[0] || 'Product Owner';
                             userAvatar = projectOwner.avatar;
-                            console.log(`⚠️ Fallback to PO for task activity: ${userName} with avatar: ${userAvatar} for task ${task.title}`);
                         } else {
                             // Final fallback to generic PO
                             userName = 'Product Owner';
                             userAvatar = null;
-                            console.log(`❌ Using generic PO fallback for task ${task.title}`);
                         }
                     }
-                    
-                    console.log(`✅ Final fallback activity data: user=${userName}, avatar=${userAvatar}, task=${task.title}`);
                     
                     return {
                         id: task.id,
@@ -1037,14 +906,12 @@ export default function ProjectSummaryPage() {
                         status: task.status,
                         timestamp: task.updatedAt || task.createdAt,
                         timeAgo: getTimeAgo(task.updatedAt || task.createdAt)
-                    }
-                })
+                    };
+                });
                 
-                setRecentActivity(activityData)
-                console.log("Set error fallback activity:", activityData)
+                setRecentActivity(activityData);
             } else {
-                setRecentActivity([])
-                console.log("No tasks available for error fallback")
+                setRecentActivity([]);
             }
         }
     }
@@ -1083,13 +950,12 @@ export default function ProjectSummaryPage() {
 
     const fetchUserProjects = async (userId: string) => {
         try {
-            setIsLoadingProjects(true)
-            console.log(`🔍 Fetching projects for user: ${userId}`)
+            setIsLoadingProjects(true);
             
             // Fetch both owned projects and member projects
             const [ownedResponse, memberResponse] = await Promise.allSettled([
-                // Get projects where user is owner
-                axios.get(`http://localhost:8083/api/projects/user/${userId}`),
+                // Get projects where user is owner - FIXED: Use correct API
+                axios.get(`http://localhost:8083/api/projects/owner/${userId}`),
                 // Get projects where user is member
                 axios.get(`http://localhost:8083/api/projects/search/member?keyword=&userId=${userId}`)
             ]);
@@ -1099,19 +965,13 @@ export default function ProjectSummaryPage() {
             // Handle owned projects
             if (ownedResponse.status === 'fulfilled' && ownedResponse.value.data?.data) {
                 const ownedProjects = ownedResponse.value.data.data;
-                console.log(`📂 Found ${ownedProjects.length} owned projects:`, ownedProjects.map((p: any) => p.name));
                 allProjects.push(...ownedProjects);
-            } else {
-                console.log("❌ Failed to fetch owned projects:", ownedResponse);
             }
 
             // Handle member projects
             if (memberResponse.status === 'fulfilled' && memberResponse.value.data?.data) {
                 const memberProjects = memberResponse.value.data.data;
-                console.log(`👥 Found ${memberProjects.length} member projects:`, memberProjects.map((p: any) => p.name));
                 allProjects.push(...memberProjects);
-            } else {
-                console.log("❌ Failed to fetch member projects:", memberResponse);
             }
 
             // Remove duplicates by ID (in case user is both owner and member)
@@ -1119,82 +979,74 @@ export default function ProjectSummaryPage() {
                 index === self.findIndex(p => p.id === project.id)
             );
 
-            console.log(`✅ Total unique projects found: ${uniqueProjects.length}`);
-            uniqueProjects.forEach(p => console.log(`  - ${p.name} (${p.id})`));
-
             setUserProjects(uniqueProjects);
             setFilteredProjects(uniqueProjects);
             
-            console.log(`✅ Loaded ${uniqueProjects.length} projects (owned + member) for user ${userId}`);
-            
         } catch (error) {
-            console.error("❌ Error fetching user projects:", error);
             setUserProjects([]);
             setFilteredProjects([]);
         } finally {
-            setIsLoadingProjects(false)
+            setIsLoadingProjects(false);
         }
     }
     
     const handleProjectChange = (selectedProject: Project) => {
         // Update current project in navigation context
-        setCurrentProjectId(selectedProject.id)
+        setCurrentProjectId(selectedProject.id);
         
         // Store selected project info in localStorage for sync across pages
-        localStorage.setItem("currentProjectId", selectedProject.id)
-        localStorage.setItem("currentProjectName", selectedProject.name)
-        localStorage.setItem("currentProjectKey", selectedProject.key)
+        localStorage.setItem("currentProjectId", selectedProject.id);
+        localStorage.setItem("currentProjectName", selectedProject.name);
+        localStorage.setItem("currentProjectKey", selectedProject.key);
         if (selectedProject.projectType) {
-            localStorage.setItem("currentProjectType", selectedProject.projectType)
+            localStorage.setItem("currentProjectType", selectedProject.projectType);
         }
 
         // Update recent projects
-        const updatedRecent = [selectedProject.id, ...recentProjects.filter(id => id !== selectedProject.id)].slice(0, 5)
-        setRecentProjects(updatedRecent)
-        localStorage.setItem("recentProjects", JSON.stringify(updatedRecent))
+        const updatedRecent = [selectedProject.id, ...recentProjects.filter(id => id !== selectedProject.id)].slice(0, 5);
+        setRecentProjects(updatedRecent);
+        localStorage.setItem("recentProjects", JSON.stringify(updatedRecent));
         
         // Navigate to summary of selected project
-        router.push(`/project/summary?projectId=${selectedProject.id}`)
+        router.push(`/project/summary?projectId=${selectedProject.id}`);
         
         // Close dropdown and reset search
-        setShowProjectDropdown(false)
-        setProjectSearchQuery("")
-        setSelectedIndex(-1)
+        setShowProjectDropdown(false);
+        setProjectSearchQuery("");
+        setSelectedIndex(-1);
         
         // Reset loading state to fetch new project data
-        setIsLoading(true)
-        
-        console.log(`🔄 Switched to project: ${selectedProject.name} (${selectedProject.id})`)
+        setIsLoading(true);
     }
 
     const getProjectTypeIcon = (projectType?: string) => {
         switch (projectType?.toLowerCase()) {
             case 'scrum':
-                return '🏃‍♂️'
+                return '🏃‍♂️';
             case 'kanban':
-                return '📋'
+                return '📋';
             case 'software':
-                return '💻'
+                return '💻';
             default:
-                return '📁'
+                return '📁';
         }
     }
 
     const getProjectTypeColor = (projectType?: string) => {
         switch (projectType?.toLowerCase()) {
             case 'scrum':
-                return 'bg-blue-500'
+                return 'bg-blue-500';
             case 'kanban':
-                return 'bg-green-500'
+                return 'bg-green-500';
             case 'software':
-                return 'bg-purple-500'
+                return 'bg-purple-500';
             default:
-                return 'bg-gray-500'
+                return 'bg-gray-500';
         }
     }
 
     const isRecentProject = (projectId: string) => {
-        return recentProjects.includes(projectId)
+        return recentProjects.includes(projectId);
     }
 
     const calculatePriorityBreakdown = (tasks: any[], selectedSprintId: string) => {
@@ -1222,7 +1074,6 @@ export default function ProjectSummaryPage() {
                 { name: 'Lowest', value: priorityBreakdown['LOWEST'] || 0, color: '#0891b2' }
             ]);
         } catch (error) {
-            console.error("Error calculating priority breakdown:", error);
             setPriorityData([
                 { name: 'Highest', value: 0, color: '#dc2626' },
                 { name: 'High', value: 0, color: '#ea580c' },

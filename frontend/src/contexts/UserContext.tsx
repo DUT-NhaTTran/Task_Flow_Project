@@ -118,7 +118,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
           }
         }
       } catch (authError) {
-        console.warn("⚠️ UserContext: Auth service unavailable:", authError.message);
+        console.warn("⚠️ UserContext: Auth service unavailable:", authError instanceof Error ? authError.message : 'Unknown error');
       }
 
       // Second try: Direct user service if first failed
@@ -135,7 +135,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
             console.log("✅ UserContext: Fetched user via direct service:", userData);
           }
         } catch (directError) {
-          console.warn("⚠️ UserContext: Direct user service unavailable:", directError.message);
+          console.warn("⚠️ UserContext: Direct user service unavailable:", directError instanceof Error ? directError.message : 'Unknown error');
         }
       }
 

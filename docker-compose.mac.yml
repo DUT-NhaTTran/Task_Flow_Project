@@ -1,0 +1,73 @@
+services:
+  # Database only
+  postgres:
+    image: postgres:15-alpine
+    container_name: taskflow_postgres
+    platform: linux/arm64
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgre
+      - POSTGRES_PASSWORD=Nhatvn123
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgre -d postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - taskflow_network
+
+  # Core Services (ARM64 images)
+  common-service:
+    image: tranminnhatdut/taskflow-backend:common-arm64
+    container_name: taskflow_common
+    platform: linux/arm64
+    environment:
+      - SPRING_PROFILES_ACTIVE=production
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/postgres
+      - SPRING_DATASOURCE_USERNAME=postgre
+      - SPRING_DATASOURCE_PASSWORD=Nhatvn123
+      - JAVA_OPTS=-Xmx512m -Xms256m
+      - TZ=Asia/Ho_Chi_Minh
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - taskflow_network
+
+  projects-service:
+    image: tranminnhatdut/taskflow-backend:projects-arm64
+    container_name: taskflow_projects
+    platform: linux/arm64
+    environment:
+      - SPRING_PROFILES_ACTIVE=production
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/postgres
+      - SPRING_DATASOURCE_USERNAME=postgre
+      - SPRING_DATASOURCE_PASSWORD=Nhatvn123
+      - COMMON_SERVICE_URL=http://common-service:8081
+      - JAVA_OPTS=-Xmx512m -Xms256m
+      - TZ=Asia/Ho_Chi_Minh
+    ports:
+      - "8083:8083"
+    depends_on:
+      common-service:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - taskflow_network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  taskflow_network:
+    driver: bridge 

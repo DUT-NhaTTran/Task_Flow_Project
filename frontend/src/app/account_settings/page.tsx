@@ -136,38 +136,51 @@ export default function AccountSettingsPage() {
                     router.push('/auth/signin');
                 }, 2000);
             } else {
-                throw new Error("Failed to change password");
+                // Handle unsuccessful response but not HTTP error
+                const errorMessage = response.data?.message || response.data?.error || "Failed to change password";
+                toast.error("Password change failed", {
+                    description: errorMessage
+                });
             }
         } catch (error: any) {
-            console.error('❌ Error changing password:', error);
+            // Don't log the full error to console to avoid showing technical details
+            console.log('Password change failed - handling gracefully');
             
-            if (axios.isAxiosError(error)) {
-                if (error.response?.status === 400) {
-                    const errorMessage = error.response?.data?.error || error.response?.data?.message || "Invalid data";
-                    
-                    if (errorMessage.includes("current password")) {
-                        setErrors(prev => ({
-                            ...prev,
-                            currentPassword: "Current password is incorrect"
-                        }));
-                    }
-                    
-                    toast.error("Password change failed", {
-                        description: errorMessage
-                    });
-                } else if (error.response?.status === 401) {
-                    toast.error("Authentication failed", {
-                        description: "Please check your current password"
-                    });
+            if (axios.isAxiosError(error) && error.response) {
+                const status = error.response.status;
+                const errorMessage = error.response?.data?.error || error.response?.data?.message || "";
+                
+                if (status === 400) {
+                    // Handle bad request - usually wrong current password
+                    // Don't show the technical error, just handle it gracefully
+                    setErrors(prev => ({
+                        ...prev,
+                        currentPassword: "Current password is incorrect"
+                    }));
+                    toast.error("Current password is incorrect");
+                } else if (status === 401) {
+                    // Handle unauthorized
+                    setErrors(prev => ({
+                        ...prev,
+                        currentPassword: "Current password is incorrect"
+                    }));
+                    toast.error("Current password is incorrect");
+                } else if (status === 403) {
+                    // Handle forbidden
+                    toast.error("Access denied - insufficient permissions");
+                } else if (status === 404) {
+                    // Handle user not found
+                    toast.error("User account not found");
+                } else if (status >= 500) {
+                    // Handle server errors
+                    toast.error("Server temporarily unavailable, please try again later");
                 } else {
-                    toast.error("Failed to change password", {
-                        description: "Please try again or contact support."
-                    });
+                    // Handle other HTTP errors
+                    toast.error("Unable to change password, please try again");
                 }
             } else {
-                toast.error("Failed to change password", {
-                    description: "Please try again or contact support."
-                });
+                // Handle network errors or other non-HTTP errors
+                toast.error("Network error - please check your connection");
             }
         } finally {
             setIsChangingPassword(false);

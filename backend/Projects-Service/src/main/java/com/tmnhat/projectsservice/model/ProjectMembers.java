@@ -7,7 +7,7 @@ public class ProjectMembers{
     private UUID id;
     private UUID projectId;
     private UUID userId;
-    private String roleInProject; // 'leader' | 'member' | 'viewer'
+    private String roleInProject;
 
     public ProjectMembers() {
     }

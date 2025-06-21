@@ -8,7 +8,6 @@ import com.tmnhat.common.exception.DatabaseException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
-import com.tmnhat.common.exception.ResourceNotFoundException;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -65,15 +64,6 @@ public class AuthServiceImpl implements AuthService {
         return accountDAO.getUserIdByEmail(email);
     }
     @Override
-    public UUID getUserIdByAccountId(UUID accountId) {
-        try {
-            return accountDAO.getUserIdById(accountId);
-        } catch (SQLException e) {
-            throw new DatabaseException("Error retrieving user ID for account ID");
-        }
-    }
-
-    @Override
     public Accounts getAccountByEmail(String email) throws SQLException {
         return accountDAO.getAccountByEmail(email);
     }
@@ -90,8 +80,6 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public void changePassword(String email, String currentPassword, String newPassword) throws Exception {
-        System.out.println("🔐 Starting password change for email: " + email);
-        System.out.println("🔍 Current password length: " + currentPassword.length());
         
         // Get account by email
         Accounts account = accountDAO.getAccountByEmail(email);
@@ -100,72 +88,55 @@ public class AuthServiceImpl implements AuthService {
             throw new DatabaseException("Account not found");
         }
 
-        System.out.println("✅ Account found, stored password hash: " + account.getPassword());
-        System.out.println("🔍 Stored hash length: " + account.getPassword().length());
-        System.out.println("🔍 Current password to check: " + currentPassword);
         
-        // Verify current password
         boolean passwordMatches = passwordEncoder.matches(currentPassword, account.getPassword());
-        System.out.println("🔍 Password matches result: " + passwordMatches);
         
         if (!passwordMatches) {
-            System.err.println("❌ Current password verification failed");
-            System.err.println("❌ Input password: '" + currentPassword + "'");
-            System.err.println("❌ Stored hash: '" + account.getPassword() + "'");
+            System.err.println("Current password verification failed");
+            System.err.println("Input password: '" + currentPassword + "'");
+            System.err.println("Stored hash: '" + account.getPassword() + "'");
             throw new DatabaseException("Current password is incorrect");
         }
 
-        System.out.println("✅ Current password verified, hashing new password...");
 
         // Hash new password
         String hashedNewPassword = passwordEncoder.encode(newPassword);
-        System.out.println("✅ New password hashed: " + hashedNewPassword);
-        System.out.println("✅ New password hashed, updating database...");
+
 
         // Update password in database
         accountDAO.updatePassword(account.getId(), hashedNewPassword, LocalDateTime.now());
         
-        System.out.println("✅ Password updated successfully for account: " + email);
     }
 
     @Override
     public void changePasswordByUserId(UUID userId, String currentPassword, String newPassword) throws Exception {
-        System.out.println("🔐 Starting password change for userId: " + userId);
-        System.out.println("🔍 Current password length: " + currentPassword.length());
         
         // Get account by user_id
         Accounts account = accountDAO.getAccountByUserId(userId);
         if (account == null) {
-            System.err.println("❌ Account not found for userId: " + userId);
+            System.err.println("Account not found for userId: " + userId);
             throw new DatabaseException("Account not found for this user");
         }
 
-        System.out.println("✅ Account found, stored password hash: " + account.getPassword());
-        System.out.println("🔍 Stored hash length: " + account.getPassword().length());
-        System.out.println("🔍 Current password to check: " + currentPassword);
+      
         
         // Verify current password
-        boolean passwordMatches = passwordEncoder.matches(currentPassword, account.getPassword());
-        System.out.println("🔍 Password matches result: " + passwordMatches);
-        
+        boolean passwordMatches = passwordEncoder.matches(currentPassword, account.getPassword());        
         if (!passwordMatches) {
-            System.err.println("❌ Current password verification failed");
-            System.err.println("❌ Input password: '" + currentPassword + "'");
-            System.err.println("❌ Stored hash: '" + account.getPassword() + "'");
+            System.err.println("Current password verification failed");
+            System.err.println("Input password: '" + currentPassword + "'");
+            System.err.println("Stored hash: '" + account.getPassword() + "'");
             throw new DatabaseException("Current password is incorrect");
         }
 
-        System.out.println("✅ Current password verified, hashing new password...");
+        System.out.println("Current password verified, hashing new password...");
 
         // Hash new password
         String hashedNewPassword = passwordEncoder.encode(newPassword);
-        System.out.println("✅ New password hashed: " + hashedNewPassword);
-        System.out.println("✅ New password hashed, updating database...");
 
         // Update password in database
         accountDAO.updatePassword(account.getId(), hashedNewPassword, LocalDateTime.now());
         
-        System.out.println("✅ Password updated successfully for userId: " + userId);
     }
 
 }

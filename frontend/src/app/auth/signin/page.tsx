@@ -40,13 +40,6 @@ export default function SignInPage() {
         }
     }, []);
 
-    // Debug function to clear all data
-    const clearAllData = () => {
-        sessionStorage.clear();
-        localStorage.clear();
-        console.log("🧹 All storage cleared");
-        window.location.reload();
-    };
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -65,7 +58,7 @@ export default function SignInPage() {
 
             const { token, userId, accountData } = loginRes.data;
             
-            console.log("✅ Login successful, received:", {
+            console.log("Login successful, received:", {
                 userId,
                 hasToken: !!token,
                 accountData: accountData || "Not provided"
@@ -103,7 +96,6 @@ export default function SignInPage() {
             UserStorageService.saveLoggedInUser(accountInfo, userProfile, token);
 
             // Step 5: Also save to localStorage for backward compatibility
-            console.log("💾 Also saving to localStorage for backward compatibility...");
             localStorage.setItem('userId', userId);
             localStorage.setItem('ownerId', userId); // Some pages expect ownerId
             localStorage.setItem('currentUserId', userId);

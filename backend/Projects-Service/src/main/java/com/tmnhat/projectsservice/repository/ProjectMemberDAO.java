@@ -78,32 +78,35 @@ public class ProjectMemberDAO extends BaseDAO {
     }
 
     public boolean canUpdateMemberRoles(UUID projectId, UUID userId) throws SQLException {
-        // Check if user is SCRUM_MASTER
-        String scrumMasterSql = "SELECT 1 FROM project_members " +
-                               "WHERE project_id = ? AND user_id = ? AND role_in_project = 'SCRUM_MASTER'";
-        boolean isScrumMaster = executeQuery(scrumMasterSql, stmt -> {
+        // Check if user is SCRUM_MASTER or PRODUCT_OWNER
+        String roleSql = "SELECT 1 FROM project_members " +
+                         "WHERE project_id = ? AND user_id = ? AND role_in_project IN ('SCRUM_MASTER', 'PRODUCT_OWNER')";
+        
+        boolean hasManagerRole = executeQuery(roleSql, stmt -> {
             stmt.setObject(1, projectId);
             stmt.setObject(2, userId);
             ResultSet rs = stmt.executeQuery();
             return rs.next();
         });
-        
-        if (isScrumMaster) {
+    
+        if (hasManagerRole) {
             return true;
         }
-        
+    
         // Check if user is project owner
         String ownerSql = "SELECT 1 FROM projects " +
                          "WHERE id = ? AND owner_id = ? AND deleted_at IS NULL";
+    
         boolean isProjectOwner = executeQuery(ownerSql, stmt -> {
             stmt.setObject(1, projectId);
             stmt.setObject(2, userId);
             ResultSet rs = stmt.executeQuery();
             return rs.next();
         });
-        
+    
         return isProjectOwner;
     }
+    
 
     public boolean isProjectLead(UUID projectId, UUID userId) throws SQLException {
         String sql = "SELECT 1 FROM project_members " +
@@ -142,8 +145,14 @@ public class ProjectMemberDAO extends BaseDAO {
         });
     }
 
-    public UUID getScrumMasterId(UUID projectId) throws SQLException {
-        String sql = "SELECT user_id FROM project_members WHERE project_id = ? AND role_in_project = 'SCRUM_MASTER' LIMIT 1";
+    public UUID getManagerId(UUID projectId) throws SQLException {
+        String sql = """
+            SELECT user_id 
+            FROM project_members 
+            WHERE project_id = ? AND role_in_project IN ('SCRUM_MASTER', 'PRODUCT_OWNER') 
+            LIMIT 1
+        """;
+    
         return executeQuery(sql, stmt -> {
             stmt.setObject(1, projectId);
             ResultSet rs = stmt.executeQuery();
@@ -153,4 +162,5 @@ public class ProjectMemberDAO extends BaseDAO {
             return null;
         });
     }
+    
 }

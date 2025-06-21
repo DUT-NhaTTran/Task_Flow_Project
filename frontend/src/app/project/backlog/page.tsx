@@ -156,18 +156,8 @@ export default function BacklogPage() {
         setPermissionsLoading(true);
         try {
           const permissions = await getUserPermissions(userData.account.id, projectId);
-          console.log('🔐 PERMISSION DEBUG:', {
-            userId: userData.account.id,
-            projectId,
-            permissions,
-            role: permissions?.role,
-            isScrumMaster: permissions?.isScrumMaster,
-            canManageSprints: permissions?.canManageSprints,
-            canStartEndSprints: canStartEndSprints(permissions)
-          });
           setUserPermissions(permissions);
         } catch (error) {
-          console.error('Error fetching permissions:', error);
           setUserPermissions(null);
         } finally {
           setPermissionsLoading(false);
@@ -217,7 +207,6 @@ export default function BacklogPage() {
         return DEFAULT_AVATAR_URL;
       }
     } catch (error) {
-      console.error(`Error fetching avatar for user ${userId}:`, error);
       avatarCache.current[userId] = DEFAULT_AVATAR_URL;
       return DEFAULT_AVATAR_URL;
     }
@@ -298,13 +287,13 @@ export default function BacklogPage() {
               const avatarUrl = await fetchUserAvatar(user.id);
               user.avatarUrl = avatarUrl;
             } catch (error) {
-              console.error(`Error fetching avatar for user ${user.id}:`, error);
+              // Silent error handling
             }
           }
         });
       }
     } catch (error: any) {
-      console.error("Error fetching project users:", error);
+      // Silent error handling
     }
   };
 
@@ -497,13 +486,11 @@ export default function BacklogPage() {
           const backlogTasksList = allTasks.filter((task: TaskData) => !task.sprintId && (task.parentTaskId === null || task.parentTaskId === undefined));
           setBacklogTasks(backlogTasksList);
         } else {
-          console.error("Failed to fetch tasks:", tasksResponse.data);
           toast.error("Failed to load tasks");
         }
 
         // Fetch sprints for this project
         const sprintsResponse = await axios.get(`http://localhost:8084/api/sprints/project/${projectId}`);
-        console.log("Sprint response:", sprintsResponse.data); // For debugging
         
         // Check if the API returns {data: [...]} structure
         if (sprintsResponse.data && sprintsResponse.data.data) {
@@ -530,12 +517,10 @@ export default function BacklogPage() {
             setExpandedSprint('backlog');
           }
         } else {
-          console.error("Failed to fetch sprints:", sprintsResponse.data);
           toast.error("Failed to load sprints");
           setSprints([]); // Ensure sprints is always an array
         }
       } catch (error) {
-        console.error("Error fetching data:", error);
         toast.error("Error loading data");
         setSprints([]); // Ensure sprints is always an array on error
       } finally {
@@ -598,10 +583,8 @@ export default function BacklogPage() {
         setNewTaskTitle(""); // Reset input field
       } else {
         toast.error("Failed to create task");
-        console.error("API returned error:", response.data);
       }
     } catch (error) {
-      console.error("Error creating task:", error);
       toast.error("Failed to create task");
     } finally {
       setIsCreating(false);
@@ -701,12 +684,10 @@ export default function BacklogPage() {
                 }
               }
             } catch (error) {
-              console.warn('⚠️ Failed to fetch scrum master info:', error);
             }
 
             // Send notifications to all unique recipients
             const uniqueRecipients = [...new Set(recipients)];
-            console.log(`📤 BACKLOG: Sending status change notifications to ${uniqueRecipients.length} recipients:`, uniqueRecipients);
 
             if (uniqueRecipients.length > 0) {
               const notificationPromises = uniqueRecipients.map(async (recipientId) => {
@@ -715,16 +696,13 @@ export default function BacklogPage() {
                   recipientUserId: recipientId
                 };
 
-                console.log('📤 BACKLOG: Sending notification to:', recipientId);
                 return axios.post('http://localhost:8089/api/notifications/create', statusNotificationData);
               });
 
               await Promise.all(notificationPromises);
-              console.log(`✅ BACKLOG: ${uniqueRecipients.length} status change notifications sent successfully`);
             }
           } catch (notificationError) {
-            console.error('❌ BACKLOG: Failed to send task status change notification:', notificationError);
-            // Don't fail the main operation if notification fails
+            // Silent notification error handling
           }
         }
         
@@ -733,43 +711,7 @@ export default function BacklogPage() {
         toast.error("Failed to update task status");
       }
     } catch (error) {
-      console.error("Error updating task status:", error);
       toast.error("Failed to update task status");
-    }
-  };
-
-  // Assign task to sprint (move from backlog to sprint)
-  const assignTaskToSprint = async (taskId: string, sprintId: string) => {
-    try {
-      // Find the task to update
-      const taskToUpdate = tasks.find(task => task.id === taskId);
-      if (!taskToUpdate) {
-        toast.error("Task not found");
-        return;
-      }
-      
-      // Update the task with sprint ID
-      const updatedTask = { ...taskToUpdate, sprintId: sprintId };
-      
-      const response = await axios.put(`http://localhost:8085/api/tasks/${taskId}`, updatedTask);
-      
-      if (response.data) {
-        // Update local state
-        const updatedTasks = tasks.map((task) =>
-          task.id === taskId ? { ...task, sprintId: sprintId } : task
-        );
-        setTasks(updatedTasks);
-        
-        // Remove from backlog
-        setBacklogTasks(backlogTasks.filter(task => task.id !== taskId));
-        
-        toast.success("Task assigned to sprint");
-      } else {
-        toast.error("Failed to assign task to sprint");
-      }
-    } catch (error) {
-      console.error("Error assigning task to sprint:", error);
-      toast.error("Failed to assign task to sprint");
     }
   };
 
@@ -805,19 +747,11 @@ export default function BacklogPage() {
     }
   };
 
-  // Status dropdown options
-  const statusOptions: { value: "TODO" | "IN_PROGRESS" | "REVIEW" | "DONE"; label: string }[] = [
-    { value: "TODO", label: "To Do" },
-    { value: "IN_PROGRESS", label: "In Progress" },
-    { value: "REVIEW", label: "Review" },
-    { value: "DONE", label: "Done" }
-  ];
 
   // Fetch project members for notifications
   const fetchProjectMembers = async (): Promise<User[]> => {
     try {
       if (!projectId) {
-        console.warn("No project ID available for fetching members");
         return [];
       }
 
@@ -832,11 +766,9 @@ export default function BacklogPage() {
       if (response.data && response.data.status === "SUCCESS" && Array.isArray(response.data.data)) {
         return response.data.data;
       } else {
-        console.warn("Unexpected response format for project members:", response.data);
         return [];
       }
     } catch (error) {
-      console.error("Error fetching project members:", error);
       return [];
     }
   };
@@ -849,8 +781,6 @@ export default function BacklogPage() {
     additionalInfo?: string
   ) => {
     try {
-      console.log(`🔔 SPRINT NOTIFICATION: Starting ${notificationType} notification process...`);
-      
       // Validate projectId before proceeding
       if (!projectId) {
         return;
@@ -862,36 +792,30 @@ export default function BacklogPage() {
       try {
         validatedProjectId = validateProjectId(projectId);
       } catch (error) {
-        console.error('❌ SPRINT NOTIFICATION: Invalid project ID format:', error);
         return;
       }
       
       try {
         validatedSprintId = validateSprintId(sprint.id);
       } catch (error) {
-        console.error('❌ SPRINT NOTIFICATION: Invalid sprint ID format:', error);
         return;
       }
       
       if (!validatedSprintId) {
-        console.error('❌ SPRINT NOTIFICATION: Sprint ID is required for notifications');
         return;
       }
       
       // Get current user data
       if (!userData?.account?.id && !userData?.profile?.id) {
-        console.warn("No current user data available for notifications");
         return;
       }
       
       const currentUserId = userData.account?.id || userData.profile?.id;
       const currentUserName = userData.profile?.username || userData.profile?.firstName || userData.account?.email || 'User';
 
-      console.log(`🔔 SPRINT NOTIFICATION: Starting ${notificationType} for sprint "${sprint.name}"`);
 
       // Fetch project members
       const projectMembers = await fetchProjectMembers();
-      console.log(`👥 SPRINT NOTIFICATION: Found ${projectMembers.length} project members`);
 
       // Fetch project details to get scrum master
       let scrumMasterId: string | null = null;
@@ -902,10 +826,8 @@ export default function BacklogPage() {
         if (projectResponse.data?.status === "SUCCESS" && projectResponse.data?.data) {
           scrumMasterId = projectResponse.data.data.scrumMasterId;
           projectName = projectResponse.data.data.name || projectName;
-          console.log(`📋 SPRINT NOTIFICATION: Project details - Name: "${projectName}", Scrum Master: ${scrumMasterId}`);
         }
       } catch (error) {
-        console.warn('⚠️ SPRINT NOTIFICATION: Failed to fetch project details:', error);
       }
 
       // Create comprehensive recipient list
@@ -921,15 +843,11 @@ export default function BacklogPage() {
       // Add scrum master if not already included and not current user
       if (scrumMasterId && scrumMasterId !== currentUserId && !allRecipients.has(scrumMasterId)) {
         allRecipients.add(scrumMasterId);
-        console.log(`➕ SPRINT NOTIFICATION: Added scrum master ${scrumMasterId} to recipients`);
       }
 
       const recipientIds = Array.from(allRecipients);
-      console.log(`📝 SPRINT NOTIFICATION: Total recipients (excluding current user): ${recipientIds.length}`);
-      console.log(`📋 SPRINT NOTIFICATION: Recipients: ${recipientIds.join(', ')}`);
 
       if (recipientIds.length === 0) {
-        console.log("No recipients to notify (current user is the only member or no members found)");
         return;
       }
 
@@ -980,7 +898,6 @@ export default function BacklogPage() {
         actionUrl: `/project/backlog?projectId=${validatedProjectId}&sprintId=${validatedSprintId}`
       };
 
-      console.log(`🔍 SPRINT NOTIFICATION: Base notification data:`, baseNotificationData);
 
       // Send notifications to all recipients
       const notificationPromises = recipientIds.map(async (recipientId, index) => {
@@ -989,8 +906,6 @@ export default function BacklogPage() {
           recipientUserId: recipientId
         };
 
-        console.log(`📤 SPRINT NOTIFICATION: Sending ${notificationType} notification ${index + 1}/${recipientIds.length} to user: ${recipientId}`);
-        console.log(`📋 SPRINT NOTIFICATION: Payload ${index + 1}:`, JSON.stringify(notificationData, null, 2));
 
         try {
           const response = await axios.post('http://localhost:8089/api/notifications/create', notificationData, {
@@ -1000,13 +915,9 @@ export default function BacklogPage() {
               'Cache-Control': 'no-cache'
             }
           });
-          console.log(`✅ SPRINT NOTIFICATION: Successfully sent to ${recipientId}`);
           return response;
         } catch (error) {
-          console.error(`❌ SPRINT NOTIFICATION: Failed to send to ${recipientId}:`, error);
           if (axios.isAxiosError(error) && error.response) {
-            console.error(`   Status: ${error.response.status}`);
-            console.error(`   Data:`, error.response.data);
           }
           throw error; // Re-throw to be handled by Promise.allSettled
         }
@@ -1016,17 +927,13 @@ export default function BacklogPage() {
       const successful = results.filter(r => r.status === 'fulfilled').length;
       const failed = results.filter(r => r.status === 'rejected').length;
 
-      console.log(`📊 SPRINT NOTIFICATION: Results - ${successful} successful, ${failed} failed out of ${recipientIds.length} total`);
 
       if (successful > 0) {
-        console.log(`✅ SPRINT NOTIFICATION: ${successful} ${notificationType} notifications sent successfully`);
       }
       if (failed > 0) {
-        console.warn(`❌ SPRINT NOTIFICATION: ${failed} notifications failed to send`);
       }
 
     } catch (error) {
-      console.error(`❌ SPRINT NOTIFICATION: Failed to send ${notificationType} notifications:`, error);
       // Don't fail the main operation if notification fails
     }
   };
@@ -1055,8 +962,6 @@ export default function BacklogPage() {
           
           // Check if sprint ended today
           if (endDate.getTime() === today.getTime()) {
-            console.log(`📅 Sprint "${sprint.name}" ended today, sending notifications...`);
-            
             // Send SPRINT_ENDED notification
             await sendSprintNotificationToMembers(
               "SPRINT_ENDED", 
@@ -1068,7 +973,7 @@ export default function BacklogPage() {
         }
       }
     } catch (error) {
-      console.error("Error checking sprint end dates:", error);
+      // Silent error handling
     }
   };
 
@@ -1082,40 +987,26 @@ export default function BacklogPage() {
 
   // Check for overdue sprints and notify PO/SM
   const checkSprintOverdue = async () => {
-    console.log('🔔 BACKLOG: Starting sprint overdue check...');
-    console.log('🔔 BACKLOG: Project ID:', projectId);
-    console.log('🔔 BACKLOG: Sprints count:', sprints.length);
-    
     try {
       if (!projectId || sprints.length === 0) {
-        console.log('🔔 BACKLOG: Skipping overdue check - no project ID or sprints');
         return;
       }
 
       // Get project details to find owner (PO) and scrum master
       const userId = userData?.account?.id || userData?.profile?.id;
       if (!userId) {
-        console.log('🔔 BACKLOG: Skipping overdue check - no user ID');
         return;
       }
 
-      console.log('🔔 BACKLOG: Fetching project details with user ID:', userId);
       const response = await axios.get(`http://localhost:8083/api/projects/${projectId}`, {
         headers: { "X-User-Id": userId }
       });
-
-      console.log('🔔 BACKLOG: Project API response:', response.data);
 
       if (response.data?.status === "SUCCESS" && response.data.data) {
         const project = response.data.data;
         const ownerId = project.ownerId; // Product Owner
         const scrumMasterId = project.scrumMasterId; // Scrum Master
         const currentProjectName = project.name || "Unknown Project";
-
-        console.log('🔔 BACKLOG: Project details:');
-        console.log('  - Project name:', currentProjectName);
-        console.log('  - Owner ID (PO):', ownerId);
-        console.log('  - Scrum Master ID:', scrumMasterId);
 
         // Update sprint data with project name for notifications
         const sprintsWithProject = sprints.map(sprint => ({
@@ -1124,19 +1015,12 @@ export default function BacklogPage() {
           projectId: projectId,
           projectName: currentProjectName
         }));
-
-        console.log('🔔 BACKLOG: Checking sprints for overdue:', sprintsWithProject.length);
         
         // Check and notify for overdue sprints
         await checkAndNotifyOverdueSprints(sprintsWithProject, ownerId, scrumMasterId);
-      } else {
-        console.error('🔔 BACKLOG: Failed to get project details:', response.data);
       }
-    } catch (error: any) {
-      console.error('🔔 BACKLOG: Error checking sprint overdue:', error);
-      if (error.response) {
-        console.error('🔔 BACKLOG: Error response:', error.response.data);
-      }
+    } catch (error) {
+      // Silent error handling
     }
   };
 
@@ -1167,11 +1051,8 @@ export default function BacklogPage() {
         status: "NOT_STARTED"
       };
 
-      console.log("Creating sprint with data:", newSprint);
       
       const response = await axios.post("http://localhost:8084/api/sprints", newSprint);
-
-      console.log("Sprint creation response:", response.data);
 
       if (response.data) {
         toast.success("Sprint created successfully");
@@ -1203,24 +1084,20 @@ export default function BacklogPage() {
           };
         } else {
           // If no ID in response, fetch sprints again to get the latest created one
-          console.warn("No sprint ID in response, fetching sprints to get the newly created one");
           await fetchSprints();
           toast.success("Sprint created successfully");
           return;
         }
 
-        console.log("Extracted sprint for notification:", createdSprint);
         
         // Send SPRINT_CREATED notifications to ALL project members including scrum master
         try {
           if (createdSprint.id && isValidUUID(createdSprint.id)) {
             await sendSprintNotificationToMembers("SPRINT_CREATED", createdSprint, "Created");
           } else {
-            console.warn("⚠️ Sprint created but ID is not a valid UUID:", createdSprint.id);
             toast.warning("Sprint created successfully, but notifications were skipped due to invalid sprint ID format");
           }
         } catch (notificationError) {
-          console.error("Failed to send sprint creation notifications:", notificationError);
           // Don't fail the main operation if notification fails
           toast.warning("Sprint created successfully, but notifications may have failed");
         }
@@ -1234,15 +1111,9 @@ export default function BacklogPage() {
         }
       } else {
         toast.error("Failed to create sprint");
-        console.error("API returned error:", response.data);
       }
     } catch (error) {
-      console.error("Error creating sprint:", error);
       if (axios.isAxiosError(error) && error.response) {
-        console.error("Sprint creation error details:", {
-          status: error.response.status,
-          data: error.response.data
-        });
         toast.error(`Failed to create sprint: ${error.response.status} ${error.response.statusText}`);
       } else {
         toast.error("Failed to create sprint");
@@ -1256,7 +1127,6 @@ export default function BacklogPage() {
     
     try {
       const sprintsResponse = await axios.get(`http://localhost:8084/api/sprints/project/${projectId}`);
-      console.log("Sprint response:", sprintsResponse.data);
       
       // Check if the API returns {data: [...]} structure
       if (sprintsResponse.data && sprintsResponse.data.data) {
@@ -1267,10 +1137,10 @@ export default function BacklogPage() {
         const sprintsData = Array.isArray(sprintsResponse.data) ? sprintsResponse.data : [];
         setSprints(sprintsData);
       } else {
+        toast.error("Failed to load sprints");
         setSprints([]); // Ensure sprints is always an array
       }
     } catch (error) {
-      console.error("Error fetching sprints:", error);
       setSprints([]); // Ensure sprints is always an array on error
     }
   };
@@ -1303,7 +1173,6 @@ export default function BacklogPage() {
         projectId: currentSprint.projectId
       };
 
-      console.log("Updating sprint with data:", sprintUpdate);
       
       // Use PUT method as configured in the backend
       const response = await axios.put(`http://localhost:8084/api/sprints/${currentSprint.id}`, sprintUpdate);
@@ -1336,7 +1205,6 @@ export default function BacklogPage() {
         toast.error("Failed to update sprint");
       }
     } catch (error) {
-      console.error("Error updating sprint:", error);
       toast.error("Failed to update sprint");
     }
   };
@@ -1368,16 +1236,13 @@ export default function BacklogPage() {
     setShowTaskMigrationModal(true);
   };
 
-  // ✅ NEW: Handle task migration completion
+  // Handle task migration completion
   const handleMigrationComplete = () => {
     // Reset overdue notification status for the sprint that was deleted/cancelled
     if (sprintToDelete) {
       resetSprintOverdueNotification(sprintToDelete.id);
-      console.log(`🔄 SPRINT ${sprintToDelete.action.toUpperCase()}: Reset overdue notification for sprint ${sprintToDelete.id}`);
     }
     
-    fetchSprints(); // Refresh sprints
-    // Fetch tasks for this project - inline the fetch logic
     fetchSprints(); // Refresh sprints
     // Fetch tasks for this project - inline the fetch logic
     const refreshTasks = async () => {
@@ -1394,7 +1259,6 @@ export default function BacklogPage() {
           setBacklogTasks(backlogTasksList);
         }
       } catch (error) {
-        console.error("Error refreshing tasks:", error);
       }
     };
     
@@ -1402,39 +1266,6 @@ export default function BacklogPage() {
     setSprintToDelete(null);
   };
 
-  // Move task to backlog
-  const handleMoveTaskToBacklog = async (taskId: string) => {
-    try {
-      const taskToUpdate = tasks.find(task => task.id === taskId);
-      if (!taskToUpdate) {
-        toast.error("Task not found");
-        return;
-      }
-      
-      const updatedTask = { ...taskToUpdate, sprintId: undefined };
-      
-      const response = await axios.put(`http://localhost:8085/api/tasks/${taskId}`, updatedTask);
-      
-      if (response.data) {
-        // Update local state
-        const updatedTasks = tasks.map((task) =>
-          task.id === taskId ? { ...task, sprintId: undefined } : task
-        );
-        setTasks(updatedTasks);
-        
-        // Add to backlog
-        const updatedBacklogTask = { ...taskToUpdate, sprintId: undefined };
-        setBacklogTasks([...backlogTasks, updatedBacklogTask]);
-        
-        toast.success("Task moved to backlog");
-      } else {
-        toast.error("Failed to move task to backlog");
-      }
-    } catch (error) {
-      console.error("Error moving task to backlog:", error);
-      toast.error("Failed to move task to backlog");
-    }
-  };
 
   // Move sprint position (up or down)
   const handleMoveSprint = async (sprintId: string, direction: 'up' | 'down') => {
@@ -1459,41 +1290,6 @@ export default function BacklogPage() {
     }
     
     setOpenSprintMenu(null);
-  };
-
-  // Move task to sprint
-  const handleMoveTaskToSprint = async (taskId: string, sprintId: string) => {
-    try {
-      const taskToUpdate = tasks.find(task => task.id === taskId);
-      if (!taskToUpdate) {
-        toast.error("Task not found");
-        return;
-      }
-      
-      const updatedTask = { ...taskToUpdate, sprintId: sprintId };
-      
-      const response = await axios.put(`http://localhost:8085/api/tasks/${taskId}`, updatedTask);
-      
-      if (response.data) {
-        // Update local state
-        const updatedTasks = tasks.map((task) =>
-          task.id === taskId ? { ...task, sprintId: sprintId } : task
-        );
-        setTasks(updatedTasks);
-        
-        // Remove from backlog if it was there
-        if (backlogTasks.some(task => task.id === taskId)) {
-          setBacklogTasks(backlogTasks.filter(task => task.id !== taskId));
-        }
-        
-        toast.success("Task moved to sprint");
-      } else {
-        toast.error("Failed to move task to sprint");
-      }
-    } catch (error) {
-      console.error("Error moving task to sprint:", error);
-      toast.error("Failed to move task to sprint");
-    }
   };
 
   // Calculate total story points for a sprint
@@ -1565,7 +1361,6 @@ export default function BacklogPage() {
         toast.error("Failed to start sprint");
       }
     } catch (error) {
-      console.error("Error starting sprint:", error);
       toast.error("Failed to start sprint");
     }
   };
@@ -1580,7 +1375,6 @@ export default function BacklogPage() {
         
         // Reset overdue notification status for completed sprint
         resetSprintOverdueNotification(sprintId);
-        console.log(`🔄 SPRINT COMPLETED: Reset overdue notification for sprint ${sprintId}`);
         
         // Find the sprint that was completed for notification
         const completedSprint = sprints.find(s => s.id === sprintId);
@@ -1594,47 +1388,10 @@ export default function BacklogPage() {
         toast.error("Failed to complete sprint");
       }
     } catch (error) {
-      console.error("Error completing sprint:", error);
       toast.error("Failed to complete sprint");
     }
   };
 
-  // AI Estimation function
-  const estimateStoryPoints = async (taskId: string) => {
-    try {
-      const response = await axios.post(`http://localhost:8085/api/tasks/${taskId}/estimate-story-points`);
-      
-      if (response.data && response.data.success) {
-        const { estimatedStoryPoints, confidence } = response.data.data;
-        
-        toast.success(
-          `AI suggests ${estimatedStoryPoints} story points (${Math.round(confidence * 100)}% confidence)`
-        );
-        
-        // Refresh tasks to show updated estimation
-        const tasksResponse = await axios.get(`http://localhost:8085/api/tasks/project/${projectId}`);
-        if (tasksResponse.data) {
-          const allTasks = tasksResponse.data || [];
-          setTasks(allTasks);
-          
-          // Update backlog tasks
-          const backlogTasksList = allTasks.filter((task: TaskData) => !task.sprintId && (task.parentTaskId === null || task.parentTaskId === undefined));
-          setBacklogTasks(backlogTasksList);
-        }
-        
-        return estimatedStoryPoints;
-      } else {
-        toast.error("Failed to estimate story points");
-        return null;
-      }
-    } catch (error) {
-      console.error("Error estimating story points:", error);
-      toast.error("Error estimating story points");
-      return null;
-    }
-  };
-
-  
 
   // Add priority sorting function
   const sortTasksByPriority = (tasks: TaskData[]): TaskData[] => {

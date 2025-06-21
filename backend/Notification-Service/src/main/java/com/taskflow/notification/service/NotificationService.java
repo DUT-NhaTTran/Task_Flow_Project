@@ -18,45 +18,30 @@ public interface NotificationService {
     // Get unread count for a user
     long getUnreadCount(UUID userId);
     
-    // Create a new notification
+    // Get notification by ID
+    Optional<Notification> getNotificationById(Long id);
+    
+    // Mark notification as read
+    boolean markAsRead(Long id);
+    
+    // Delete notification
+    boolean deleteNotification(Long id);
+    
+    // General notification creation method
     Notification createNotification(NotificationType type, String title, String message,
                                   UUID recipientUserId, UUID actorUserId, String actorUserName,
                                   String actorUserAvatar, UUID projectId, String projectName,
-                                  UUID taskId, UUID sprintId, Long commentId,
-                                  String actionUrl);
+                                  UUID taskId, UUID sprintId, Long commentId, String actionUrl);
     
-    // Get notification by ID
-    Optional<Notification> getNotificationById(Long notificationId);
+    // Check if TASK_OVERDUE notification already exists for a specific task and user
+    boolean hasTaskOverdueNotification(UUID taskId, UUID recipientUserId);
     
-    // Mark notification as read
-    boolean markAsRead(Long notificationId);
+    // Remove TASK_OVERDUE notifications for a specific task (when task is completed or no longer overdue)
+    void removeTaskOverdueNotifications(UUID taskId);
     
-    // Delete notification
-    boolean deleteNotification(Long notificationId);
+    // Check if SPRINT_OVERDUE notification already exists for a specific sprint and user
+    boolean hasSprintOverdueNotification(UUID sprintId, UUID recipientUserId);
     
-    // Helper methods for specific notification types
-    Notification createTaskAssignedNotification(UUID recipientUserId, UUID actorUserId, 
-                                              String actorUserName, UUID taskId, 
-                                              String taskTitle, UUID projectId, String projectName);
-    
-    Notification createTaskCommentNotification(UUID recipientUserId, UUID actorUserId,
-                                             String actorUserName, UUID taskId,
-                                             String taskTitle, UUID projectId, String projectName,
-                                             Long commentId);
-    
-    Notification createTaskUpdatedNotification(UUID recipientUserId, UUID actorUserId,
-                                             String actorUserName, UUID taskId,
-                                             String taskTitle, UUID projectId, String projectName,
-                                             String updateType, String newValue);
-                                             
-    // New notification methods
-    Notification createTaskStatusChangedNotification(UUID recipientUserId, UUID actorUserId,
-                                                   String actorUserName, UUID taskId,
-                                                   String taskTitle, UUID projectId, String projectName,
-                                                   String oldStatus, String newStatus);
-                                                   
-    void createTaskStatusChangedNotifications(UUID actorUserId, String actorUserName,
-                                            UUID taskId, String taskTitle, 
-                                            UUID projectId, String projectName,
-                                            UUID assigneeUserId, String oldStatus, String newStatus);
+    // Remove SPRINT_OVERDUE notifications for a specific sprint (when sprint is completed or no longer overdue)
+    void removeSprintOverdueNotifications(UUID sprintId);
 } 

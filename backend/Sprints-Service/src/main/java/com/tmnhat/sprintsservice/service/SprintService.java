@@ -22,23 +22,19 @@ public interface SprintService {
     Sprints getActiveSprint(UUID projectId);
     void moveIncompleteTasks(UUID fromSprintId, UUID toSprintId);
 
-    // ✅ NEW: Soft delete and audit methods
     void cancelSprint(UUID sprintId);
     void softDeleteSprint(UUID sprintId);
     List<Sprints> getDeletedSprintsByProject(UUID projectId);
     List<Sprints> getCancelledSprintsByProject(UUID projectId);
     void restoreSprint(UUID sprintId);
     
-    // ✅ NEW: Task migration methods
     List<Map<String, Object>> getIncompleteTasksFromSprint(UUID sprintId);
     void moveTasksToBacklog(UUID sprintId);
     void moveTasksToSprint(UUID fromSprintId, UUID toSprintId);
     
-    // ✅ NEW: Specific task migration methods
     void moveSpecificTasksToBacklog(List<UUID> taskIds);
     void moveSpecificTasksToSprint(List<UUID> taskIds, UUID toSprintId);
 
-    // Calendar Filter Methods
     List<Sprints> getFilteredSprintsForCalendar(UUID projectId, String search, 
                                                List<String> assigneeIds, List<String> statuses, 
                                                String startDate, String endDate);

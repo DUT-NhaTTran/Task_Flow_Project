@@ -7,6 +7,7 @@ import com.tmnhat.tasksservice.service.TaskService;
 import com.tmnhat.tasksservice.service.Impl.TaskServiceImpl;
 import com.tmnhat.tasksservice.validation.TaskValidator;
 import com.tmnhat.tasksservice.utils.PermissionUtil;
+import com.tmnhat.tasksservice.utils.PermissionUtil.TaskPermission;
 import com.tmnhat.common.exception.BadRequestException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Import;
@@ -500,5 +501,86 @@ public class TasksController {
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(ResponseDataAPI.error(e.getMessage()));
         }
+    }
+
+    @GetMapping("/statuses/{projectId}")
+    public ResponseEntity<ResponseDataAPI> getTaskStatusesForCalendar(@PathVariable UUID projectId) {
+        List<String> statuses = taskService.getTaskStatusesForCalendar(projectId);
+        return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(statuses));
+    }
+    
+    // ✅ NEW: Task restore endpoints
+    
+    // Restore a single task
+    @PutMapping("/{id}/restore")
+    public ResponseEntity<ResponseDataAPI> restoreTask(@PathVariable UUID id, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+        TaskValidator.validateTaskId(id);
+        
+        // Get existing task to check permissions
+        Tasks existingTask = taskService.getTaskByIdIncludeDeleted(id);
+        if (existingTask == null) {
+            return ResponseEntity.status(404).body(ResponseDataAPI.error("Task not found"));
+        }
+        
+        // Permission check: User must be task creator OR have admin permissions
+        if (userId != null && !userId.trim().isEmpty() && existingTask.getProjectId() != null) {
+            try {
+                UUID userUUID = UUID.fromString(userId);
+                if (!permissionUtil.canDeleteTask(userUUID, existingTask.getProjectId(), existingTask.getCreatedBy())) {
+                    return ResponseEntity.status(403).body(ResponseDataAPI.error("Insufficient permissions to restore this task."));
+                }
+            } catch (IllegalArgumentException e) {
+                return ResponseEntity.status(400).body(ResponseDataAPI.error("Invalid user ID format"));
+            }
+        }
+        
+        taskService.restoreTask(id);
+        return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta("Task restored successfully"));
+    }
+    
+    // Restore all tasks for a project (admin only)
+    @PutMapping("/project/{projectId}/restore")
+    public ResponseEntity<ResponseDataAPI> restoreTasksByProject(@PathVariable UUID projectId, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+        if (projectId == null) {
+            return ResponseEntity.status(400).body(ResponseDataAPI.error("Project ID is required"));
+        }
+        
+        // Permission check: User must have admin permissions for the project
+        if (userId != null && !userId.trim().isEmpty()) {
+            try {
+                UUID userUUID = UUID.fromString(userId);
+                if (!permissionUtil.hasTaskPermission(userUUID, projectId, TaskPermission.DELETE_TASK)) {
+                    return ResponseEntity.status(403).body(ResponseDataAPI.error("Insufficient permissions to restore project tasks. Only project owners can restore all tasks."));
+                }
+            } catch (IllegalArgumentException e) {
+                return ResponseEntity.status(400).body(ResponseDataAPI.error("Invalid user ID format"));
+            }
+        }
+        
+        taskService.restoreTasksByProject(projectId);
+        return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta("All project tasks restored successfully"));
+    }
+    
+    // Get deleted tasks for a project (admin only)
+    @GetMapping("/project/{projectId}/deleted")
+    public ResponseEntity<ResponseDataAPI> getDeletedTasksByProject(@PathVariable UUID projectId, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+        if (projectId == null) {
+            return ResponseEntity.status(400).body(ResponseDataAPI.error("Project ID is required"));
+        }
+        
+        // Permission check: User must have admin permissions for the project
+        if (userId != null && !userId.trim().isEmpty()) {
+            try {
+                UUID userUUID = UUID.fromString(userId);
+                if (!permissionUtil.hasTaskPermission(userUUID, projectId, TaskPermission.DELETE_TASK)) {
+                    return ResponseEntity.status(403).body(ResponseDataAPI.error("Insufficient permissions to view deleted tasks."));
+                }
+            } catch (IllegalArgumentException e) {
+                return ResponseEntity.status(400).body(ResponseDataAPI.error("Invalid user ID format"));
+            }
+        }
+        
+        List<Tasks> deletedTasks = taskService.getDeletedTasksByProject(projectId);
+        return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(deletedTasks));
     }
 }

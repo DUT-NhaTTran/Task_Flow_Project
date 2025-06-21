@@ -100,6 +100,13 @@ public class ProjectController {
         }
     }
 
+    @GetMapping("/owner/{ownerId}")
+    public ResponseEntity<ResponseDataAPI> getAllProjectsByOwner(@PathVariable UUID ownerId) {
+        ProjectValidator.validateUserId(ownerId);
+        List<Projects> projectList = projectService.getAllProjectsByOwnerId(ownerId);
+        return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(projectList));
+    }
+
     @GetMapping("/last-inserted-id")
     public ResponseEntity<ResponseDataAPI> getLastInsertedProjectId() {
         try {
@@ -191,10 +198,10 @@ public class ProjectController {
         return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(role));
     }
 
-    @GetMapping("/{projectId}/scrum_master_id")
+    @GetMapping("/{projectId}/manager_id")
     public ResponseEntity<ResponseDataAPI> getScrumMasterId(@PathVariable UUID projectId) {
         ProjectValidator.validateProjectId(projectId);
-        UUID scrumMasterId = projectService.getScrumMasterId(projectId);
+        UUID scrumMasterId = projectService.getManagerId(projectId);
         return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(scrumMasterId));
     }
 

@@ -45,7 +45,7 @@ export interface TaskData {
   tags?: string[] | null;
   labels?: string[];
   label?: string;
-  priority?: "LOWEST" | "LOW" | "MEDIUM" | "HIGH" | "HIGHEST" | "BLOCKER" | "BLOCK"; // ✅ Updated with BLOCK only
+  priority?: "LOWEST" | "LOW" | "MEDIUM" | "HIGH" | "HIGHEST" | "BLOCKER" | "BLOCK"; 
   attachments?: Array<string | Attachment>;
   webLinks?: WebLink[];
   linkedWorkItems?: LinkedWorkItem[];
@@ -140,7 +140,6 @@ export default function TaskDetailModal({
     return false;
   };
 
-  // ✅ NEW: Check if form should be read-only
   const isReadOnly = !canEditCurrentTask();
 
   // State for editing the task
@@ -170,7 +169,6 @@ export default function TaskDetailModal({
         fetchComments(task.id);
       }, 500);
     } else {
-      console.log('⚠️ MODAL: Skipping fetch for invalid/temporary task ID:', task?.id);
       
       // Clear related data for temporary tasks
       updateField("attachments", []);
@@ -468,9 +466,43 @@ export default function TaskDetailModal({
     setIsEditingDescription(!isEditingDescription);
   };
 
-  // Handle file upload for attachments
+  // Handle file upload for attachments with retry logic
   const handleFileUpload = async (files: FileList) => {
     if (!files || files.length === 0) return;
+
+    // File size limits - increased as requested
+    const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB per file
+    const MAX_TOTAL_SIZE = 200 * 1024 * 1024; // 200MB total
+    const LARGE_FILE_THRESHOLD = 5 * 1024 * 1024; // 5MB threshold for "large" files
+
+    // Check individual file sizes and total size
+    let totalSize = 0;
+    const oversizedFiles = [];
+    
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      totalSize += file.size;
+      
+      if (file.size > MAX_FILE_SIZE) {
+        oversizedFiles.push(`${file.name} (${Math.round(file.size / 1024 / 1024)}MB)`);
+      }
+    }
+
+    // Show warning for oversized files (use warning instead of error)
+    if (oversizedFiles.length > 0) {
+      toast.warning(`⚠️ Some files exceed the 20MB limit: ${oversizedFiles.join(', ')}. Please compress or choose smaller files.`, {
+        duration: 8000
+      });
+      return;
+    }
+
+    // Check total size (use warning instead of error)
+    if (totalSize > MAX_TOTAL_SIZE) {
+      toast.warning(`⚠️ Total file size exceeds 200MB limit. Current: ${Math.round(totalSize / 1024 / 1024)}MB. Please select fewer or smaller files.`, {
+        duration: 8000
+      });
+      return;
+    }
 
     toast.loading("Uploading files to attachments table...", {
       id: "file-upload",
@@ -479,10 +511,19 @@ export default function TaskDetailModal({
     try {
       // Array to store uploaded files
       const uploadedAttachments = [];
+      let successCount = 0;
+      let failCount = 0;
 
       // Process each file - files will be saved to attachments table via File-Service
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
+        const fileSizeMB = Math.round(file.size / 1024 / 1024);
+        const isLargeFile = file.size > LARGE_FILE_THRESHOLD;
+
+        // Show individual file progress
+        toast.loading(`Uploading ${file.name} (${fileSizeMB}MB)${isLargeFile ? ' - Large file, please wait...' : ''}`, {
+          id: "file-upload",
+        });
 
         // Create FormData to send the file
         const formData = new FormData();
@@ -490,8 +531,7 @@ export default function TaskDetailModal({
         formData.append("taskId", editedTask.id);
 
         try {
-         
-          // Upload the file to the dedicated File Service - saves to attachments table
+          // Upload the file to the dedicated File Service with enhanced timeout and retry logic
           const response = await axios.post(
             "http://localhost:8087/api/attachments/upload",
             formData,
@@ -499,27 +539,68 @@ export default function TaskDetailModal({
               headers: {
                 "Content-Type": "multipart/form-data",
               },
+              timeout: 600000, // Increased to 10 minutes timeout for large files
+              maxContentLength: 100 * 1024 * 1024, // 100MB max content length
+              maxBodyLength: 100 * 1024 * 1024, // 100MB max body length
+              onUploadProgress: (progressEvent) => {
+                if (progressEvent.total) {
+                  const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+                  const uploadedMB = Math.round(progressEvent.loaded / 1024 / 1024);
+                  const totalMB = Math.round(progressEvent.total / 1024 / 1024);
+                  
+                  // Update loading toast with detailed progress
+                  toast.loading(`Uploading ${file.name}: ${percentCompleted}% (${uploadedMB}/${totalMB}MB)`, {
+                    id: "file-upload",
+                  });
+                }
+              }
             }
           );
 
           if (response.data?.status === "SUCCESS" && response.data.data) {
             // Add the attachment object returned from the server (from attachments table)
             uploadedAttachments.push(response.data.data);
-          
+            successCount++;
+            
+            toast.loading(`✅ ${file.name} uploaded. Processing ${i + 1}/${files.length} files...`, {
+              id: "file-upload",
+            });
           } else {
             console.error(
               "Failed to upload file to attachments table:",
               file.name,
               response.data
             );
-            toast.error(`Failed to upload ${file.name}`);
+            failCount++;
+            toast.error(`Failed to upload ${file.name}: Server error`, { duration: 5000 });
           }
-        } catch (uploadError) {
+        } catch (uploadError: any) {
           console.error(
             "Error uploading file to attachments table:",
             uploadError
           );
-          toast.error(`Error uploading ${file.name}`);
+          failCount++;
+          
+          // Handle specific error types with better messaging
+          if (axios.isAxiosError(uploadError)) {
+            if (uploadError.code === 'ECONNABORTED') {
+              toast.error(`Upload timeout for ${file.name}. File too large or connection too slow. Try a smaller file.`, { duration: 8000 });
+            } else if (uploadError.message === 'Network Error') {
+              toast.error(`Network error uploading ${file.name}. This usually means:\n• File is too large for your connection\n• Server is not responding\n• Try splitting into smaller files`, { duration: 10000 });
+            } else if (uploadError.response?.status === 413) {
+              toast.warning(`⚠️ File ${file.name} exceeds server upload limit. Please compress or split the file.`, { duration: 8000 });
+            } else if (uploadError.response?.status === 400) {
+              toast.warning(`⚠️ Invalid file: ${file.name}. Please check file format and try again.`, { duration: 5000 });
+            } else if (uploadError.response?.status === 502 || uploadError.response?.status === 504) {
+              toast.error(`Server timeout for ${file.name}. File may be too large. Try a smaller file.`, { duration: 8000 });
+            } else if (uploadError.response?.status && uploadError.response.status >= 500) {
+              toast.error(`Server error uploading ${file.name}. Please try again later.`, { duration: 5000 });
+            } else {
+              toast.error(`Upload failed for ${file.name}: ${uploadError.response?.status || 'Connection error'}`, { duration: 5000 });
+            }
+          } else {
+            toast.error(`Unexpected error uploading ${file.name}`, { duration: 5000 });
+          }
         }
       }
 
@@ -546,10 +627,10 @@ export default function TaskDetailModal({
 
         // Display success message
         toast.success(
-          `Saved to attachments table: ${imageCount} image(s), ${otherCount} other file(s)`,
+          `✅ Uploaded ${successCount} file(s) successfully: ${imageCount} image(s), ${otherCount} document(s)${failCount > 0 ? `. ${failCount} failed - try smaller files.` : ''}`,
           {
             id: "file-upload",
-            duration: 3000,
+            duration: 6000,
           }
         );
 
@@ -568,13 +649,31 @@ export default function TaskDetailModal({
 
        
       } else {
-        toast.error("No files were uploaded successfully", {
+        toast.error(
+          failCount > 0 
+            ? `❌ All ${failCount} file(s) failed to upload. Try:\n• Smaller files (under 20MB)\n• Better internet connection\n• Compress large documents`
+            : "No files were uploaded successfully", 
+          {
+            id: "file-upload",
+            duration: 10000,
+          }
+        );
+      }
+    } catch (error: any) {
+      console.error("Error processing files for attachments table:", error);
+      
+      // Handle general errors with actionable advice
+      if (axios.isAxiosError(error) && error.message === 'Network Error') {
+        toast.error(`❌ Network connection lost. Please:\n• Check your internet connection\n• Try smaller files (under 15MB)\n• Upload one file at a time\n• Contact support if issue persists`, { 
           id: "file-upload",
+          duration: 12000 
+        });
+      } else {
+        toast.error("❌ Upload failed. Please try again with smaller files or check your connection.", { 
+          id: "file-upload",
+          duration: 8000 
         });
       }
-    } catch (error) {
-      console.error("Error processing files for attachments table:", error);
-      toast.error("Error processing files", { id: "file-upload" });
     }
   };
 
@@ -642,14 +741,12 @@ export default function TaskDetailModal({
       };
       delete taskToSave.attachments; // Remove attachments from task object
 
-
       // Validate essential fields before sending
       if (!taskToSave.projectId) {
         console.error("Missing projectId in task object:", taskToSave);
         toast.error("Error: Missing project ID");
         return;
       }
-
       // Step 3: Check if assignee changed for notification
       const originalAssigneeId = task.assigneeId;
       const newAssigneeId = editedTask.assigneeId;
@@ -660,8 +757,7 @@ export default function TaskDetailModal({
       const newStatus = editedTask.status;
       const statusChanged = originalStatus !== newStatus;
 
-      // Additional checks for debugging
-    
+      
 
       // Step 4: Save task with text-only description to Tasks-Service
       const response = await axios.put(
@@ -693,7 +789,6 @@ export default function TaskDetailModal({
 
           
           try {
-            // ✅ ONLY use UserContext to get ACTUAL logged-in user ID - consistent with comment logic
             const currentUserId = currentUser?.id;
             
             if (!currentUserId) {
@@ -701,24 +796,18 @@ export default function TaskDetailModal({
               return; // Skip notification if no logged-in user
             }
             
-            
-            // ✅ Get actor name from User Service API
-            let currentUserName = "Unknown User";
+                        let currentUserName = "Unknown User";
             let currentUserAvatar = null;
             
             try {
-              // ✅ Gọi User Service API để lấy username từ actorUserId
-              console.log(`🔍 FRONTEND: Calling User Service API: http://localhost:8086/api/users/${currentUserId}/username`);
               
               const userApiResponse = await axios.get(`http://localhost:8086/api/users/${currentUserId}/username`, {
                 timeout: 5000
               });
 
-              console.log(`🔍 FRONTEND: User API Response:`, userApiResponse.data);
 
               if (userApiResponse.data?.status === "SUCCESS" && userApiResponse.data?.data) {
                 currentUserName = userApiResponse.data.data;
-                console.log(`✅ FRONTEND: Got username from User Service API: '${currentUserName}'`);
               } else {
                 console.warn(`⚠️ FRONTEND: User Service API returned invalid response:`, userApiResponse.data);
               }
@@ -729,32 +818,21 @@ export default function TaskDetailModal({
               }
               
             } catch (error) {
-              console.error(`❌ FRONTEND: Failed to call User Service API http://localhost:8086/api/users/${currentUserId}/username:`, error);
               // Không có fallback - giữ nguyên "Unknown User"
             }
 
-            // ✅ DEBUG: Check commenterName value before creating payload
-            console.log(`🔍 FRONTEND: commenterName before validation: '${currentUserName}'`);
+          
 
-            // ✅ FINAL VALIDATION: NEVER ALLOW NULL/EMPTY commenterName
             if (!currentUserName || currentUserName.trim() === '' || currentUserName === "null" || currentUserName === "undefined") {
-              console.error("🚨 FRONTEND CRITICAL: commenterName is invalid after User API call:", currentUserName);
               currentUserName = `User-${currentUserId.substring(0, 8)}`;
             }
 
-            console.log(`🔍 FRONTEND: Final commenterName value: '${currentUserName}'`);
-
-            // Get assigned user name
             const assignedUser = allUsers.find(u => u.id === newAssigneeId);
             const assignedUserName = assignedUser?.username || editedTask.assigneeName || "Unknown User";
-            
-            
 
             // Skip notification if assigning to self
             if (currentUserId && currentUserId === newAssigneeId) {
-              console.log("⏭️ Skipping notification - user assigned task to themselves");
-              console.log("  currentUserId:", currentUserId);
-              console.log("  newAssigneeId:", newAssigneeId);
+
             } else {
               
               // Determine if this is a reassignment or new assignment
@@ -773,7 +851,7 @@ export default function TaskDetailModal({
                 projectName: "TaskFlow Project", // Default project name, you can enhance this by fetching actual project data
                 taskId: editedTask.id,
                 sprintId: editedTask.sprintId || null,
-                actionUrl: `/project/board?projectId=${editedTask.projectId}&taskId=${editedTask.id}`
+                actionUrl: `/project/project_homescreen?projectId=${editedTask.projectId}&taskId=${editedTask.id}`
               };
 
              
@@ -782,7 +860,6 @@ export default function TaskDetailModal({
                 "http://localhost:8089/api/notifications/create",
                 notificationData
               );
-
 
               // ✅ UPDATED: Check correct response format from backend for assignee change
               if (notificationResponse.status === 200 || notificationResponse.status === 201) {
@@ -898,9 +975,7 @@ export default function TaskDetailModal({
               let scrumMasterId = null;
               try {
                 if (editedTask.projectId) {
-                  console.log('🔍 MODAL: Fetching project info for scrum master...', editedTask.projectId);
                   const projectResponse = await axios.get(`http://localhost:8086/api/projects/${editedTask.projectId}`);
-                  console.log('🔍 MODAL: Project API response:', projectResponse.data);
                   
                   if (projectResponse.data?.status === "SUCCESS" && projectResponse.data?.data?.scrumMasterId) {
                     scrumMasterId = projectResponse.data.data.scrumMasterId;
@@ -938,7 +1013,6 @@ export default function TaskDetailModal({
                     recipientUserId: recipientId
                   };
 
-                  console.log('📤 FRONTEND: Sending notification to:', recipientId);
                   return axios.post('http://localhost:8089/api/notifications/create', statusNotificationData);
                 });
 
@@ -1796,14 +1870,7 @@ export default function TaskDetailModal({
         );
         updateField("attachments", realAttachments);
 
-        if (realAttachments.length > 0) {
-          toast.success(
-            `Loaded ${realAttachments.length} file(s) from database`,
-            {
-              duration: 2000,
-            }
-          );
-        }
+        
       } else {
         console.log("No real attachments found for task:", taskId);
         updateField("attachments", []);
@@ -1875,12 +1942,10 @@ export default function TaskDetailModal({
     }
 
     try {
-      console.log("🔗 Fetching web links for task:", taskId);
       // Sử dụng File-Service để lấy attachments có type = 'link' - API attachments ở port 8087
       const response = await axios.get(
         `http://localhost:8087/api/attachments/task/${taskId}`
       );
-      console.log("🔗 Web links API response:", response.data);
 
       if (response.data?.status === "SUCCESS") {
         const allAttachments = response.data.data || [];
@@ -1889,27 +1954,16 @@ export default function TaskDetailModal({
         const links = allAttachments.filter(
           (att: any) => att.file_type === "link" || att.fileType === "link"
         );
-        console.log("🔗 Filtered web links:", links);
         setWebLinks(links);
 
-        if (links.length > 0) {
-          toast.success(`Found ${links.length} web link(s)`, {
-            duration: 2000,
-          });
-        }
+        
       } else {
-        console.warn(
-          "🔗 No web links found or API returned non-SUCCESS status"
-        );
+        
         setWebLinks([]);
       }
     } catch (error) {
-      console.error(
-        "🔗 Error fetching web links from http://localhost:8087/api/attachments/task:",
-        error
-      );
+      
       if (error instanceof Error) {
-        console.error("🔗 Error details:", error.message);
       }
       setWebLinks([]);
       // Don't show error toast for background operation
@@ -1931,12 +1985,10 @@ export default function TaskDetailModal({
     }
 
     try {
-      console.log("🔗 Fetching linked work items for task:", taskId);
       // Sử dụng File-Service để lấy attachments có type = 'task_link' - API attachments ở port 8087
       const response = await axios.get(
         `http://localhost:8087/api/attachments/task/${taskId}`
       );
-      console.log("🔗 Linked work items API response:", response.data);
 
       if (response.data?.status === "SUCCESS") {
         const allAttachments = response.data.data || [];
@@ -1957,7 +2009,6 @@ export default function TaskDetailModal({
                 `http://localhost:8085/api/tasks/${link.file_url}`
               );
               const targetTask = targetTaskResponse.data?.data;
-              console.log("🔗 Target task data:", targetTask);
 
               return {
                 id: link.id,
@@ -2016,10 +2067,7 @@ export default function TaskDetailModal({
         setLinkedWorkItems([]);
       }
     } catch (error) {
-      console.error(
-        "🔗 Error fetching linked work items from http://localhost:8087/api/attachments/task:",
-        error
-      );
+      
       if (error instanceof Error) {
         console.error("🔗 Error details:", error.message);
       }
@@ -2085,15 +2133,6 @@ export default function TaskDetailModal({
   };
 
   // Function to fetch individual user info and add to users list (now managed by UserContext)
-  const fetchUserInfo = async (userId: string) => {
-    try {
-      // UserContext will handle user fetching and caching
-      await fetchUserById(userId);
-    } catch (error) {
-      console.error("Error fetching user info:", error);
-    }
-  };
-
   // Helper function to get user initials from name
   const getInitials = (name: string): string => {
     if (!name || name === "Unassigned") return "?";
@@ -2720,142 +2759,154 @@ export default function TaskDetailModal({
               )}
 
               {/* Add dropdown button - moved from attachments section */}
-              <div className="relative ml-4">
-                <button
-                  onClick={() => setIsAddDropdownOpen(!isAddDropdownOpen)}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 transition-colors"
-                  title="Add item"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
+              {/* Only show Add button if user has permission to edit the task */}
+              {!isReadOnly && (
+                <div className="relative ml-4">
+                  <button
+                    onClick={() => setIsAddDropdownOpen(!isAddDropdownOpen)}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 transition-colors"
+                    title="Add item"
                   >
-                    <line x1="12" y1="5" x2="12" y2="19"></line>
-                    <line x1="5" y1="12" x2="19" y2="12"></line>
-                  </svg>
-                  Add
-                </button>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <line x1="12" y1="5" x2="12" y2="19"></line>
+                      <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                    Add
+                  </button>
 
-                {/* Dropdown menu */}
-                {isAddDropdownOpen && (
-                  <div className="absolute top-full left-0 mt-1 w-60 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
-                    <div className="py-1">
-                      {/* Attachment option */}
-                      <button
-                        onClick={() => handleAddAction("attachment")}
-                        className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-3"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="16"
-                          height="16"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className="text-gray-500"
+                  {/* Dropdown menu */}
+                  {isAddDropdownOpen && (
+                    <div className="absolute top-full left-0 mt-1 w-60 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                      <div className="py-1">
+                        {/* Attachment option */}
+                        <button
+                          onClick={() => handleAddAction("attachment")}
+                          className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-3"
                         >
-                          <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.64 16.2a2 2 0 0 1-2.83-2.83l8.49-8.49"></path>
-                        </svg>
-                        <span className="text-sm">Attachment</span>
-                      </button>
-
-                      {/* Child work item option */}
-                      <button
-                        onClick={() => handleAddAction("child-task")}
-                        className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-3"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="16"
-                          height="16"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className="text-gray-500"
-                        >
-                          <path d="M9 12h6"></path>
-                          <path d="M9 16h6"></path>
-                          <path d="m5 8 2-2"></path>
-                          <path d="m7 6 2 2"></path>
-                          <path d="m3 12 2-2"></path>
-                          <path d="m5 10 2 2"></path>
-                          <path d="m3 18 2-2"></path>
-                          <path d="m5 16 2 2"></path>
-                          <rect
-                            width="14"
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="16"
                             height="16"
-                            x="7"
-                            y="2"
-                            rx="2"
-                          ></rect>
-                        </svg>
-                        <span className="text-sm">Child work item</span>
-                      </button>
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="text-gray-500"
+                          >
+                            <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.64 16.2a2 2 0 0 1-2.83-2.83l8.49-8.49"></path>
+                          </svg>
+                          <span className="text-sm">Attachment</span>
+                        </button>
 
-                      {/* Linked work item option */}
-                      <button
-                        onClick={() => handleAddAction("linked-task")}
-                        className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-3"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="16"
-                          height="16"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className="text-gray-500"
+                        {/* Child work item option */}
+                        <button
+                          onClick={() => handleAddAction("child-task")}
+                          className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-3"
                         >
-                          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
-                          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.72-1.71"></path>
-                        </svg>
-                        <span className="text-sm">Linked work item</span>
-                      </button>
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="text-gray-500"
+                          >
+                            <path d="M9 12h6"></path>
+                            <path d="M9 16h6"></path>
+                            <path d="m5 8 2-2"></path>
+                            <path d="m7 6 2 2"></path>
+                            <path d="m3 12 2-2"></path>
+                            <path d="m5 10 2 2"></path>
+                            <path d="m3 18 2-2"></path>
+                            <path d="m5 16 2 2"></path>
+                            <rect
+                              width="14"
+                              height="16"
+                              x="7"
+                              y="2"
+                              rx="2"
+                            ></rect>
+                          </svg>
+                          <span className="text-sm">Child work item</span>
+                        </button>
 
-                      {/* Web link option */}
-                      <button
-                        onClick={() => handleAddAction("web-link")}
-                        className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-3"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="16"
-                          height="16"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className="text-gray-500"
+                        {/* Linked work item option */}
+                        <button
+                          onClick={() => handleAddAction("linked-task")}
+                          className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-3"
                         >
-                          <circle cx="12" cy="12" r="10"></circle>
-                          <path d="M2 12h20"></path>
-                          <path d="a15.3 15.3 0 0 1 0-6"></path>
-                          <path d="a15.3 15.3 0 0 0 0 6"></path>
-                        </svg>
-                        <span className="text-sm">Web link</span>
-                      </button>
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="text-gray-500"
+                          >
+                            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.72-1.71"></path>
+                          </svg>
+                          <span className="text-sm">Linked work item</span>
+                        </button>
+
+                        {/* Web link option */}
+                        <button
+                          onClick={() => handleAddAction("web-link")}
+                          className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-3"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="text-gray-500"
+                          >
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M2 12h20"></path>
+                            <path d="a15.3 15.3 0 0 1 0-6"></path>
+                            <path d="a15.3 15.3 0 0 0 0 6"></path>
+                          </svg>
+                          <span className="text-sm">Web link</span>
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
+              {/* Show info message when user doesn't have edit permissions */}
+              {isReadOnly && (
+                <div className="ml-4 px-3 py-1 text-sm text-gray-400 italic flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                  </svg>
+                  Only product-owner and assignees can add items
+                </div>
+              )}
             </div>
 
             {/* Description section with TipTap Rich Text Editor */}
@@ -3065,7 +3116,9 @@ export default function TaskDetailModal({
                               <img
                                 src={
                                   fileUrl.startsWith("/api")
-                                    ? `http://localhost:8085${fileUrl}`
+                                    ? `http://localhost:8087${fileUrl}`
+                                    : fileUrl.startsWith("/uploads/")
+                                    ? `http://localhost:8087${fileUrl}`
                                     : fileUrl
                                 }
                                 alt={displayName}
@@ -3163,8 +3216,12 @@ export default function TaskDetailModal({
                             {/* Download button */}
                             <a
                               href={
-                                fileUrl.startsWith("/api")
-                                  ? `http://localhost:8085${fileUrl}`
+                                typeof attachment === "object" && attachment.id
+                                  ? `http://localhost:8087/api/attachments/download/${attachment.id}`
+                                  : fileUrl.startsWith("/api")
+                                  ? `http://localhost:8087${fileUrl}`
+                                  : fileUrl.startsWith("/uploads/")
+                                  ? `http://localhost:8087${fileUrl}`
                                   : fileUrl
                               }
                               download={displayName}

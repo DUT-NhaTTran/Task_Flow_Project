@@ -1,0 +1,200 @@
+version: '3.8'
+
+services:
+  # Database only
+  postgres:
+    image: postgres:15-alpine
+    container_name: taskflow_postgres
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgre
+      - POSTGRES_PASSWORD=Nhatvn123
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgre -d postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - taskflow_network
+
+  # Core Services (No Redis)
+  common-service:
+    image: tranminnhatdut/taskflow-backend:common-latest
+    container_name: taskflow_common
+    environment:
+      - SPRING_PROFILES_ACTIVE=production
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/postgres
+      - SPRING_DATASOURCE_USERNAME=postgre
+      - SPRING_DATASOURCE_PASSWORD=Nhatvn123
+      - JAVA_OPTS=-Xmx512m -Xms256m -XX:+UseG1GC
+      - TZ=Asia/Ho_Chi_Minh
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - taskflow_network
+
+  accounts-service:
+    image: tranminnhatdut/taskflow-backend:accounts-latest
+    container_name: taskflow_accounts
+    environment:
+      - SPRING_PROFILES_ACTIVE=production
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/postgres
+      - SPRING_DATASOURCE_USERNAME=postgre
+      - SPRING_DATASOURCE_PASSWORD=Nhatvn123
+      - COMMON_SERVICE_URL=http://common-service:8081
+      - JAVA_OPTS=-Xmx512m -Xms256m -XX:+UseG1GC
+      - TZ=Asia/Ho_Chi_Minh
+    ports:
+      - "8080:8080"
+    depends_on:
+      common-service:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - taskflow_network
+
+  projects-service:
+    image: tranminnhatdut/taskflow-backend:projects-latest
+    container_name: taskflow_projects
+    environment:
+      - SPRING_PROFILES_ACTIVE=production
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/postgres
+      - SPRING_DATASOURCE_USERNAME=postgre
+      - SPRING_DATASOURCE_PASSWORD=Nhatvn123
+      - COMMON_SERVICE_URL=http://common-service:8081
+      - JAVA_OPTS=-Xmx512m -Xms256m -XX:+UseG1GC
+      - TZ=Asia/Ho_Chi_Minh
+    ports:
+      - "8083:8083"
+    depends_on:
+      common-service:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - taskflow_network
+
+  user-service:
+    image: tranminnhatdut/taskflow-backend:user-latest
+    container_name: taskflow_user
+    environment:
+      - SPRING_PROFILES_ACTIVE=production
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/postgres
+      - SPRING_DATASOURCE_USERNAME=postgre
+      - SPRING_DATASOURCE_PASSWORD=Nhatvn123
+      - COMMON_SERVICE_URL=http://common-service:8081
+      - JAVA_OPTS=-Xmx512m -Xms256m -XX:+UseG1GC
+      - TZ=Asia/Ho_Chi_Minh
+    ports:
+      - "8086:8086"
+    depends_on:
+      common-service:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - taskflow_network
+
+  tasks-service:
+    image: tranminnhatdut/taskflow-backend:tasks-latest
+    container_name: taskflow_tasks
+    environment:
+      - SPRING_PROFILES_ACTIVE=production
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/postgres
+      - SPRING_DATASOURCE_USERNAME=postgre
+      - SPRING_DATASOURCE_PASSWORD=Nhatvn123
+      - COMMON_SERVICE_URL=http://common-service:8081
+      - JAVA_OPTS=-Xmx512m -Xms256m -XX:+UseG1GC
+      - TZ=Asia/Ho_Chi_Minh
+    ports:
+      - "8085:8085"
+    depends_on:
+      common-service:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - taskflow_network
+
+  sprints-service:
+    image: tranminnhatdut/taskflow-backend:sprints-latest
+    container_name: taskflow_sprints
+    environment:
+      - SPRING_PROFILES_ACTIVE=production
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/postgres
+      - SPRING_DATASOURCE_USERNAME=postgre
+      - SPRING_DATASOURCE_PASSWORD=Nhatvn123
+      - COMMON_SERVICE_URL=http://common-service:8081
+      - JAVA_OPTS=-Xmx512m -Xms256m -XX:+UseG1GC
+      - TZ=Asia/Ho_Chi_Minh
+    ports:
+      - "8084:8084"
+    depends_on:
+      common-service:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - taskflow_network
+
+  notification-service:
+    image: tranminnhatdut/taskflow-backend:notification-latest
+    container_name: taskflow_notification
+    environment:
+      - SPRING_PROFILES_ACTIVE=production
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/postgres
+      - SPRING_DATASOURCE_USERNAME=postgre
+      - SPRING_DATASOURCE_PASSWORD=Nhatvn123
+      - COMMON_SERVICE_URL=http://common-service:8081
+      - JAVA_OPTS=-Xmx512m -Xms256m -XX:+UseG1GC
+      - TZ=Asia/Ho_Chi_Minh
+    ports:
+      - "8089:8089"
+    depends_on:
+      common-service:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - taskflow_network
+
+  file-service:
+    image: tranminnhatdut/taskflow-backend:file-latest
+    container_name: taskflow_file
+    environment:
+      - SPRING_PROFILES_ACTIVE=production
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/postgres
+      - SPRING_DATASOURCE_USERNAME=postgre
+      - SPRING_DATASOURCE_PASSWORD=Nhatvn123
+      - UPLOAD_PATH=/app/uploads
+      - COMMON_SERVICE_URL=http://common-service:8081
+      - JAVA_OPTS=-Xmx512m -Xms256m -XX:+UseG1GC
+      - TZ=Asia/Ho_Chi_Minh
+    ports:
+      - "8087:8087"
+    depends_on:
+      common-service:
+        condition: service_started
+    restart: unless-stopped
+    volumes:
+      - file_uploads:/app/uploads
+    networks:
+      - taskflow_network
+
+volumes:
+  postgres_data:
+    driver: local
+  file_uploads:
+    driver: local
+
+networks:
+  taskflow_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16 

@@ -16,17 +16,17 @@ public class Tasks {
     private UUID projectId;
     private String title;
     private String description;
-    private TaskStatus status;      // ✅ Enum
+    private TaskStatus status;      
     private int storyPoint;
     private UUID assigneeId;
-    private UUID createdBy;         // ✅ New field for task creator
+    private UUID createdBy;         
     private LocalDate dueDate;
     private LocalDateTime createdAt;
     private LocalDateTime completedAt;
     private UUID parentTaskId;
     private List<TaskTag> tags;
     private String label;
-    private TaskPriority priority;  // ✅ New priority field
+    private TaskPriority priority;  
     private LocalDateTime deletedAt;
 
     public Tasks() {
@@ -52,7 +52,7 @@ public class Tasks {
         this.deletedAt = builder.deletedAt;
     }
 
-    // ✅ Getters & Setters
+    //Getters & Setters
 
     public UUID getId() {
         return id;

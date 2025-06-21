@@ -1,25 +1,44 @@
-# Multi-stage build for Java Spring Boot
-FROM maven:3.9.4-openjdk-17-slim AS build
+# Multi-stage build for Java Spring Boot with Common dependency
+FROM eclipse-temurin:21-jdk AS common-build
+
+# Install Maven
+RUN apt-get update && \
+    apt-get install -y maven && \
+    rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
 
-# Copy parent pom and wrapper files
-COPY ../pom.xml ./
-COPY ../mvnw ./
-COPY ../.mvn ./.mvn/
+# Copy common service files
+COPY common ./common/
 
-# Copy common modules if they exist
-COPY ../common ./common/
+# Build common module first
+WORKDIR /app/common
+RUN mvn clean install -DskipTests
 
-# Copy File Service source
-COPY . ./File-Service/
+# Main build stage for File Service
+FROM eclipse-temurin:21-jdk AS build
+
+# Install Maven
+RUN apt-get update && \
+    apt-get install -y maven && \
+    rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Copy common artifact from previous stage
+COPY --from=common-build /root/.m2 /root/.m2
+
+# Copy file service files
+COPY File-Service/pom.xml ./
+COPY File-Service/src ./src/
 
 # Build the application
-RUN ./mvnw clean install -DskipTests -pl File-Service -am
+RUN mvn clean package -DskipTests
 
 # Runtime stage
-FROM openjdk:17-jre-slim
+FROM eclipse-temurin:21-jre
 
 # Install curl for health checks
 RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
@@ -28,18 +47,18 @@ RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 # Copy built jar from build stage
-COPY --from=build /app/File-Service/target/*.jar app.jar
+COPY --from=build /app/target/*.jar app.jar
 
 # Create non-root user
 RUN addgroup --system spring && adduser --system spring --ingroup spring
 USER spring:spring
 
-# Expose port (assuming File Service uses 8085)
-EXPOSE 8085
+# Expose port
+EXPOSE 8087
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
-  CMD curl -f http://localhost:8085/health || exit 1
+  CMD curl -f http://localhost:8087/health || exit 1
 
 # Run the application
 ENTRYPOINT ["java", "-jar", "/app/app.jar"] 

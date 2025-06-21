@@ -100,7 +100,7 @@ export default function CreateProjectPage() {
         }
     }, [currentUser, userLoading]);
 
-    // ✅ Fetch all users from API
+    // Fetch all users from API for invite
     const fetchAllUsers = async () => {
         setIsLoadingUsers(true);
         try {
@@ -162,7 +162,7 @@ export default function CreateProjectPage() {
                     taskId: null // No task associated with project invitation
                 };
 
-                console.log(`📤 PROJECT: Sending standard invitation to ${user.username}:`, notificationData);
+                console.log(`PROJECT: Sending standard invitation to ${user.username}:`, notificationData);
                 return axios.post('http://localhost:8089/api/notifications/create', notificationData);
             });
 
@@ -182,8 +182,7 @@ export default function CreateProjectPage() {
         }
 
         try {
-            // ✅ STEP 1: Create Project
-            console.log("🚀 STEP 1: Creating project...");
+            //STEP 1: Create Project
             const payload = {
                 name,
                 key,
@@ -195,7 +194,6 @@ export default function CreateProjectPage() {
                 createdAt: new Date().toISOString(),
             };
 
-            console.log("✅ PROJECT: Sending payload:", payload);
             const res = await axios.post("http://localhost:8083/api/projects", payload);
             const newProjectId: string = res.data?.data?.id;
 
@@ -218,21 +216,16 @@ export default function CreateProjectPage() {
                 updatedAt: new Date().toISOString()
             };
 
-            console.log("✅ SPRINT: Sending sprint payload:", sprintPayload);
             await axios.post("http://localhost:8084/api/sprints", sprintPayload);
-            console.log("✅ STEP 2 SUCCESS: Sprint created");
 
-            // ✅ STEP 3: Auto-add project owner as member
-            console.log("🚀 STEP 3: Adding owner as member...");
+            // STEP 3: Auto-add project owner as member
             try {
                 const ownerMemberData = {
                     userId: currentUser.id,
                     roleInProject: "SCRUM_MASTER" // Owner role
                 };
                 
-                console.log("✅ MEMBER: Adding owner as member:", ownerMemberData);
                 await axios.post(`http://localhost:8083/api/projects/${newProjectId}/members`, ownerMemberData);
-                console.log("✅ STEP 3 SUCCESS: Owner added as member");
             } catch (ownerError) {
                 console.warn("⚠️ STEP 3 WARNING: Failed to auto-add owner as member:", ownerError);
                 // Don't fail the whole process if this fails

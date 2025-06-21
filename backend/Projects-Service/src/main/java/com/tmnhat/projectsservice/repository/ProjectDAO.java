@@ -238,7 +238,21 @@ public class ProjectDAO extends BaseDAO {
         });
     }
 
-    // ✅ NEW: Soft delete methods
+    public List<Projects> findAllByOwnerId(UUID ownerId) throws SQLException {
+        String sql = "SELECT * FROM projects WHERE owner_id = ? AND deleted_at IS NULL ORDER BY created_at DESC";
+        
+        return executeQuery(sql, stmt -> {
+            stmt.setObject(1, ownerId);
+            List<Projects> projects = new ArrayList<>();
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                projects.add(mapResultSetToProject(rs));
+            }
+            return projects;
+        });
+    }
+
+    // Soft delete methods
     public void softDeleteProject(UUID id) throws SQLException {
         String sql = "UPDATE projects SET deleted_at = NOW() WHERE id = ?";
         executeUpdate(sql, stmt -> stmt.setObject(1, id));

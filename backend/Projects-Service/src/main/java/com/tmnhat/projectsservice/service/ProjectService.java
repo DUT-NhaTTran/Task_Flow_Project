@@ -50,7 +50,7 @@ public interface ProjectService {
     
     String getRoleInProject(UUID projectId, UUID userId);
 
-    UUID getScrumMasterId(UUID projectId);
+    UUID getManagerId(UUID projectId);
 
     void softDeleteProject(UUID id);
     
@@ -61,5 +61,7 @@ public interface ProjectService {
     Projects getProjectByIdIncludeDeleted(UUID id);
     
     List<Projects> searchProjectsByUserMembershipIncludeDeleted(String keyword, UUID userId);
+
+    List<Projects> getAllProjectsByOwnerId(UUID ownerId);
 
 }

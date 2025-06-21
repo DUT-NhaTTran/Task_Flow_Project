@@ -1,0 +1,476 @@
+version: '3.8'
+
+services:
+  # Database Services
+  postgres:
+    image: postgres:15-alpine
+    container_name: taskflow_postgres
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgre
+      - POSTGRES_PASSWORD=Nhatvn123
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgre -d postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - taskflow_network
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: '0.5'
+
+  redis:
+    image: redis:7-alpine
+    container_name: taskflow_redis
+    command: redis-server --appendonly yes --requirepass "redis123"
+    volumes:
+      - redis_data:/data
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - taskflow_network
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: '0.25'
+
+  # Core Services
+  common-service:
+    image: tranminnhatdut/taskflow-backend:common-latest
+    container_name: taskflow_common
+    environment:
+      - SPRING_PROFILES_ACTIVE=production
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/postgres
+      - SPRING_DATASOURCE_USERNAME=postgre
+      - SPRING_DATASOURCE_PASSWORD=Nhatvn123
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - SPRING_REDIS_PASSWORD=redis123
+      - JAVA_OPTS=-Xmx512m -Xms256m -XX:+UseG1GC
+      - TZ=Asia/Ho_Chi_Minh
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+    networks:
+      - taskflow_network
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+          cpus: '0.5'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  ai-service:
+    image: tranminnhatdut/taskflow-backend:ai-latest
+    container_name: taskflow_ai
+    environment:
+      - DATABASE_URL=postgresql://postgre:Nhatvn123@postgres:5432/postgres
+      - REDIS_URL=redis://:redis123@redis:6379
+      - API_ENV=production
+      - TZ=Asia/Ho_Chi_Minh
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      common-service:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+    networks:
+      - taskflow_network
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: '0.75'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Business Services
+  accounts-service:
+    image: tranminnhatdut/taskflow-backend:accounts-latest
+    container_name: taskflow_accounts
+    environment:
+      - SPRING_PROFILES_ACTIVE=production
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/postgres
+      - SPRING_DATASOURCE_USERNAME=postgre
+      - SPRING_DATASOURCE_PASSWORD=Nhatvn123
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - SPRING_REDIS_PASSWORD=redis123
+      - COMMON_SERVICE_URL=http://common-service:8081
+      - JAVA_OPTS=-Xmx512m -Xms256m -XX:+UseG1GC
+      - TZ=Asia/Ho_Chi_Minh
+    ports:
+      - "8080:8080"
+    depends_on:
+      common-service:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+    networks:
+      - taskflow_network
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+          cpus: '0.5'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  user-service:
+    image: tranminnhatdut/taskflow-backend:user-latest
+    container_name: taskflow_user
+    environment:
+      - SPRING_PROFILES_ACTIVE=production
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/postgres
+      - SPRING_DATASOURCE_USERNAME=postgre
+      - SPRING_DATASOURCE_PASSWORD=Nhatvn123
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - SPRING_REDIS_PASSWORD=redis123
+      - COMMON_SERVICE_URL=http://common-service:8081
+      - JAVA_OPTS=-Xmx512m -Xms256m -XX:+UseG1GC
+      - TZ=Asia/Ho_Chi_Minh
+    ports:
+      - "8086:8086"
+    depends_on:
+      common-service:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/actuator/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+    networks:
+      - taskflow_network
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+          cpus: '0.5'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  projects-service:
+    image: tranminnhatdut/taskflow-backend:projects-latest
+    container_name: taskflow_projects
+    environment:
+      - SPRING_PROFILES_ACTIVE=production
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/postgres
+      - SPRING_DATASOURCE_USERNAME=postgre
+      - SPRING_DATASOURCE_PASSWORD=Nhatvn123
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - SPRING_REDIS_PASSWORD=redis123
+      - COMMON_SERVICE_URL=http://common-service:8081
+      - JAVA_OPTS=-Xmx512m -Xms256m -XX:+UseG1GC
+      - TZ=Asia/Ho_Chi_Minh
+    ports:
+      - "8083:8083"
+    depends_on:
+      common-service:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/actuator/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+    networks:
+      - taskflow_network
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+          cpus: '0.5'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  tasks-service:
+    image: tranminnhatdut/taskflow-backend:tasks-latest
+    container_name: taskflow_tasks
+    environment:
+      - SPRING_PROFILES_ACTIVE=production
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/postgres
+      - SPRING_DATASOURCE_USERNAME=postgre
+      - SPRING_DATASOURCE_PASSWORD=Nhatvn123
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - SPRING_REDIS_PASSWORD=redis123
+      - AI_SERVICE_URL=http://ai-service:8000
+      - COMMON_SERVICE_URL=http://common-service:8081
+      - JAVA_OPTS=-Xmx512m -Xms256m -XX:+UseG1GC
+      - TZ=Asia/Ho_Chi_Minh
+    ports:
+      - "8085:8085"
+    depends_on:
+      common-service:
+        condition: service_healthy
+      ai-service:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8085/actuator/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+    networks:
+      - taskflow_network
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+          cpus: '0.5'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  sprints-service:
+    image: tranminnhatdut/taskflow-backend:sprints-latest
+    container_name: taskflow_sprints
+    environment:
+      - SPRING_PROFILES_ACTIVE=production
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/postgres
+      - SPRING_DATASOURCE_USERNAME=postgre
+      - SPRING_DATASOURCE_PASSWORD=Nhatvn123
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - SPRING_REDIS_PASSWORD=redis123
+      - COMMON_SERVICE_URL=http://common-service:8081
+      - JAVA_OPTS=-Xmx512m -Xms256m -XX:+UseG1GC
+      - TZ=Asia/Ho_Chi_Minh
+    ports:
+      - "8084:8084"
+    depends_on:
+      common-service:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8084/actuator/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+    networks:
+      - taskflow_network
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+          cpus: '0.5'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  notification-service:
+    image: tranminnhatdut/taskflow-backend:notification-latest
+    container_name: taskflow_notification
+    environment:
+      - SPRING_PROFILES_ACTIVE=production
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/postgres
+      - SPRING_DATASOURCE_USERNAME=postgre
+      - SPRING_DATASOURCE_PASSWORD=Nhatvn123
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - SPRING_REDIS_PASSWORD=redis123
+      - COMMON_SERVICE_URL=http://common-service:8081
+      - JAVA_OPTS=-Xmx512m -Xms256m -XX:+UseG1GC
+      - TZ=Asia/Ho_Chi_Minh
+    ports:
+      - "8089:8089"
+    depends_on:
+      common-service:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8089/actuator/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+    networks:
+      - taskflow_network
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+          cpus: '0.5'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  file-service:
+    image: tranminnhatdut/taskflow-backend:file-latest
+    container_name: taskflow_file
+    environment:
+      - SPRING_PROFILES_ACTIVE=production
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/postgres
+      - SPRING_DATASOURCE_USERNAME=postgre
+      - SPRING_DATASOURCE_PASSWORD=Nhatvn123
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - SPRING_REDIS_PASSWORD=redis123
+      - UPLOAD_PATH=/app/uploads
+      - COMMON_SERVICE_URL=http://common-service:8081
+      - JAVA_OPTS=-Xmx512m -Xms256m -XX:+UseG1GC
+      - TZ=Asia/Ho_Chi_Minh
+    ports:
+      - "8087:8087"
+    depends_on:
+      common-service:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8087/actuator/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+    volumes:
+      - file_uploads:/app/uploads
+      - /etc/localtime:/etc/localtime:ro
+    networks:
+      - taskflow_network
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+          cpus: '0.5'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: taskflow_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - /etc/localtime:/etc/localtime:ro
+    depends_on:
+      - common-service
+      - ai-service
+      - user-service
+      - projects-service
+      - tasks-service
+      - sprints-service
+      - accounts-service
+      - notification-service
+      - file-service
+    restart: unless-stopped
+    networks:
+      - taskflow_network
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: '0.25'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Monitoring Services (Optional)
+  watchtower:
+    image: containrrr/watchtower
+    container_name: taskflow_watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_POLL_INTERVAL=300
+      - WATCHTOWER_INCLUDE_STOPPED=true
+    restart: unless-stopped
+    networks:
+      - taskflow_network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  file_uploads:
+    driver: local
+
+networks:
+  taskflow_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16 

@@ -20,7 +20,7 @@ public class JwtUtil {
     public String generateToken(UUID accountId, String role) {
         return Jwts.builder()
                 .setSubject(accountId.toString())
-                .claim("role", role)  // GUEST / USER / ADMIN
+                .claim("role", role)  // USER / ADMIN
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + expiration))
                 .signWith(secretKey, SignatureAlgorithm.HS256)

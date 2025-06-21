@@ -119,21 +119,18 @@ export default function EditProjectPage() {
             return;
         }
         fetchProjectData();
-        fetchAllUsers(); // Fetch all users for invitation
+        fetchAllUsers();
     }, [projectId]);
 
     const fetchProjectData = async () => {
         try {
             setIsLoading(true);
-            console.log('🔍 Fetching project data for editing:', projectId);
-
             const response = await axios.get(`http://localhost:8083/api/projects/${projectId}`);
             
             if (response.data?.status === "SUCCESS" && response.data?.data) {
                 const projectData = response.data.data;
                 const currentUserId = getCurrentUserId();
                 
-                // Check if current user can edit (only owner can edit)
                 const userCanEdit = currentUserId && projectData.ownerId && currentUserId === projectData.ownerId;
                 setCanEdit(userCanEdit);
                 
@@ -142,12 +139,11 @@ export default function EditProjectPage() {
                         description: "Only the project owner can edit project settings."
                     });
                     setTimeout(() => {
-                        router.push(`/project/board?projectId=${projectId}`);
+                        router.push(`/project/project_homescreen?projectId=${projectId}`);
                     }, 2000);
                     return;
                 }
 
-                // Fetch owner details
                 let ownerName = 'Unknown Owner';
                 if (projectData.ownerId) {
                     try {
@@ -157,7 +153,7 @@ export default function EditProjectPage() {
                             ownerName = ownerData.fullname || ownerData.username || ownerData.email || 'Unknown Owner';
                         }
                     } catch (error) {
-                        console.warn('Could not fetch owner details:', error);
+                        // Silent fail for owner details
                     }
                 }
 
@@ -175,15 +171,11 @@ export default function EditProjectPage() {
                     updatedAt: projectData.updatedAt
                 });
 
-                console.log('✅ Project data loaded for editing');
-                
-                // Fetch project members after loading project data
                 await fetchProjectMembers();
             } else {
                 throw new Error("Project not found");
             }
         } catch (error) {
-            console.error('❌ Error fetching project data:', error);
             toast.error("Failed to load project data", {
                 description: "The project may not exist or you don't have permission to access it."
             });
@@ -198,14 +190,11 @@ export default function EditProjectPage() {
     const fetchProjectMembers = async () => {
         try {
             setIsLoadingMembers(true);
-            console.log('👥 Fetching project members...');
-            
             const response = await axios.get(`http://localhost:8083/api/projects/${projectId}/users`);
             
             if (response.data?.status === "SUCCESS" && response.data?.data) {
                 const membersList = response.data.data;
                 
-                // Fetch user details for each member
                 const enrichedMembers = await Promise.all(
                     membersList.map(async (member: any) => {
                         try {
@@ -225,7 +214,7 @@ export default function EditProjectPage() {
                                 };
                             }
                         } catch (error) {
-                            console.warn('Could not fetch user details for member:', member);
+                            // Silent fail for individual member details
                         }
                         
                         return {
@@ -241,19 +230,14 @@ export default function EditProjectPage() {
                 );
                 
                 setMembers(enrichedMembers);
-                
-                // Initialize task assignments
                 setTaskAssignments(enrichedMembers.map(member => ({
                     memberId: member.id,
                     memberName: member.username,
                     taskCount: member.tasks || 0
                 })));
-                
-                console.log('✅ Project members loaded:', enrichedMembers.length);
             }
         } catch (error) {
-            console.error('❌ Error fetching project members:', error);
-            // Don't show error toast as this is optional functionality
+            // Silent fail for members loading
         } finally {
             setIsLoadingMembers(false);
         }
@@ -339,8 +323,6 @@ export default function EditProjectPage() {
 
         try {
             setIsSaving(true);
-            console.log('💾 Saving project changes:', formData);
-
             const updateData = {
                 name: formData.name.trim(),
                 key: formData.key.trim().toUpperCase(),
@@ -352,108 +334,18 @@ export default function EditProjectPage() {
                 ...(formData.updatedAt && { updatedAt: new Date().toISOString() })
             };
 
-            // =============== DEBUG INFO FOR POSTMAN ===============
-            const apiUrl = `http://localhost:8083/api/projects/${projectId}`;
-            console.log('🔍 DEBUG - API Request Details:');
-            console.log('📍 URL:', apiUrl);
-            console.log('🔧 Method: PATCH');
-            console.log('📦 Headers: Content-Type: application/json');
-            console.log('📋 Request Body (JSON):');
-            console.log(JSON.stringify(updateData, null, 2));
-            console.log('📋 Request Body (Raw JSON for Postman):');
-            console.log(JSON.stringify(updateData));
-            console.log('🆔 Project ID:', projectId);
-            console.log('👤 Current User ID:', getCurrentUserId());
-            console.log('👑 Project Owner ID:', formData.ownerId);
-            
-            // Additional validation logs
-            console.log('✅ Validation checks:');
-            console.log('- Name length:', formData.name.trim().length);
-            console.log('- Key format:', formData.key.trim().toUpperCase(), 'matches regex:', /^[A-Z][A-Z0-9]{1,9}$/.test(formData.key.trim().toUpperCase()));
-            console.log('- Project Type:', formData.projectType);
-            console.log('- Access:', formData.access);
-            console.log('- Description length:', formData.description?.trim()?.length || 0);
-            console.log('- Owner ID present:', !!formData.ownerId);
-            console.log('- User is owner:', getCurrentUserId() === formData.ownerId);
-            
-            // DB Schema expectations (based on your scripts)
-            console.log('🗄️ Expected DB fields:');
-            console.log('- id (UUID): ✅ Not sending (update only)');
-            console.log('- name (VARCHAR NOT NULL): ✅', updateData.name);
-            console.log('- description (TEXT): ✅', updateData.description || 'NULL');
-            console.log('- owner_id (UUID NOT NULL): ✅', updateData.ownerId);
-            console.log('- key (VARCHAR NOT NULL): ✅', updateData.key);
-            console.log('- project_type (VARCHAR NOT NULL): ✅', updateData.projectType);
-            console.log('- access (VARCHAR NOT NULL): ✅', updateData.access);
-            console.log('- deadline (DATE): ❌ Not sending');
-            console.log('- created_at (TIMESTAMP): ❌ Not sending');
-            console.log('- updated_at (TIMESTAMP): ❌ Not sending');
-            console.log('===============================================');
+            const response = await axios.patch(`http://localhost:8083/api/projects/${projectId}`, updateData);
 
-            // Save basic project data
-            const response = await axios.patch(apiUrl, updateData, {
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            if (response.data?.status === "SUCCESS") {
-                // Save task assignments if members exist
-                if (taskAssignments.length > 0) {
-                    try {
-                        console.log('💾 Saving task assignments...');
-                        // This would be a custom API call to save task assignments
-                        // For now, we'll just log the assignments
-                        console.log('Task assignments to save:', taskAssignments);
-                        
-                        // You might implement this as:
-                        // await axios.put(`http://localhost:8083/api/projects/${projectId}/task-assignments`, {
-                        //     assignments: taskAssignments
-                        // });
-                        
-                        toast.success("Project and task assignments updated successfully", {
-                            description: "All changes have been saved."
-                        });
-                    } catch (assignmentError) {
-                        console.warn('Failed to save task assignments:', assignmentError);
-                        toast.success("Project updated successfully", {
-                            description: "Basic project settings saved, but task assignments may need to be updated manually."
-                        });
-                    }
-                } else {
-                    toast.success("Project updated successfully", {
-                        description: "Your changes have been saved."
-                    });
-                }
+            if (response.data?.status === "SUCCESS" || response.status === 200) {
+                toast.success("Project updated successfully!", {
+                    description: "Your changes have been saved."
+                });
                 
-                // Redirect back to project board or list
-                setTimeout(() => {
-                    router.push(`/project/board?projectId=${projectId}`);
-                }, 1500);
+                router.push(`/project/project_homescreen?projectId=${projectId}`);
             } else {
                 throw new Error("Update failed");
             }
         } catch (error: any) {
-            console.error('❌ Error updating project:', error);
-            
-            // =============== DEBUG ERROR INFO ===============
-            console.log('🚨 ERROR DETAILS:');
-            if (axios.isAxiosError(error)) {
-                console.log('📍 Request URL:', error.config?.url);
-                console.log('🔧 Request Method:', error.config?.method?.toUpperCase());
-                console.log('📦 Request Headers:', error.config?.headers);
-                console.log('📋 Request Data:', error.config?.data);
-                console.log('💥 Response Status:', error.response?.status);
-                console.log('💬 Response Status Text:', error.response?.statusText);
-                console.log('📄 Response Headers:', error.response?.headers);
-                console.log('📋 Response Data:', error.response?.data);
-                console.log('📋 Response Data (JSON):');
-                console.log(JSON.stringify(error.response?.data, null, 2));
-            } else {
-                console.log('❌ Non-Axios Error:', error);
-            }
-            console.log('===============================================');
-            
             if (error.response?.status === 409) {
                 toast.error("Project key already exists", {
                     description: "Please choose a different project key."
@@ -477,19 +369,13 @@ export default function EditProjectPage() {
     };
 
     const handleCancel = () => {
-        router.push(`/project/board?projectId=${projectId}`);
+        router.push(`/project/project_homescreen?projectId=${projectId}`);
     };
 
     const handleUpdateMemberRole = async (memberId: string, newRole: string) => {
         try {
-            console.log('🔄 Updating member role:', { memberId, newRole, projectId });
-            
-            // Get current user data for permission check
             const currentUserId = getCurrentUserId();
-            console.log('👤 Current user ID:', currentUserId);
-            console.log('👑 Project owner ID:', formData.ownerId);
             
-            // Check if current user is project owner
             if (currentUserId !== formData.ownerId) {
                 toast.error("Permission denied", {
                     description: "Only the project owner can update member roles."
@@ -497,32 +383,18 @@ export default function EditProjectPage() {
                 return;
             }
             
-            // Backend now properly checks SCRUM_MASTER or PROJECT_OWNER permissions
-            // Prepare request payload matching backend expectations
             const requestPayload = {
                 projectId: projectId,
                 userId: memberId,
-                roleInProject: newRole.toUpperCase() // Backend might expect uppercase
+                roleInProject: newRole.toUpperCase()
             };
-            
-            console.log('📦 Request payload:', requestPayload);
-            console.log('🔗 API URL:', `http://localhost:8083/api/projects/${projectId}/members/role`);
             
             const response = await axios.patch(
                 `http://localhost:8083/api/projects/${projectId}/members/role`, 
-                requestPayload,
-                {
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    }
-                }
+                requestPayload
             );
-            
-            console.log('✅ API Response:', response.status, response.data);
-            
+                        
             if (response.data?.status === "SUCCESS" || response.status === 200) {
-                // Update local state
                 setMembers(prev => 
                     prev.map(member => 
                         member.id === memberId 
@@ -533,42 +405,13 @@ export default function EditProjectPage() {
                 
                 toast.success("Member role updated successfully");
             } else {
-                throw new Error("Failed to update role - API returned non-success status");
+                throw new Error("Failed to update role");
             }
         } catch (error: any) {
-            console.error('❌ Error updating member role:', error);
-            
-            // Enhanced error logging
-            if (axios.isAxiosError(error)) {
-                console.log('🚨 Axios Error Details:');
-                console.log('- URL:', error.config?.url);
-                console.log('- Method:', error.config?.method);
-                console.log('- Headers:', error.config?.headers);
-                console.log('- Data:', error.config?.data);
-                console.log('- Status:', error.response?.status);
-                console.log('- Status Text:', error.response?.statusText);
-                console.log('- Response Headers:', error.response?.headers);
-                console.log('- Response Data:', error.response?.data);
-                
-                if (error.response?.status === 500) {
-                    console.log('💥 Server Error 500 - Possible causes:');
-                    console.log('1. Permission check failed');
-                    console.log('2. Invalid role format');
-                    console.log('3. Member not found in project');
-                    console.log('4. Database constraint violation');
-                    
-                    toast.error("Server error while updating role", {
-                        description: "Please try again or contact support."
-                    });
-                } else if (error.response?.status === 403) {
-                    toast.error("Permission denied", {
-                        description: "You don't have permission to update member roles."
-                    });
-                } else {
-                    toast.error("Failed to update member role", {
-                        description: "Please try again or contact support."
-                    });
-                }
+            if (error.response?.status === 403) {
+                toast.error("Permission denied", {
+                    description: "You don't have permission to update member roles."
+                });
             } else {
                 toast.error("Failed to update member role", {
                     description: "Please try again or contact support."
@@ -578,7 +421,6 @@ export default function EditProjectPage() {
     };
 
     const handleRemoveMember = async (memberId: string, memberName: string) => {
-        // First, fetch member's tasks before showing removal modal
         try {
             setIsLoadingTasks(true);
             const member = members.find(m => m.id === memberId);
@@ -586,7 +428,6 @@ export default function EditProjectPage() {
             
             setMemberToRemove(member);
             
-            // Fetch member's tasks in this project
             const tasksResponse = await axios.get(`http://localhost:8084/api/tasks/project/${projectId}/assignee/${memberId}`);
             
             if (tasksResponse.data?.status === "SUCCESS" && tasksResponse.data?.data) {
@@ -597,7 +438,6 @@ export default function EditProjectPage() {
             
             setShowRemoveModal(true);
         } catch (error) {
-            console.error('❌ Error fetching member tasks:', error);
             setMemberTasks([]);
             setShowRemoveModal(true);
         } finally {
@@ -609,12 +449,9 @@ export default function EditProjectPage() {
         if (!memberToRemove) return;
         
         try {
-            console.log('🗑️ Removing member:', memberToRemove);
-            
             const response = await axios.delete(`http://localhost:8083/api/projects/${projectId}/members/${memberToRemove.id}`);
             
             if (response.data?.status === "SUCCESS") {
-                // Update local state
                 setMembers(prev => prev.filter(member => member.id !== memberToRemove.id));
                 setTaskAssignments(prev => prev.filter(assignment => assignment.memberId !== memberToRemove.id));
                 
@@ -626,7 +463,6 @@ export default function EditProjectPage() {
                 throw new Error("Failed to remove member");
             }
         } catch (error) {
-            console.error('❌ Error removing member:', error);
             toast.error("Failed to remove member", {
                 description: "Please try again or contact support."
             });
@@ -637,21 +473,16 @@ export default function EditProjectPage() {
     const fetchAllUsers = async () => {
         setIsLoadingUsers(true);
         try {
-            console.log('👥 Fetching all users for invitation...');
             const response = await axios.get("http://localhost:8086/api/users");
             
             if (response.data && response.data.status === "SUCCESS" && response.data.data) {
                 const currentUserId = getCurrentUserId();
-                // Filter out current user from the list
                 const users = response.data.data.filter((user: InviteUser) => user.id !== currentUserId);
                 setAllUsers(users);
-                console.log(`✅ Loaded ${users.length} users (excluding current user)`);
             } else {
-                console.error("Failed to fetch users:", response.data);
                 setAllUsers([]);
             }
         } catch (error) {
-            console.error("❌ Error fetching users:", error);
             setAllUsers([]);
         } finally {
             setIsLoadingUsers(false);
@@ -665,10 +496,8 @@ export default function EditProjectPage() {
             return;
         }
 
-        // Get existing member IDs to exclude them
         const existingMemberIds = members.map(m => m.id);
         
-        // Filter users based on search term and exclude existing members
         const filtered = allUsers.filter(user => 
             !existingMemberIds.includes(user.id) &&
             (user.username.toLowerCase().includes(query.toLowerCase()) ||
@@ -676,15 +505,12 @@ export default function EditProjectPage() {
         );
 
         setFilteredUsers(filtered);
-        console.log(`🔍 Filtered ${filtered.length} users for query: "${query}"`);
     };
 
     const inviteUserToProject = async (userId: string, userEmail: string) => {
         try {
             setIsInviting(true);
-            console.log('📧 Inviting user to project:', { userId, userEmail, role: inviteRole });
             
-            // Get current user data for notification
             const currentUserData = getCurrentUserData();
             const currentUserId = getCurrentUserId();
             const currentUserName = currentUserData?.profile?.username || 
@@ -692,7 +518,6 @@ export default function EditProjectPage() {
                                   currentUserData?.account?.email || 
                                   'Project Owner';
 
-            // Send invitation notification (NOT directly adding to project)
             const notificationData = {
                 type: 'PROJECT_INVITE',
                 title: 'Project Invitation',
@@ -703,11 +528,9 @@ export default function EditProjectPage() {
                 projectId: projectId,
                 projectName: formData.name,
                 invitedRole: inviteRole,
-                taskId: null // No task associated with project invitation
+                taskId: null
             };
 
-            console.log('📤 Sending project invitation notification:', notificationData);
-            
             const response = await axios.post('http://localhost:8089/api/notifications/create', notificationData);
             
             if (response.data?.status === "SUCCESS" || response.status === 200 || response.status === 201) {
@@ -715,7 +538,6 @@ export default function EditProjectPage() {
                     description: `They will receive a notification to accept or decline joining as ${inviteRole}`
                 });
                 
-                // Reset invite form
                 setShowInviteModal(false);
                 setInviteEmail('');
                 setInviteRole('Member');
@@ -724,7 +546,6 @@ export default function EditProjectPage() {
                 throw new Error("Failed to send invitation");
             }
         } catch (error) {
-            console.error('❌ Error sending invitation:', error);
             toast.error("Failed to send invitation", {
                 description: "Please try again or contact support."
             });
@@ -739,7 +560,6 @@ export default function EditProjectPage() {
             return;
         }
 
-        // Check if it's a valid email format
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(inviteEmail.trim())) {
             toast.error("Please enter a valid email address");
@@ -748,22 +568,18 @@ export default function EditProjectPage() {
         
         try {
             setIsInviting(true);
-            console.log('📧 Inviting by email:', { email: inviteEmail, role: inviteRole });
             
-            // Find user by email in local allUsers data
             const exactMatch = allUsers.find((user: InviteUser) => 
                 user.email?.toLowerCase() === inviteEmail.trim().toLowerCase()
             );
             
             if (exactMatch) {
-                // Check if user is already a member
                 const existingMemberIds = members.map(m => m.id);
                 if (existingMemberIds.includes(exactMatch.id)) {
                     toast.error("User is already a member of this project");
                     return;
                 }
 
-                // User exists in system - send notification
                 const currentUserData = getCurrentUserData();
                 const currentUserId = getCurrentUserId();
                 const currentUserName = currentUserData?.profile?.username || 
@@ -784,8 +600,6 @@ export default function EditProjectPage() {
                     taskId: null
                 };
 
-                console.log('📤 Sending project invitation notification to existing user:', notificationData);
-                
                 const response = await axios.post('http://localhost:8089/api/notifications/create', notificationData);
                 
                 if (response.data?.status === "SUCCESS" || response.status === 200 || response.status === 201) {
@@ -796,21 +610,18 @@ export default function EditProjectPage() {
                     throw new Error("Failed to send notification");
                 }
             } else {
-                // User doesn't exist in system
                 toast.error("User not found", {
                     description: `No user with email ${inviteEmail} found. They need to register first.`
                 });
                 return;
             }
             
-            // Reset invite form
             setShowInviteModal(false);
             setInviteEmail('');
             setInviteRole('Member');
             setFilteredUsers([]);
             
         } catch (error) {
-            console.error('❌ Error sending invitation:', error);
             toast.error("Failed to send invitation", {
                 description: "Please try again or contact support."
             });

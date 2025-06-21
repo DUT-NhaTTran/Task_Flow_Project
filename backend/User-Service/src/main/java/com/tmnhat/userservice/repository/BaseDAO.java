@@ -1,6 +1,5 @@
 package com.tmnhat.userservice.repository;
-
-import com.tmnhat.userservice.config.DatabaseConnection;
+import com.tmnhat.common.config.DatabaseConnection;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;

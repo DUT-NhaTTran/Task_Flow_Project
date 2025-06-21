@@ -8,6 +8,7 @@ import axios from "axios"
 import { formatDistanceToNow, format, differenceInMinutes, differenceInHours, differenceInDays } from 'date-fns'
 import { vi } from 'date-fns/locale'
 import { toast } from "sonner"
+import { useRouter } from "next/navigation"
 
 interface Notification {
     id: string
@@ -74,6 +75,7 @@ export function NotificationDropdown({ userId }: NotificationDropdownProps) {
     const [currentUserId, setCurrentUserId] = useState<string | null>(null)
     const dropdownRef = useRef<HTMLDivElement>(null)
     const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+    const router = useRouter()
 
     // Close dropdown when clicking outside
     useEffect(() => {
@@ -374,17 +376,29 @@ export function NotificationDropdown({ userId }: NotificationDropdownProps) {
             markAsRead(notification.id)
         }
         
+        // Debug logging to see what actionUrl we have
+        console.log('🔍 NOTIFICATION CLICK DEBUG:', {
+            notificationId: notification.id,
+            type: notification.type,
+            actionUrl: notification.actionUrl,
+            projectId: notification.projectId,
+            taskId: notification.taskId,
+            hasActionUrl: !!notification.actionUrl
+        })
+        
         // Navigate using the action URL from backend (already has correct format)
         if (notification.actionUrl) {
-            console.log('Navigating to:', notification.actionUrl)
-            window.location.href = `http://localhost:3001${notification.actionUrl}`
+            console.log('✅ Using actionUrl from backend:', notification.actionUrl)
+            router.push(notification.actionUrl)
         } else if (notification.projectId) {
             // Fallback: navigate to project homescreen if no actionUrl but has projectId
             const fallbackUrl = notification.taskId 
-                ? `/project/project_homescreen?projectId=${notification.projectId}&taskId=${notification.taskId}`
-                : `/project/project_homescreen?projectId=${notification.projectId}`;
-            console.log('Fallback navigation to:', fallbackUrl)
-            window.location.href = `http://localhost:3001${fallbackUrl}`
+                ? `/project/project_homescreen?projectId=${notification.projectId}&taskId=${notification.taskId}&from=notification`
+                : `/project/project_homescreen?projectId=${notification.projectId}&from=notification`;
+            console.log('⚠️ Using fallback URL (no actionUrl from backend):', fallbackUrl)
+            router.push(fallbackUrl)
+        } else {
+            console.error('❌ No actionUrl or projectId available for navigation')
         }
         
         setIsOpen(false)
@@ -801,7 +815,7 @@ export function NotificationDropdown({ userId }: NotificationDropdownProps) {
                                 variant="ghost"
                                 className="w-full text-sm text-blue-600 hover:text-blue-700"
                                 onClick={() => {
-                                    window.location.href = '/notifications'
+                                    router.push('/notifications')
                                     setIsOpen(false)
                                 }}
                             >

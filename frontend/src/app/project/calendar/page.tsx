@@ -756,7 +756,7 @@ const EditSprintModal = ({
                   disabled={isSaving}
                   className="bg-green-600 hover:bg-green-700"
                 >
-                  🚀 Start Sprint
+                   Start Sprint
                 </Button>
               )}
               
@@ -967,16 +967,16 @@ export default function CalendarPage() {
       const projectMembers = await fetchProjectMembers();
       console.log(`👥 CALENDAR NOTIFICATION: Found ${projectMembers.length} project members`);
 
-      // Fetch project details to get scrum master
-      let scrumMasterId: string | null = null;
+      // Fetch project details to get product owner
+      let productOwnerId: string | null = null;
       let projectName = "TaskFlow Project";
       
       try {
         const projectResponse = await axios.get(`http://localhost:8083/api/projects/${validatedProjectId}`);
         if (projectResponse.data?.status === "SUCCESS" && projectResponse.data?.data) {
-          scrumMasterId = projectResponse.data.data.scrumMasterId;
+          productOwnerId = projectResponse.data.data.ownerId; // Product Owner, not Scrum Master
           projectName = projectResponse.data.data.name || projectName;
-          console.log(`📋 CALENDAR NOTIFICATION: Project details - Name: "${projectName}", Scrum Master: ${scrumMasterId}`);
+          console.log(`📋 CALENDAR NOTIFICATION: Project details - Name: "${projectName}", Product Owner: ${productOwnerId}`);
         }
       } catch (error) {
         console.warn('⚠️ CALENDAR NOTIFICATION: Failed to fetch project details:', error);
@@ -992,15 +992,12 @@ export default function CalendarPage() {
         }
       });
       
-      // Add scrum master if not already included and not current user
-      if (scrumMasterId && scrumMasterId !== currentUserId && !allRecipients.has(scrumMasterId)) {
-        allRecipients.add(scrumMasterId);
-        console.log(`➕ CALENDAR NOTIFICATION: Added scrum master ${scrumMasterId} to recipients`);
+      // Add product owner if not already included and not current user
+      if (productOwnerId && productOwnerId !== currentUserId && !allRecipients.has(productOwnerId)) {
+        allRecipients.add(productOwnerId);
       }
 
       const recipientIds = Array.from(allRecipients);
-      console.log(`📝 CALENDAR NOTIFICATION: Total recipients (excluding current user): ${recipientIds.length}`);
-      console.log(`📋 CALENDAR NOTIFICATION: Recipients: ${recipientIds.join(', ')}`);
 
       if (recipientIds.length === 0) {
         console.log("No recipients to notify (current user is the only member or no members found)");
@@ -1050,7 +1047,6 @@ export default function CalendarPage() {
         actionUrl: `/project/calendar?projectId=${validatedProjectId}&highlightSprint=${validatedSprintId}`
       };
 
-      console.log(`🔍 CALENDAR NOTIFICATION: Base notification data:`, baseNotificationData);
 
       // Send notifications to all recipients
       const notificationPromises = recipientIds.map(async (recipientId, index) => {
@@ -1059,7 +1055,6 @@ export default function CalendarPage() {
           recipientUserId: recipientId
         };
 
-        console.log(`📤 CALENDAR NOTIFICATION: Sending ${notificationType} notification ${index + 1}/${recipientIds.length} to user: ${recipientId}`);
 
         try {
           const response = await axios.post('http://localhost:8089/api/notifications/create', notificationData, {

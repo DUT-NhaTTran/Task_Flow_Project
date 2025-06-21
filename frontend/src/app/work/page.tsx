@@ -127,6 +127,7 @@ export default function AllWorkPage() {
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
   const [selectedProjectForView, setSelectedProjectForView] = useState<string | null>(null);
+  const [showAllProjects, setShowAllProjects] = useState(false);
   
   // Get current projectId from localStorage for sidebar
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
@@ -139,6 +140,7 @@ export default function AllWorkPage() {
   }, []);
 
   // Fetch all data
+
   const fetchAllData = useCallback(async () => {
     if (!userId) return;
     
@@ -146,6 +148,9 @@ export default function AllWorkPage() {
       // Fetch projects using the correct API
       const projectsRes = await axios.get(`http://localhost:8083/api/projects/search/member?keyword=&userId=${userId}`);
       const userProjects = Array.isArray(projectsRes.data?.data) ? projectsRes.data.data : [];
+      
+
+      
       setProjects(userProjects);
       
       // Fetch tasks from all projects
@@ -169,6 +174,7 @@ export default function AllWorkPage() {
         }
       }
       
+      console.log('📋 Total tasks fetched:', allTasks.length);
       setTasks(allTasks);
     } catch (err) {
       console.error("Error fetching data:", err);
@@ -407,118 +413,160 @@ export default function AllWorkPage() {
                 {/* Projects Section - Full Width */}
                 <div className="w-full">
                   {/* Project Cards - Full Width Grid with Fixed Card Width */}
-                  <div className="flex flex-wrap gap-4 mb-6">
-                    {/* All Projects Card */}
-                    <div 
-                      className={`border rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer w-64 h-48 flex-shrink-0 ${
-                        selectedProjectForView === null 
-                          ? 'bg-blue-100 border-blue-300 ring-2 ring-blue-500' 
-                          : 'bg-gray-100 border-gray-300'
-                      }`}
-                      onClick={() => setSelectedProjectForView(null)}
-                    >
-                      <div className="flex items-start space-x-3 h-full">
-                        <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center flex-shrink-0">
-                          <span className="text-white font-medium text-xs">All</span>
-                        </div>
-                        <div className="flex-1 min-w-0 flex flex-col h-full">
-                          <h4 className="text-sm font-medium text-gray-900 truncate">
-                            All Projects
-                          </h4>
-                          <p className="text-xs text-gray-600 mt-1">
-                            View tasks from all projects
-                          </p>
-                          <div className="mt-2 flex-1">
-                            <div className="space-y-1">
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="text-gray-600">Total open items</span>
-                                <span className="bg-gray-200 text-gray-800 px-1.5 py-0.5 rounded-full text-xs font-medium">
-                                  {tasks.filter(t => t.status !== "DONE" && t.assigneeId === userId).length}
-                                </span>
-                              </div>
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="text-gray-600">Total done items</span>
-                                <span className="text-gray-600 text-xs">
-                                  {tasks.filter(t => t.status === "DONE" && t.assigneeId === userId).length}
-                                </span>
+                  <div className="space-y-4">
+                    {/* Projects Header */}
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-semibold text-gray-900">
+                        Your Projects ({projects.length + 1})
+                      </h3>
+                     
+                      {projects.length > 3 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowAllProjects(!showAllProjects)}
+                          className="text-blue-600 border-blue-300 hover:bg-blue-50"
+                        >
+                          {showAllProjects ? 'Show Less' : `Show All (${projects.length})`}
+                        </Button>
+                      )}
+                    </div>
+
+                    {/* Projects Grid */}
+                    <div className="flex flex-wrap gap-4">
+                      {/* All Projects Card */}
+                      <div 
+                        className={`border rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer w-64 h-48 flex-shrink-0 ${
+                          selectedProjectForView === null 
+                            ? 'bg-blue-100 border-blue-300 ring-2 ring-blue-500' 
+                            : 'bg-gray-100 border-gray-300'
+                        }`}
+                        onClick={() => setSelectedProjectForView(null)}
+                      >
+                        <div className="flex items-start space-x-3 h-full">
+                          <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center flex-shrink-0">
+                            <span className="text-white font-medium text-xs">All</span>
+                          </div>
+                          <div className="flex-1 min-w-0 flex flex-col h-full">
+                            <h4 className="text-sm font-medium text-gray-900 truncate">
+                              All Projects
+                            </h4>
+                            <p className="text-xs text-gray-600 mt-1">
+                              View tasks from all projects
+                            </p>
+                            <div className="mt-2 flex-1">
+                              <div className="space-y-1">
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="text-gray-600">Total open items</span>
+                                  <span className="bg-gray-200 text-gray-800 px-1.5 py-0.5 rounded-full text-xs font-medium">
+                                    {tasks.filter(t => t.status !== "DONE" && t.assigneeId === userId).length}
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="text-gray-600">Total done items</span>
+                                  <span className="text-gray-600 text-xs">
+                                    {tasks.filter(t => t.status === "DONE" && t.assigneeId === userId).length}
+                                  </span>
+                                </div>
                               </div>
                             </div>
                           </div>
                         </div>
                       </div>
-                    </div>
 
-                    {projects.slice(0, 7).map(project => {
-                      const projectTasks = tasks.filter(t => t.projectId === project.id);
-                      const openTasks = projectTasks.filter(t => t.status !== "DONE" && t.assigneeId === userId).length;
-                      const doneTasks = projectTasks.filter(t => t.status === "DONE" && t.assigneeId === userId).length;
-                      const isSelected = selectedProjectForView === project.id;
-                      
-                      return (
-                        <div 
-                          key={project.id} 
-                          className={`border rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer w-64 h-48 flex-shrink-0 ${
-                            isSelected 
-                              ? 'bg-yellow-100 border-yellow-300 ring-2 ring-yellow-500' 
-                              : 'bg-yellow-50 border-yellow-200'
-                          }`}
-                          onClick={() => setSelectedProjectForView(project.id)}
-                        >
-                          <div className="flex items-start space-x-3 h-full">
-                            {/* Project Icon - Smaller */}
-                            <div className="w-8 h-8 bg-orange-600 rounded flex items-center justify-center flex-shrink-0">
-                              <span className="text-white font-medium text-xs">
-                                {project.name.charAt(0).toUpperCase()}
-                              </span>
-                            </div>
-                            
-                            {/* Project Info - Compact */}
-                            <div className="flex-1 min-w-0 flex flex-col h-full">
-                              <h4 className="text-sm font-medium text-gray-900 truncate">
-                                {project.name}
-                              </h4>
-                              <p className="text-xs text-gray-600 mt-1">
-                                Team-managed software
-                              </p>
-                              
-                              {/* Quick Links - Compact */}
-                              <div className="mt-2 flex-1">
-                                <h5 className="text-xs font-medium text-gray-700 mb-1">Quick links</h5>
-                                <div className="space-y-1">
-                                  <div className="flex items-center justify-between text-xs">
-                                    <span className="text-gray-600">My open work items</span>
-                                    <span className="bg-gray-200 text-gray-800 px-1.5 py-0.5 rounded-full text-xs font-medium">
-                                      {openTasks}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center justify-between text-xs">
-                                    <span className="text-gray-600">Done work items</span>
-                                    <span className="text-gray-600 text-xs">{doneTasks}</span>
-                                  </div>
-                                </div>
+                      {/* Individual Project Cards */}
+                      {(showAllProjects ? projects : projects.slice(0, 3)).map(project => {
+                        const projectTasks = tasks.filter(t => t.projectId === project.id);
+                        const openTasks = projectTasks.filter(t => t.status !== "DONE" && t.assigneeId === userId).length;
+                        const doneTasks = projectTasks.filter(t => t.status === "DONE" && t.assigneeId === userId).length;
+                        const isSelected = selectedProjectForView === project.id;
+                        
+                        return (
+                          <div 
+                            key={project.id} 
+                            className={`border rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer w-64 h-48 flex-shrink-0 ${
+                              isSelected 
+                                ? 'bg-yellow-100 border-yellow-300 ring-2 ring-yellow-500' 
+                                : 'bg-yellow-50 border-yellow-200'
+                            }`}
+                            onClick={() => setSelectedProjectForView(project.id)}
+                          >
+                            <div className="flex items-start space-x-3 h-full">
+                              {/* Project Icon - Smaller */}
+                              <div className="w-8 h-8 bg-orange-600 rounded flex items-center justify-center flex-shrink-0">
+                                <span className="text-white font-medium text-xs">
+                                  {project.name.charAt(0).toUpperCase()}
+                                </span>
                               </div>
                               
-                              {/* Board Info - Compact - At bottom */}
-                              <div className="pt-2 border-t border-yellow-300 mt-auto">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-xs text-gray-600">1 board</span>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      localStorage.setItem("currentProjectId", project.id);
-                                      router.push(`/project/project_homescreen?projectId=${project.id}`);
-                                    }}
-                                    className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
-                                  >
-                                    View Board
-                                  </button>
+                              {/* Project Info - Compact */}
+                              <div className="flex-1 min-w-0 flex flex-col h-full">
+                                <h4 className="text-sm font-medium text-gray-900 truncate">
+                                  {project.name}
+                                </h4>
+                                <p className="text-xs text-gray-600 mt-1">
+                                  Team-managed software
+                                </p>
+                                
+                                {/* Quick Links - Compact */}
+                                <div className="mt-2 flex-1">
+                                  <h5 className="text-xs font-medium text-gray-700 mb-1">Quick links</h5>
+                                  <div className="space-y-1">
+                                    <div className="flex items-center justify-between text-xs">
+                                      <span className="text-gray-600">My open work items</span>
+                                      <span className="bg-gray-200 text-gray-800 px-1.5 py-0.5 rounded-full text-xs font-medium">
+                                        {openTasks}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-xs">
+                                      <span className="text-gray-600">Done work items</span>
+                                      <span className="text-gray-600 text-xs">{doneTasks}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                                
+                                {/* Board Info - Compact - At bottom */}
+                                <div className="pt-2 border-t border-yellow-300 mt-auto">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs text-gray-600">1 board</span>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        localStorage.setItem("currentProjectId", project.id);
+                                        router.push(`/project/project_homescreen?projectId=${project.id}`);
+                                      }}
+                                      className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                                    >
+                                      View Board
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
                             </div>
                           </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Additional Actions */}
+                    {projects.length > 0 && (
+                      <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+                        <div className="text-sm text-gray-600">
+                          Showing {showAllProjects ? projects.length : Math.min(3, projects.length)} of {projects.length} projects
                         </div>
-                      );
-                    })}
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => router.push('/project/view_all_projects')}
+                            className="text-gray-600 hover:text-gray-800"
+                          >
+                            Browse All Projects
+                          </Button>
+                          
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 

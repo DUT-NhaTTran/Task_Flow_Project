@@ -17,10 +17,7 @@ import java.util.UUID;
 public class NotificationDAO extends BaseDAO {
 
     public Notification save(Notification notification) {
-        notification.setCreationTime();
-        
-        System.out.println("🔍 DAO: Saving notification - actorUserName: '" + notification.getActorUserName() + "'");
-        
+        notification.setCreationTime();        
         if (notification.getId() != null && existsById(notification.getId())) {
             updateNotification(notification);
         } else {
@@ -60,7 +57,6 @@ public class NotificationDAO extends BaseDAO {
                 stmt.setBoolean(14, notification.getIsRead());
                 stmt.setTimestamp(15, notification.getCreatedAt() != null ? Timestamp.valueOf(notification.getCreatedAt()) : null);
             });
-            System.out.println("🔍 DAO: Notification inserted successfully");
         } catch (SQLException e) {
             throw new RuntimeException("Error inserting notification: " + e.getMessage(), e);
         }
@@ -212,6 +208,68 @@ public class NotificationDAO extends BaseDAO {
             executeUpdate(sql, stmt -> stmt.setLong(1, id));
         } catch (SQLException e) {
             throw new RuntimeException("Error deleting notification: " + e.getMessage(), e);
+        }
+    }
+
+    public boolean hasTaskOverdueNotification(UUID taskId, UUID recipientUserId) {
+        String sql = """
+            SELECT COUNT(*) FROM notifications 
+            WHERE task_id = ? AND recipient_user_id = ? AND type = 'TASK_OVERDUE'
+            """;
+
+        try {
+            return executeQuery(sql, stmt -> {
+                stmt.setObject(1, taskId);
+                stmt.setObject(2, recipientUserId);
+                ResultSet rs = stmt.executeQuery();
+                if (rs.next()) {
+                    return rs.getInt(1) > 0;
+                }
+                return false;
+            });
+        } catch (SQLException e) {
+            throw new RuntimeException("Error checking for TASK_OVERDUE notification: " + e.getMessage(), e);
+        }
+    }
+
+    public void removeTaskOverdueNotifications(UUID taskId) {
+        String sql = "DELETE FROM notifications WHERE task_id = ? AND type = 'TASK_OVERDUE'";
+
+        try {
+            executeUpdate(sql, stmt -> stmt.setObject(1, taskId));
+        } catch (SQLException e) {
+            throw new RuntimeException("Error removing TASK_OVERDUE notifications: " + e.getMessage(), e);
+        }
+    }
+
+    public boolean hasSprintOverdueNotification(UUID sprintId, UUID recipientUserId) {
+        String sql = """
+            SELECT COUNT(*) FROM notifications 
+            WHERE sprint_id = ? AND recipient_user_id = ? AND type = 'SPRINT_OVERDUE'
+            """;
+
+        try {
+            return executeQuery(sql, stmt -> {
+                stmt.setObject(1, sprintId);
+                stmt.setObject(2, recipientUserId);
+                ResultSet rs = stmt.executeQuery();
+                if (rs.next()) {
+                    return rs.getInt(1) > 0;
+                }
+                return false;
+            });
+        } catch (SQLException e) {
+            throw new RuntimeException("Error checking for SPRINT_OVERDUE notification: " + e.getMessage(), e);
+        }
+    }
+
+    public void removeSprintOverdueNotifications(UUID sprintId) {
+        String sql = "DELETE FROM notifications WHERE sprint_id = ? AND type = 'SPRINT_OVERDUE'";
+
+        try {
+            executeUpdate(sql, stmt -> stmt.setObject(1, sprintId));
+        } catch (SQLException e) {
+            throw new RuntimeException("Error removing SPRINT_OVERDUE notifications: " + e.getMessage(), e);
         }
     }
 

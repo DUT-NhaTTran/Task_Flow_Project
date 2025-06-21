@@ -59,4 +59,10 @@ public interface TaskService {
     
     // Calendar Status Method
     List<String> getTaskStatusesForCalendar(UUID projectId);
-    }
+
+    // Task restore methods
+    void restoreTask(UUID taskId);
+    void restoreTasksByProject(UUID projectId);
+    List<Tasks> getDeletedTasksByProject(UUID projectId);
+    Tasks getTaskByIdIncludeDeleted(UUID taskId);
+}

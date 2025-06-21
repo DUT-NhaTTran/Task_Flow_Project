@@ -33,7 +33,7 @@ public class UserValidator {
         }
         
         // Allow letters (including Vietnamese), numbers, spaces, dots, underscores, and hyphens
-        // Vietnamese characters include: àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ
+        // Vietnamese characters 
         if (!username.matches("^[a-zA-Z0-9\\u00C0-\\u024F\\u1E00-\\u1EFF\\s._-]+$")) {
             throw new BadRequestException("Username can only contain letters, numbers, spaces, dots, underscores, and hyphens");
         }

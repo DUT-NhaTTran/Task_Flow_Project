@@ -109,61 +109,7 @@ public class AuthController {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
-    
-    @GetMapping("/{accountId}/user-id")
-    public ResponseEntity<Map<String, Object>> getUserIdByAccountId(@PathVariable UUID accountId) {
-        try {
-            UUID userId = authService.getUserIdByAccountId(accountId);
-            return ResponseEntity.ok(Map.of("userId", userId.toString()));
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
-        }
-    }
 
-    // ✅ TEMPORARY: Check account existence endpoint
-    @GetMapping("/check-account/{email}")
-    public ResponseEntity<Map<String, Object>> checkAccount(@PathVariable String email) {
-        try {
-            boolean exists = authService.getAccountByEmail(email) != null;
-            return ResponseEntity.ok(Map.of(
-                "email", email,
-                "exists", exists,
-                "message", exists ? "Account found" : "Account not found"
-            ));
-        } catch (Exception e) {
-            return ResponseEntity.ok(Map.of(
-                "email", email,
-                "exists", false,
-                "error", e.getMessage()
-            ));
-        }
-    }
-
-    // ✅ TEMPORARY: Test BCrypt endpoint
-    @PostMapping("/test-bcrypt")
-    public ResponseEntity<Map<String, Object>> testBCrypt(@RequestBody Map<String, String> payload) {
-        try {
-            String plainPassword = payload.get("password");
-            String storedHash = "$2a$10$hKtpBooPBuWup5rS5a19zuvtk3ZJl//FBtMb78qljZCyaQZZx.Hti";
-            
-            org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder encoder = 
-                new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder();
-            
-            boolean matches = encoder.matches(plainPassword, storedHash);
-            
-            return ResponseEntity.ok(Map.of(
-                "password", plainPassword,
-                "storedHash", storedHash, 
-                "matches", matches,
-                "hashLength", storedHash.length(),
-                "passwordLength", plainPassword.length()
-            ));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
-        }
-    }
-
-    // ✅ NEW: Change password endpoint
     @PutMapping("/change-password/{userId}")
     public ResponseEntity<Map<String, Object>> changePassword(@PathVariable UUID userId, @RequestBody Map<String, String> payload) {
         try {

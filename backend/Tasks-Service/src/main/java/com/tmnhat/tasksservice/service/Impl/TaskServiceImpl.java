@@ -637,5 +637,59 @@ public class TaskServiceImpl implements TaskService {
             throw new DatabaseException("Error retrieving task statuses for calendar: " + e.getMessage());
         }
     }
+
+    // ✅ NEW: Task restore methods implementation
+    @Override
+    public void restoreTask(UUID taskId) {
+        try {
+            TaskValidator.validateTaskId(taskId);
+            Tasks existingTask = tasksDAO.getTaskByIdIncludeDeleted(taskId);
+            if (existingTask == null) {
+                throw new ResourceNotFoundException("Task not found with ID " + taskId);
+            }
+            tasksDAO.restoreTask(taskId);
+        } catch (Exception e) {
+            throw new DatabaseException("Error restoring task: " + e.getMessage());
+        }
+    }
+    
+    @Override
+    public void restoreTasksByProject(UUID projectId) {
+        try {
+            if (projectId == null) {
+                throw new IllegalArgumentException("Project ID cannot be null");
+            }
+            tasksDAO.restoreTasksByProject(projectId);
+            System.out.println("✅ All tasks restored for project: " + projectId);
+        } catch (Exception e) {
+            throw new DatabaseException("Error restoring tasks for project: " + e.getMessage());
+        }
+    }
+    
+    @Override
+    public List<Tasks> getDeletedTasksByProject(UUID projectId) {
+        try {
+            if (projectId == null) {
+                throw new IllegalArgumentException("Project ID cannot be null");
+            }
+            return tasksDAO.getDeletedTasksByProject(projectId);
+        } catch (Exception e) {
+            throw new DatabaseException("Error retrieving deleted tasks: " + e.getMessage());
+        }
+    }
+    
+    @Override
+    public Tasks getTaskByIdIncludeDeleted(UUID taskId) {
+        try {
+            TaskValidator.validateTaskId(taskId);
+            Tasks task = tasksDAO.getTaskByIdIncludeDeleted(taskId);
+            if (task == null) {
+                throw new ResourceNotFoundException("Task not found with ID " + taskId);
+            }
+            return task;
+        } catch (Exception e) {
+            throw new DatabaseException("Error retrieving task including deleted: " + e.getMessage());
+        }
+    }
 }
 

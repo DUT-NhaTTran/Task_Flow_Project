@@ -1,25 +1,46 @@
-# Multi-stage build for Java Spring Boot
-FROM maven:3.9.4-openjdk-17-slim AS build
+# Multi-stage build for Java Spring Boot with Common dependency
+FROM eclipse-temurin:21-jdk AS common-build
+
+# Install Maven
+RUN apt-get update && \
+    apt-get install -y maven && \
+    rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
 
-# Copy parent pom and wrapper files
-COPY ../pom.xml ./
-COPY ../mvnw ./
-COPY ../.mvn ./.mvn/
+# Copy common service files
+COPY common ./common/
 
-# Copy common modules if they exist
-COPY ../common ./common/
+# Build common module first
+WORKDIR /app/common
+RUN mvn clean install -DskipTests
 
-# Copy Projects Service source
-COPY . ./Projects-Service/
+# Main build stage for Projects Service
+FROM eclipse-temurin:21-jdk AS build
+
+# Install Maven
+RUN apt-get update && \
+    apt-get install -y maven && \
+    rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Copy common artifact from previous stage
+COPY --from=common-build /root/.m2 /root/.m2
+
+# Copy projects service files
+COPY Projects-Service/pom.xml ./
+COPY Projects-Service/src ./src/
+COPY Projects-Service/mvnw ./
+COPY Projects-Service/.mvn ./.mvn/
 
 # Build the application
-RUN ./mvnw clean install -DskipTests -pl Projects-Service -am
+RUN ./mvnw clean package -DskipTests
 
 # Runtime stage
-FROM openjdk:17-jre-slim
+FROM eclipse-temurin:21-jre
 
 # Install curl for health checks
 RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
@@ -28,7 +49,7 @@ RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 # Copy built jar from build stage
-COPY --from=build /app/Projects-Service/target/*.jar app.jar
+COPY --from=build /app/target/*.jar app.jar
 
 # Create non-root user
 RUN addgroup --system spring && adduser --system spring --ingroup spring

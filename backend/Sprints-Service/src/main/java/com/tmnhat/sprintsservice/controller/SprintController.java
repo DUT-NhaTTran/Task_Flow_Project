@@ -437,7 +437,7 @@ public class SprintController {
         return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(cancelledSprints));
     }
     
-    // ✅ NEW: Task migration endpoints
+    //Task migration endpoints
     @GetMapping("/{id}/incomplete-tasks")
     public ResponseEntity<ResponseDataAPI> getIncompleteTasksFromSprint(@PathVariable UUID id, @RequestHeader(value = "X-User-Id", required = false) String userId) {
         SprintValidator.validateSprintId(id);
@@ -466,7 +466,7 @@ public class SprintController {
         return ResponseEntity.ok(ResponseDataAPI.successWithoutMetaAndData());
     }
     
-    // ✅ NEW: Move specific tasks by IDs
+    //Move specific tasks by IDs
     @PutMapping("/move-specific-tasks-to-backlog")
     public ResponseEntity<ResponseDataAPI> moveSpecificTasksToBacklog(
             @RequestBody Map<String, Object> request,

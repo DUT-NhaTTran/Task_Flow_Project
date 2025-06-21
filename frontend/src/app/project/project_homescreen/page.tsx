@@ -30,7 +30,7 @@ import {
   isProjectOwner,
   UserPermissions 
 } from "@/utils/permissions";
-import { Edit } from "lucide-react";
+import { Edit, Search, ArrowRight, Calendar, Users, Target } from "lucide-react";
 import { useUser } from "@/contexts/UserContext";
 import { Filter } from "lucide-react";
 
@@ -46,9 +46,20 @@ interface Project {
   createdAt?: string;
   ownerId?: string;
   ownerName?: string;  // Add owner name
-  scrumMasterId?: string;  // Add scrum master ID
+  productOwnerId?: string;  // Add product owner ID
   deadline?: string;
   deletedAt?: string | null;  // Add deleted_at field
+  userRole?: string; // Add user role
+}
+
+// ✅ NEW: Interface for search board results
+interface SearchBoardResult {
+  project: Project;
+  activeSprint?: any;
+  tasks: TaskData[];
+  sprintCount: number;
+  activeTaskCount: number;
+  completedTaskCount: number;
 }
 
 interface Task {
@@ -246,12 +257,7 @@ export default function ProjectBoardPage() {
   useEffect(() => {
     const currentUserId = userData?.account?.id || userData?.profile?.id;
     
-    // Reset hasFetched flag when user ID changes (allows fresh fetch for new user)
     if (currentUserId && lastFetchedUserIdRef.current && lastFetchedUserIdRef.current !== currentUserId) {
-      console.log('👤 [PROJECTS] User changed, resetting fetch flags:', {
-        previousUserId: lastFetchedUserIdRef.current,
-        newUserId: currentUserId
-      });
       hasFetchedProjectsRef.current = false;
       lastFetchedUserIdRef.current = null;
     }
@@ -259,30 +265,28 @@ export default function ProjectBoardPage() {
 
   // Recent projects tracking
   const saveRecentProject = (projectData: Project) => {
-    if (typeof window === 'undefined') return; // Prevent SSR access
+    if (typeof window === 'undefined') return;
     
     try {
       const recentProjects = getRecentProjects();
       const updatedRecent = [
         projectData,
         ...recentProjects.filter(p => p.id !== projectData.id)
-      ].slice(0, 5); // Keep only 5 most recent
+      ].slice(0, 5);
       
       localStorage.setItem('recentProjects', JSON.stringify(updatedRecent));
-      console.log('📝 Saved recent project:', projectData.name);
     } catch (error) {
-      console.log('📝 Failed to save recent project - ignoring gracefully');
+      // Silently handle localStorage errors
     }
   };
 
   const getRecentProjects = (): Project[] => {
-    if (typeof window === 'undefined') return []; // Prevent SSR access
+    if (typeof window === 'undefined') return [];
     
     try {
       const stored = localStorage.getItem('recentProjects');
       return stored ? JSON.parse(stored) : [];
     } catch (error) {
-      console.log('📝 Failed to get recent projects - returning empty array');
       return [];
     }
   };
@@ -291,10 +295,8 @@ export default function ProjectBoardPage() {
     const recentProjects = getRecentProjects();
     if (recentProjects.length > 0) {
       const mostRecent = recentProjects[0];
-      console.log('🔄 Redirecting to most recent project:', mostRecent.name);
       window.location.href = `/project/project_homescreen?projectId=${mostRecent.id}`;
     } else {
-      console.log('🔄 No recent projects found, redirecting to projects page');
       window.location.href = '/project/view_all_projects';
     }
   };
@@ -302,107 +304,79 @@ export default function ProjectBoardPage() {
   // Fetch project data using the provided API
   const fetchProject = async (projectId: string) => {
     try {
-      console.log('🔍 Fetching project data for ID:', projectId);
       const response = await axios.get(`http://localhost:8083/api/projects/${projectId}`);
       
       if (response.data?.status === "SUCCESS" && response.data?.data) {
         const projectData = response.data.data;
         
-        // Check if project is deleted (deletedAt is not null)
         if (projectData.deletedAt && projectData.deletedAt !== null) {
-          console.log('🗑️ Project is deleted, showing project selector:', projectData.deletedAt);
           handleProjectDeleted(projectData);
           return null;
         }
         
         setProject(projectData);
-        
-        // Save to recent projects only if not deleted
         saveRecentProject(projectData);
-        
-        console.log('✅ Project data loaded:', projectData);
         return projectData;
       } else {
-        console.log('📝 Project data not found - redirecting to recent project');
         setTimeout(() => redirectToMostRecentProject(), 2000);
         handleProjectNotFound();
         return null;
       }
     } catch (error: any) {
-      console.log('📝 Request failed - redirecting to recent project');
-      
-      // Handle different error types gracefully without exposing technical details
       if (axios.isAxiosError(error)) {
         const status = error.response?.status;
         
-        // For any error, show friendly UI briefly then redirect to recent project
         if (status === 404) {
-          console.log('📝 Project not found (404) - will redirect to recent project');
           handleProjectNotFound();
         } else if (status === 500) {
-          console.log('📝 Server error (500) - will redirect to recent project');
           handleServerError();
         } else if (status === 403) {
-          console.log('📝 Access denied (403) - will redirect to recent project');
           handleAccessDenied();
         } else if (status === 400) {
-          console.log('📝 Bad request (400) - will redirect to recent project');
           handleNetworkError();
         } else {
-          console.log('📝 Network or other error - will redirect to recent project');
           handleNetworkError();
         }
       } else {
-        console.log('📝 Unknown error - will redirect to recent project');
         handleUnknownError();
       }
       
-      // Auto redirect to recent project after showing error briefly
       setTimeout(() => redirectToMostRecentProject(), 2000);
-      
       return null;
     }
   };
 
-  // Handle different error scenarios with appropriate UI
   const handleProjectNotFound = () => {
-    console.log('📝 Project not found - redirecting to project homescreen');
     setTimeout(() => {
       window.location.href = '/project/project_homescreen';
     }, 1000);
   };
 
   const handleServerError = () => {
-    console.log('📝 Server error - redirecting to project homescreen');
     setTimeout(() => {
       window.location.href = '/project/project_homescreen';
     }, 1000);
   };
 
   const handleAccessDenied = () => {
-    console.log('📝 Access denied - redirecting to project homescreen');
     setTimeout(() => {
       window.location.href = '/project/project_homescreen';
     }, 1000);
   };
 
   const handleNetworkError = () => {
-    console.log('📝 Network error - redirecting to project homescreen');
     setTimeout(() => {
       window.location.href = '/project/project_homescreen';
     }, 1000);
   };
 
   const handleUnknownError = () => {
-    console.log('📝 Unknown error - redirecting to project homescreen');
     setTimeout(() => {
       window.location.href = '/project/project_homescreen';
     }, 1000);
   };
 
-  // Handle deleted projects
   const handleProjectDeleted = (projectData: Project) => {
-    console.log('📝 Project deleted - redirecting to project homescreen');
     setTimeout(() => {
       window.location.href = '/project/project_homescreen';
     }, 1000);
@@ -410,41 +384,31 @@ export default function ProjectBoardPage() {
 
   // Fetch user's projects for project selector
   const fetchUserProjects = async () => {
-    // ✅ ENHANCED: Get current user ID
     const currentUserId = userData?.account?.id || userData?.profile?.id;
     
     if (!currentUserId) {
-      console.log('⚠️ [PROJECTS] No user ID available for fetching projects');
       return;
     }
 
-    // ✅ ENHANCED: Prevent duplicate calls with multiple checks
     if (!mountedRef.current) {
-      console.log('⚠️ [PROJECTS] Component unmounted, skipping fetch');
       return;
     }
     
     if (hasFetchedProjectsRef.current && lastFetchedUserIdRef.current === currentUserId) {
-      console.log('⚠️ [PROJECTS] Already fetched projects for this user, skipping');
       return;
     }
     
     if (loadingProjects) {
-      console.log('⚠️ [PROJECTS] Already loading projects, skipping');
       return;
     }
 
-    console.log('🔍 [PROJECTS] Fetching user projects for:', currentUserId);
-    
-    if (!mountedRef.current) return; // Double-check before state update
+    if (!mountedRef.current) return;
     setLoadingProjects(true);
     
     try {
       const response = await axios.get(`http://localhost:8083/api/projects/search/member?keyword=&userId=${currentUserId}`);
       
-      // ✅ Check if component is still mounted before updating state
       if (!mountedRef.current) {
-        console.log('⚠️ [PROJECTS] Component unmounted during fetch, discarding results');
         return;
       }
       
@@ -457,7 +421,6 @@ export default function ProjectBoardPage() {
         projectsData = response.data;
       }
       
-      // Merge with recent projects for better options and filter out deleted projects
       const recentProjects = getRecentProjects().filter(p => !p.deletedAt);
       const filteredProjectsData = projectsData.filter((p: any) => !p.deletedAt);
       const combinedProjects = [
@@ -465,15 +428,12 @@ export default function ProjectBoardPage() {
         ...filteredProjectsData.filter((p: any) => !recentProjects.some((r: Project) => r.id === p.id))
       ];
       
-      // ✅ Final check before state update
       if (mountedRef.current) {
       setUserProjects(combinedProjects);
         hasFetchedProjectsRef.current = true;
         lastFetchedUserIdRef.current = currentUserId;
-        console.log('✅ [PROJECTS] User projects loaded:', combinedProjects.length);
       }
     } catch (error) {
-      console.log('📝 [PROJECTS] Failed to fetch user projects - using recent projects only');
       if (mountedRef.current) {
       setUserProjects(getRecentProjects());
         hasFetchedProjectsRef.current = true;
@@ -495,7 +455,6 @@ export default function ProjectBoardPage() {
   // Fetch user permissions for the project
   const fetchUserPermissions = async (userId: string, projectId: string) => {
     try {
-      console.log('🔐 Fetching user permissions for:', { userId, projectId });
       const permissions = await getUserPermissions(userId, projectId);
       
       if (permissions) {
@@ -503,16 +462,8 @@ export default function ProjectBoardPage() {
         setIsOwner(isProjectOwner(permissions));
         setCanEdit(canManageProject(permissions));
         setCanDelete(canDeleteProject(permissions));
-        
-        console.log('🔐 User permissions loaded:', {
-          role: permissions.role,
-          isOwner: isProjectOwner(permissions),
-          canEdit: canManageProject(permissions),
-          canDelete: canDeleteProject(permissions)
-        });
       }
     } catch (error) {
-      console.log('📝 Error fetching permissions - handling gracefully:', error);
       setUserPermissions(null);
       setIsOwner(false);
       setCanEdit(false);
@@ -522,49 +473,12 @@ export default function ProjectBoardPage() {
     }
   };
 
-  // Handle project deletion (only for owners)
-  const handleDeleteProject = async () => {
-    if (!project || !projectId || !canDelete) {
-      toast.error("You don't have permission to delete this project");
-      return;
-    }
-
-    try {
-      console.log('🗑️ Deleting project:', projectId);
-      
-      // First, remove the current project from recent projects and localStorage
-      const recentProjects = getRecentProjects().filter(p => p.id !== projectId);
-      localStorage.setItem('recentProjects', JSON.stringify(recentProjects));
-      
-      const response = await axios.delete(`http://localhost:8083/api/projects/${projectId}`);
-      
-      if (response.data?.status === "SUCCESS") {
-        toast.success("Project deleted successfully");
-        
-        // Clear current project from navigation context
-        setCurrentProjectId('');
-        
-        // Use window.location.href for guaranteed redirect with small delay
-        console.log('🔄 Redirecting to project homescreen for user to select project');
-        setTimeout(() => {
-          window.location.href = '/project/project_homescreen';
-        }, 1000); // 1 second delay to show notification
-      } else {
-        toast.error("Failed to delete project");
-      }
-    } catch (error) {
-      console.log('📝 Error deleting project - handling gracefully:', error);
-      toast.error("Failed to delete project");
-    }
-  };
+ 
 
   const handleDragStart = (event: DragStartEvent) => {
     const task = event.active.data.current?.task as Task;
     
-    // ✅ CHECK PERMISSION: Only allow drag if user can edit the task
     if (!canEditTask(task)) {
-      console.log('❌ User cannot edit this task, preventing drag');
-      // Note: We handle permission check in the disabled prop of DraggableProjectTaskCard
       return;
     }
     
@@ -581,39 +495,27 @@ export default function ProjectBoardPage() {
     const newStatus = over.id as Task["status"];
     const oldStatus = task.status;
 
-    // If dropping in same column and same position, do nothing
     if (task.status === newStatus && active.id === over.id) return;
 
-    // Get current tasks in the target column - chỉ xử lý parent tasks
     const tasksInColumn = tasks.filter(t => t.status === newStatus && (t.parentTaskId === null || t.parentTaskId === undefined));
-    
-    // Find the index where the task was dropped
     const overTaskIndex = tasksInColumn.findIndex(t => t.id === over.id);
-    
-    // Create new tasks array with updated order
     const updatedTasks = [...tasks];
     const taskIndex = updatedTasks.findIndex(t => t.id === task.id);
     const taskToMove = updatedTasks[taskIndex];
     
-    // Remove task from its current position
     updatedTasks.splice(taskIndex, 1);
     
-    // If dropping on another task in same column, insert at that position
     if (task.status === newStatus && overTaskIndex !== -1) {
       const insertIndex = updatedTasks.findIndex(t => t.id === over.id);
       updatedTasks.splice(insertIndex, 0, { ...taskToMove, status: newStatus });
     } else {
-      // If dropping in a different column, add to end of that column
       const insertIndex = updatedTasks.findIndex(t => t.status === newStatus);
       updatedTasks.splice(insertIndex === -1 ? updatedTasks.length : insertIndex, 0, { ...taskToMove, status: newStatus });
     }
 
-    // Optimistically update UI
     setTasks(updatedTasks);
 
     try {
-      // 1. Update task status in database first
-      console.log('🔄 DRAG&DROP: Updating task status in database...');
       const response = await axios.put(`http://localhost:8085/api/tasks/${task.id}`, {
         ...task,
         status: newStatus,
@@ -621,18 +523,22 @@ export default function ProjectBoardPage() {
       });
 
       if (response.status === 200) {
-        console.log('✅ DRAG&DROP: Task status updated successfully');
+        // ✅ CLEANUP: Remove TASK_OVERDUE notifications when task is completed
+        if (newStatus === "DONE") {
+          try {
+            await axios.delete(`http://localhost:8089/api/notifications/task/${task.id}/overdue`);
+            console.log("✅ TASK_OVERDUE notifications cleaned up for completed task:", task.id);
+          } catch (cleanupError) {
+            console.log("📝 Failed to cleanup TASK_OVERDUE notifications (non-critical):", cleanupError);
+          }
+        }
         
-        // 2. Now send 3 notifications - CRITICAL PART
         await send3StatusChangeNotifications(task, oldStatus, newStatus);
-        
         toast.success(`Task moved to ${newStatus.replace('_', ' ')}`);
       } else {
         throw new Error('Failed to update task status');
       }
     } catch (error) {
-      console.log('📝 Failed to update task via drag and drop - handling gracefully:', error);
-      
       // Revert optimistic update on failure
       setTasks(prev => prev.map(t => 
         t.id === task.id ? { ...t, status: task.status } : t
@@ -647,24 +553,16 @@ export default function ProjectBoardPage() {
     oldStatus: Task["status"], 
     newStatus: Task["status"]
   ) => {
-    console.log('🔔 DRAG&DROP: Starting to send notifications (with deduplication)...');
-    
     try {
-      // Get current user info
       const actorUserId = userData?.profile?.id || userData?.account?.id;
       const actorUserName = userData?.profile?.username || userData?.profile?.firstName || 'User';
 
       if (!actorUserId) {
-        console.warn('⚠️ DRAG&DROP: No current user ID found');
         return;
       }
 
-      console.log('🔍 DRAG&DROP: Current user:', { actorUserId, actorUserName });
-
-      // 1. FIRST: Fetch complete task details to get created_by
       let taskWithCreatedBy = task;
       try {
-        console.log('🔍 DRAG&DROP: Fetching complete task details for created_by...');
         const taskDetailResponse = await axios.get(`http://localhost:8085/api/tasks/${task.id}`);
         
         if (taskDetailResponse.data?.status === "SUCCESS" && taskDetailResponse.data?.data) {
@@ -672,27 +570,11 @@ export default function ProjectBoardPage() {
             ...task,
             ...taskDetailResponse.data.data
           };
-          console.log('✅ DRAG&DROP: Retrieved task with created_by:', {
-            taskId: taskWithCreatedBy.id,
-            createdBy: taskWithCreatedBy.createdBy,
-            assigneeId: taskWithCreatedBy.assigneeId
-          });
-        } else {
-          console.warn('⚠️ DRAG&DROP: Could not fetch task details, using original task data');
         }
       } catch (taskFetchError) {
-        console.warn('⚠️ DRAG&DROP: Failed to fetch task details:', taskFetchError);
+        // Use original task data if fetch fails
       }
 
-      console.log('🔍 DRAG&DROP: Final task info for notifications:', {
-        id: taskWithCreatedBy.id,
-        title: taskWithCreatedBy.title,
-        assigneeId: taskWithCreatedBy.assigneeId,
-        createdBy: taskWithCreatedBy.createdBy,
-        projectId: taskWithCreatedBy.projectId
-      });
-
-      // Helper function to get status display name
       const getStatusDisplayName = (status: string): string => {
         switch (status) {
           case "TODO": return "To Do";
@@ -703,79 +585,51 @@ export default function ProjectBoardPage() {
         }
       };
 
-      // 2. COLLECT USER ROLES - Map each user to their roles
       const userRoles = new Map<string, string[]>();
 
-      // Add Assignee
       let assigneeId = taskWithCreatedBy.assigneeId;
       if (assigneeId && assigneeId.trim() !== '') {
         if (!userRoles.has(assigneeId)) {
           userRoles.set(assigneeId, []);
         }
         userRoles.get(assigneeId)!.push('Assignee');
-        console.log('✅ DRAG&DROP: Added assignee role for user:', assigneeId);
-      } else {
-        console.log('⚠️ DRAG&DROP: No assignee found');
       }
       
-      // Add Creator
       let creatorId = taskWithCreatedBy.createdBy;
       if (creatorId && creatorId.trim() !== '') {
         if (!userRoles.has(creatorId)) {
           userRoles.set(creatorId, []);
         }
         userRoles.get(creatorId)!.push('Creator');
-        console.log('✅ DRAG&DROP: Added creator role for user:', creatorId);
-      } else {
-        console.log('⚠️ DRAG&DROP: No creator found');
       }
 
-      // Add Scrum Master
-      let scrumMasterId = null;
+      let productOwnerId = null;
       try {
         const projectApiId = taskWithCreatedBy.projectId || projectId;
         if (projectApiId) {
-          console.log('🔍 DRAG&DROP: Fetching scrum master for project:', projectApiId);
+          const productOwnerResponse = await axios.get(`http://localhost:8083/api/projects/${projectApiId}/manager_id`);
           
-          const scrumMasterResponse = await axios.get(`http://localhost:8083/api/projects/${projectApiId}/scrum_master_id`);
-          console.log('🔍 DRAG&DROP: Scrum Master API response:', scrumMasterResponse.data);
-          
-          if (scrumMasterResponse.data?.status === "SUCCESS" && scrumMasterResponse.data?.data) {
-            scrumMasterId = scrumMasterResponse.data.data;
+          if (productOwnerResponse.data?.status === "SUCCESS" && productOwnerResponse.data?.data) {
+            productOwnerId = productOwnerResponse.data.data;
             
-            if (!userRoles.has(scrumMasterId)) {
-              userRoles.set(scrumMasterId, []);
+            if (!userRoles.has(productOwnerId)) {
+              userRoles.set(productOwnerId, []);
             }
-            userRoles.get(scrumMasterId)!.push('Scrum Master');
-            console.log('✅ DRAG&DROP: Added scrum master role for user:', scrumMasterId);
-          } else {
-            console.log('❌ DRAG&DROP: No scrum master found in API response');
+            userRoles.get(productOwnerId)!.push('product-owner');
           }
-        } else {
-          console.log('❌ DRAG&DROP: No project ID available for scrum master lookup');
         }
       } catch (projectError) {
-        console.warn('⚠️ DRAG&DROP: Failed to fetch scrum master:', projectError);
+        // Silently handle product owner fetch error
       }
 
-      // 3. REMOVE ACTOR FROM NOTIFICATIONS (don't notify the person who made the change)
       if (userRoles.has(actorUserId)) {
-        console.log(`🚫 DRAG&DROP: Removing actor (${actorUserId}) from notifications - don't notify the person who made the change`);
         userRoles.delete(actorUserId);
       }
 
-      console.log(`🎯 DRAG&DROP: User roles after deduplication:`);
-      userRoles.forEach((roles, userId) => {
-        console.log(`  User ${userId}: ${roles.join(', ')}`);
-      });
-
-      // If no users to notify, skip
       if (userRoles.size === 0) {
-        console.log('⚠️ DRAG&DROP: No users to notify after removing actor and deduplication');
         return;
       }
 
-      // Base notification data
       const baseNotificationData = {
         type: "TASK_STATUS_CHANGED",
         title: "Task status changed",
@@ -786,7 +640,6 @@ export default function ProjectBoardPage() {
         taskId: taskWithCreatedBy.id
       };
 
-      // 4. CREATE NOTIFICATIONS - One per unique user with combined roles
       const notifications: any[] = [];
       
       userRoles.forEach((roles, userId) => {
@@ -803,75 +656,19 @@ export default function ProjectBoardPage() {
         notifications.push(notification);
       });
 
-      console.log(`🎯 DRAG&DROP: Prepared ${notifications.length} deduplicated notifications:`);
-      notifications.forEach((notification, index) => {
-        const userRolesList = userRoles.get(notification.recipientUserId) || [];
-        console.log(`  ${index + 1}. User ${notification.recipientUserId}: ${userRolesList.join(' + ')}`);
-      });
-      
-      // 5. LOG ALL PAYLOADS BEFORE SENDING
-      console.log('');
-      console.log('🔍 ===== DEDUPLICATED NOTIFICATION PAYLOADS =====');
-      notifications.forEach((notification, index) => {
-        const userRolesList = userRoles.get(notification.recipientUserId) || [];
-        console.log(`📋 PAYLOAD ${index + 1}/${notifications.length} - USER (${userRolesList.join(' + ')}):`);
-        console.log(JSON.stringify(notification, null, 2));
-        console.log('');
-      });
-      console.log('🔍 ================================================');
-      console.log('');
-      
-      // 6. SEND ALL NOTIFICATIONS
-      console.log(`📤 DRAG&DROP: Sending ${notifications.length} deduplicated notifications...`);
-      
-      const notificationPromises = notifications.map(async (notification, index) => {
-        const userRolesList = userRoles.get(notification.recipientUserId) || [];
-        const roleDisplay = userRolesList.join(' + ');
-        
-        console.log(`📤 DRAG&DROP: Sending notification ${index + 1}/${notifications.length} to ${roleDisplay}:`, notification.recipientUserId);
-        
+      const notificationPromises = notifications.map(async (notification) => {
         try {
           const response = await axios.post(`http://localhost:8089/api/notifications/create`, notification);
-          console.log(`✅ DRAG&DROP: Notification ${index + 1} sent successfully to ${roleDisplay}`);
-          console.log(`   Response status: ${response.status}`);
-          console.log(`   Response data:`, response.data);
-          return { success: true, recipient: roleDisplay, userId: notification.recipientUserId };
+          return { success: true };
         } catch (error) {
-          console.log(`📝 Failed to send notification ${index + 1} to ${roleDisplay} - handling gracefully:`, error);
-          return { success: false, recipient: roleDisplay, userId: notification.recipientUserId, error };
+          return { success: false, error };
         }
       });
 
-      const results = await Promise.allSettled(notificationPromises);
-      const successful = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
-      const failed = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.success)).length;
-
-      console.log(`📊 DRAG&DROP: Notification results summary:`);
-      console.log(`  ✅ Successful: ${successful}`);
-      console.log(`  ❌ Failed: ${failed}`);
-      console.log(`  🎯 Total unique users notified: ${successful}/${notifications.length}`);
-      
-      // Log detailed results
-      results.forEach((result, index) => {
-        if (result.status === 'fulfilled') {
-          if (result.value.success) {
-            console.log(`  ✅ ${index + 1}. ${result.value.recipient} (${result.value.userId}): SUCCESS`);
-          } else {
-            console.log(`  ❌ ${index + 1}. ${result.value.recipient} (${result.value.userId}): FAILED`);
-          }
-        } else {
-          console.log(`  ❌ ${index + 1}. Promise rejected:`, result.reason);
-        }
-      });
-      
-      if (successful > 0) {
-        console.log(`🎉 DRAG&DROP: Successfully sent ${successful} deduplicated notifications!`);
-      } else {
-        console.warn(`⚠️ DRAG&DROP: No notifications were sent successfully`);
-      }
+      await Promise.allSettled(notificationPromises);
 
     } catch (error) {
-      console.error('❌ DRAG&DROP: Failed to send status change notifications:', error);
+      // Silently handle notification errors
     }
   };
 
@@ -881,24 +678,16 @@ export default function ProjectBoardPage() {
     notificationType: "TASK_UPDATED" | "TASK_DELETED" | "TASK_OVERDUE",
     customMessage?: string
   ) => {
-    console.log(`🔔 TASK NOTIFICATIONS: Starting to send ${notificationType} notifications...`);
-    
     try {
-      // Get current user info
       const actorUserId = userData?.profile?.id || userData?.account?.id;
       const actorUserName = userData?.profile?.username || userData?.profile?.firstName || 'User';
 
       if (!actorUserId) {
-        console.warn('⚠️ TASK NOTIFICATIONS: No current user ID found');
         return;
       }
 
-      console.log('🔍 TASK NOTIFICATIONS: Current user:', { actorUserId, actorUserName });
-
-      // 1. Fetch complete task details to get created_by
       let taskWithCreatedBy = task;
       try {
-        console.log('🔍 TASK NOTIFICATIONS: Fetching complete task details for created_by...');
         const taskDetailResponse = await axios.get(`http://localhost:8085/api/tasks/${task.id}`);
         
         if (taskDetailResponse.data?.status === "SUCCESS" && taskDetailResponse.data?.data) {
@@ -906,88 +695,53 @@ export default function ProjectBoardPage() {
             ...task,
             ...taskDetailResponse.data.data
           };
-          console.log('✅ TASK NOTIFICATIONS: Retrieved task with created_by:', {
-            taskId: taskWithCreatedBy.id,
-            createdBy: taskWithCreatedBy.createdBy,
-            assigneeId: taskWithCreatedBy.assigneeId
-          });
-        } else {
-          console.warn('⚠️ TASK NOTIFICATIONS: Could not fetch task details, using original task data');
         }
       } catch (taskFetchError) {
-        console.warn('⚠️ TASK NOTIFICATIONS: Failed to fetch task details:', taskFetchError);
+        // Use original task data if fetch fails
       }
 
-      // 2. COLLECT USER ROLES - Map each user to their roles
       const userRoles = new Map<string, string[]>();
 
-      // Add Assignee
       if (taskWithCreatedBy.assigneeId && taskWithCreatedBy.assigneeId.trim() !== '') {
         if (!userRoles.has(taskWithCreatedBy.assigneeId)) {
           userRoles.set(taskWithCreatedBy.assigneeId, []);
         }
         userRoles.get(taskWithCreatedBy.assigneeId)!.push('Assignee');
-        console.log('✅ TASK NOTIFICATIONS: Added assignee role for user:', taskWithCreatedBy.assigneeId);
-      } else {
-        console.log('⚠️ TASK NOTIFICATIONS: No assignee found');
       }
       
-      // Add Creator
       if (taskWithCreatedBy.createdBy && taskWithCreatedBy.createdBy.trim() !== '') {
         if (!userRoles.has(taskWithCreatedBy.createdBy)) {
           userRoles.set(taskWithCreatedBy.createdBy, []);
         }
         userRoles.get(taskWithCreatedBy.createdBy)!.push('Creator');
-        console.log('✅ TASK NOTIFICATIONS: Added creator role for user:', taskWithCreatedBy.createdBy);
-      } else {
-        console.log('⚠️ TASK NOTIFICATIONS: No creator found');
       }
 
-      // Add Scrum Master
       try {
         const projectApiId = taskWithCreatedBy.projectId || projectId;
         if (projectApiId) {
-          console.log('🔍 TASK NOTIFICATIONS: Fetching scrum master for project:', projectApiId);
+          const productOwnerResponse = await axios.get(`http://localhost:8083/api/projects/${projectApiId}/manager_id`);
           
-          const scrumMasterResponse = await axios.get(`http://localhost:8083/api/projects/${projectApiId}/scrum_master_id`);
-          console.log('🔍 TASK NOTIFICATIONS: Scrum Master API response:', scrumMasterResponse.data);
-          
-          if (scrumMasterResponse.data?.status === "SUCCESS" && scrumMasterResponse.data?.data) {
-            const scrumMasterId = scrumMasterResponse.data.data;
+          if (productOwnerResponse.data?.status === "SUCCESS" && productOwnerResponse.data?.data) {
+            const productOwnerId = productOwnerResponse.data.data;
             
-            if (!userRoles.has(scrumMasterId)) {
-              userRoles.set(scrumMasterId, []);
+            if (!userRoles.has(productOwnerId)) {
+              userRoles.set(productOwnerId, []);
             }
-            userRoles.get(scrumMasterId)!.push('Scrum Master');
-            console.log('✅ TASK NOTIFICATIONS: Added scrum master role for user:', scrumMasterId);
-          } else {
-            console.log('❌ TASK NOTIFICATIONS: No scrum master found in API response');
+            userRoles.get(productOwnerId)!.push('product-owner');
           }
-        } else {
-          console.log('❌ TASK NOTIFICATIONS: No project ID available for scrum master lookup');
         }
       } catch (projectError) {
-        console.warn('⚠️ TASK NOTIFICATIONS: Failed to fetch scrum master:', projectError);
+        // Silently handle product owner fetch error
       }
 
-      // 3. For non-overdue notifications, remove actor (don't notify the person who made the change)
       if (notificationType !== "TASK_OVERDUE" && userRoles.has(actorUserId)) {
-        console.log(`🚫 TASK NOTIFICATIONS: Removing actor (${actorUserId}) from notifications - don't notify the person who made the change`);
         userRoles.delete(actorUserId);
       }
 
-      console.log(`🎯 TASK NOTIFICATIONS: User roles after deduplication:`);
-      userRoles.forEach((roles, userId) => {
-        console.log(`  User ${userId}: ${roles.join(', ')}`);
-      });
-
-      // If no users to notify, skip
       if (userRoles.size === 0) {
-        console.log('⚠️ TASK NOTIFICATIONS: No users to notify after removing actor and deduplication');
         return;
       }
 
-      // Generate notification message based on type
       const getNotificationMessage = (type: string, roles: string[]): string => {
         const roleText = roles.length > 1 
           ? `${roles.slice(0, -1).join(', ')} and ${roles[roles.length - 1]}`
@@ -1009,7 +763,6 @@ export default function ProjectBoardPage() {
         }
       };
 
-      // Base notification data
       const baseNotificationData = {
         type: notificationType,
         title: notificationType === "TASK_UPDATED" ? "Task updated" :
@@ -1022,7 +775,6 @@ export default function ProjectBoardPage() {
         taskId: taskWithCreatedBy.id
       };
 
-      // 4. CREATE NOTIFICATIONS - One per unique user with combined roles
       const notifications: any[] = [];
       
       userRoles.forEach((roles, userId) => {
@@ -1035,77 +787,30 @@ export default function ProjectBoardPage() {
         notifications.push(notification);
       });
 
-      console.log(`🎯 TASK NOTIFICATIONS: Prepared ${notifications.length} deduplicated ${notificationType} notifications:`);
-      notifications.forEach((notification, index) => {
-        const userRolesList = userRoles.get(notification.recipientUserId) || [];
-        console.log(`  ${index + 1}. User ${notification.recipientUserId}: ${userRolesList.join(' + ')}`);
-      });
-      
-      // 5. LOG ALL PAYLOADS BEFORE SENDING
-      console.log('');
-      console.log(`🔍 ===== ${notificationType} NOTIFICATION PAYLOADS =====`);
-      notifications.forEach((notification, index) => {
-        const userRolesList = userRoles.get(notification.recipientUserId) || [];
-        console.log(`📋 PAYLOAD ${index + 1}/${notifications.length} - USER (${userRolesList.join(' + ')}):`);
-        console.log(JSON.stringify(notification, null, 2));
-        console.log('');
-      });
-      console.log('🔍 ================================================');
-      console.log('');
-      
-      // 6. SEND ALL NOTIFICATIONS
-      console.log(`📤 TASK NOTIFICATIONS: Sending ${notifications.length} ${notificationType} notifications...`);
-      
-      const notificationPromises = notifications.map(async (notification, index) => {
-        const userRolesList = userRoles.get(notification.recipientUserId) || [];
-        const roleDisplay = userRolesList.join(' + ');
-        
-        console.log(`📤 TASK NOTIFICATIONS: Sending ${notificationType} notification ${index + 1}/${notifications.length} to ${roleDisplay}:`, notification.recipientUserId);
-        
+      const notificationPromises = notifications.map(async (notification) => {
         try {
           const response = await axios.post(`http://localhost:8089/api/notifications/create`, notification);
-          console.log(`✅ TASK NOTIFICATIONS: ${notificationType} notification ${index + 1} sent successfully to ${roleDisplay}`);
-          return { success: true, recipient: roleDisplay, userId: notification.recipientUserId };
+          return { success: true };
         } catch (error) {
-          console.log(`📝 Failed to send ${notificationType} notification ${index + 1} to ${roleDisplay} - handling gracefully:`, error);
-          return { success: false, recipient: roleDisplay, userId: notification.recipientUserId, error };
+          return { success: false, error };
         }
       });
 
-      const results = await Promise.allSettled(notificationPromises);
-      const successful = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
-      const failed = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.success)).length;
-
-      console.log(`📊 TASK NOTIFICATIONS: ${notificationType} results summary:`);
-      console.log(`  ✅ Successful: ${successful}`);
-      console.log(`  ❌ Failed: ${failed}`);
-      console.log(`  🎯 Total unique users notified: ${successful}/${notifications.length}`);
-      
-      if (successful > 0) {
-        console.log(`🎉 TASK NOTIFICATIONS: Successfully sent ${successful} ${notificationType} notifications!`);
-      } else {
-        console.warn(`⚠️ TASK NOTIFICATIONS: No ${notificationType} notifications were sent successfully`);
-      }
+      await Promise.allSettled(notificationPromises);
 
     } catch (error) {
-      console.error(`❌ TASK NOTIFICATIONS: Failed to send ${notificationType} notifications:`, error);
+      // Silently handle notification errors
     }
   };
 
   // Debug searchResults khi nó thay đổi
   useEffect(() => {
-    console.log("🔄 searchResults state changed:", searchResults);
-    console.log("🔄 searchResults length:", searchResults.length);
-    console.log("🔄 showSearchResults state:", showSearchResults);
+    // Removed debug logging
   }, [searchResults, showSearchResults]);
 
   // Debug state changes
   useEffect(() => {
-    console.log("🔄 ===== STATE CHANGE DETECTED =====");
-    console.log("🔄 searchResults:", searchResults);
-    console.log("🔄 showSearchResults:", showSearchResults);
-    console.log("🔄 isSearching:", isSearching);
-    console.log("🔄 searchProject:", searchProject);
+    // Removed debug logging
   }, [searchResults, showSearchResults, isSearching, searchProject]);
 
   // Ensure tasks is always initialized
@@ -1118,8 +823,6 @@ export default function ProjectBoardPage() {
   // Improved taskId handling from URL - with better error handling and loading states
   useEffect(() => {
     if (!urlTaskId) return;
-
-    console.log("🔗 TaskId found in URL:", urlTaskId);
     
     const handleTaskFromUrl = async () => {
       setLoadingTaskFromUrl(true);
@@ -1130,7 +833,6 @@ export default function ProjectBoardPage() {
           const foundTask = tasks.find(task => task.id === urlTaskId);
           
           if (foundTask) {
-            console.log("✅ Task found in current tasks, opening modal:", foundTask.title);
             setSelectedTask(foundTask);
             setLoadingTaskFromUrl(false);
             return;
@@ -1138,13 +840,10 @@ export default function ProjectBoardPage() {
         }
         
         // If not found in current tasks, fetch from API
-        console.log("⚠️ Task not found in current tasks, fetching from API...");
-        
         const response = await axios.get(`http://localhost:8085/api/tasks/${urlTaskId}`);
         
         if (response.data?.data) {
           const fetchedTask = response.data.data;
-          console.log("✅ Task fetched from API:", fetchedTask.title);
           
           // Show success message
           toast.success(`Opened task: ${fetchedTask.title}`, {
@@ -1194,6 +893,7 @@ export default function ProjectBoardPage() {
     function handleClickOutside(event: MouseEvent) {
       if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
         setShowSearchResults(false);
+        setShowSearchBoardResults(false);
       }
     }
     
@@ -1213,28 +913,19 @@ export default function ProjectBoardPage() {
 
   // Tìm kiếm project theo tên - chỉ hiển thị projects mà user hiện tại là member
   const searchBoardsByName = async (term: string) => {
-    console.log("🔍 ===== SEARCH BOARDS BY NAME =====");
-    console.log("🔍 Search term:", term);
-    
     try {
       // Get user ID from user storage service instead of localStorage
       let currentUserId = userData?.profile?.id || userData?.account?.id;
       
       if (!currentUserId) {
-        console.error("❌ No userId found in user storage. Please ensure user is logged in.");
         // TEMPORARY: Use hardcoded userId for testing
         currentUserId = "d90e8bd8-72e2-47cc-b9f0-edb92fe60c5a";
-        console.log("🔧 TESTING: Using hardcoded userId:", currentUserId);
       }
 
       // Sử dụng API search/member với userId của người dùng hiện tại
       const apiUrl = `http://localhost:8083/api/projects/search/member?keyword=${encodeURIComponent(term)}&userId=${currentUserId}`;
-      console.log("🔍 Making API call to:", apiUrl);
       
       const res = await axios.get(apiUrl);
-      
-      console.log("🔍 ===== API RESPONSE =====");
-      console.log("🔍 API response:", res.data);
       
       if (res.data?.data) {
         const matchedProjects = res.data.data.map((project: any) => ({
@@ -1249,19 +940,13 @@ export default function ProjectBoardPage() {
           deadline: project.deadline
         }));
         
-        console.log("🔍 Processed projects:", matchedProjects);
         return matchedProjects;
       }
       
-      console.log("⚠️ No data in API response - returning empty array");
       return [];
     } catch (err) {
-      console.error("❌ Error searching projects:", err);
       if (axios.isAxiosError(err)) {
-        console.error("❌ Axios error details:", {
-          status: err.response?.status,
-          data: err.response?.data
-        });
+        // Log error details silently
       }
       return [];
     }
@@ -1269,49 +954,30 @@ export default function ProjectBoardPage() {
 
   const handleSearchProject = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const term = e.target.value;
-    console.log("🔍 ===== HANDLE SEARCH PROJECT =====");
-    console.log("🔍 Search term:", term);
     setSearchProject(term);
     
     if (term.trim().length > 0) {
       try {
-        console.log("🔍 Starting search with term:", term);
-        
         // Show loading state
         setIsSearching(true);
         setSearchResults([]);
         setShowSearchResults(true);
         
         // Tìm project theo tên - chỉ hiển thị projects mà user là member
-        console.log("🔍 Calling searchBoardsByName...");
         const results = await searchBoardsByName(term);
-        console.log("🔍 ===== SEARCH RESULTS =====");
-        console.log("🔍 Raw results:", results);
-        console.log("🔍 Results length:", results.length);
-        console.log("🔍 First result sample:", results[0]);
         
         // Update state with results
         setSearchResults(results);
         setShowSearchResults(true);
         setIsSearching(false);
         
-        // Debug state updates
-        console.log("🔍 State updates:", {
-          searchResults: results,
-          showSearchResults: true,
-          isSearching: false,
-          searchTerm: term
-        });
-        
       } catch (err) {
-        console.error("❌ Error in handleSearchProject:", err);
         setSearchResults([]);
         setShowSearchResults(true);
         setIsSearching(false);
         toast.error("Failed to search boards. Please try again.");
       }
     } else {
-      console.log("🔍 Empty search term, clearing results");
       setSearchResults([]);
       setShowSearchResults(false);
       setIsSearching(false);
@@ -1327,8 +993,6 @@ export default function ProjectBoardPage() {
       const selectedProject = searchResults[0];
       
       if (selectedProject && selectedProject.id) {
-        console.log("Selected board:", selectedProject);
-        
         // Chuyển đến project được chọn
         router.push(`/project/project_homescreen?projectId=${selectedProject.id}`);
         setShowSearchResults(false);
@@ -1354,13 +1018,244 @@ export default function ProjectBoardPage() {
     setLoading(false);
   };
 
+  // ✅ NEW: Search boards with sprints and tasks
+  const searchBoardsWithDetails = async (term: string): Promise<SearchBoardResult[]> => {
+    try {
+      const currentUserId = userData?.profile?.id || userData?.account?.id;
+      
+      if (!currentUserId) {
+        return [];
+      }
+
+      // Search in parallel: projects where user is member AND projects where user is owner
+      const [memberProjectsResponse, ownerProjectsResponse] = await Promise.all([
+        // Search projects that user is member of
+        axios.get(`http://localhost:8083/api/projects/search/member?keyword=${encodeURIComponent(term)}&userId=${currentUserId}`),
+        // Get all projects where user is owner
+        axios.get(`http://localhost:8083/api/projects/owner/${currentUserId}`)
+      ]);
+      
+      const memberProjects = memberProjectsResponse.data?.data || [];
+      let ownerProjects = ownerProjectsResponse.data?.data || [];
+      
+      // Filter owner projects by search term
+      if (term.trim().length > 0) {
+        const searchLower = term.toLowerCase();
+        ownerProjects = ownerProjects.filter((project: any) => 
+          project.name?.toLowerCase().includes(searchLower) ||
+          project.key?.toLowerCase().includes(searchLower) ||
+          project.description?.toLowerCase().includes(searchLower)
+        );
+      }
+      
+      // Combine and deduplicate projects (user might be both member and owner of same project)
+      const allProjectsMap = new Map();
+      
+      // Add member projects with role info
+      memberProjects.forEach((project: any) => {
+        allProjectsMap.set(project.id, {
+          ...project,
+          userRole: 'Member'
+        });
+      });
+      
+      // Add/update owner projects with role info (this will override if user is both member and owner)
+      ownerProjects.forEach((project: any) => {
+        const existing = allProjectsMap.get(project.id);
+        allProjectsMap.set(project.id, {
+          ...project,
+          userRole: existing ? 'Member & Owner' : 'Project Owner'
+        });
+      });
+      
+      const uniqueProjects = Array.from(allProjectsMap.values());
+      
+      if (uniqueProjects.length === 0) {
+        return [];
+      }
+
+      const searchResults: SearchBoardResult[] = [];
+
+      // For each project, get active sprint and tasks
+      for (const project of uniqueProjects.slice(0, 8)) { // Increase limit to 8 since we might have more results
+        try {
+          // Get active sprint for project
+          const sprintResponse = await axios.get(`http://localhost:8084/api/sprints/project/${project.id}/active`);
+          const activeSprint = sprintResponse.data?.data;
+
+          // Get all sprints count
+          const allSprintsResponse = await axios.get(`http://localhost:8084/api/sprints/project/${project.id}`);
+          const sprintCount = allSprintsResponse.data?.data?.length || 0;
+
+          // Get tasks for the project
+          let tasks: TaskData[] = [];
+          let activeTaskCount = 0;
+          let completedTaskCount = 0;
+
+          if (activeSprint) {
+            const tasksResponse = await axios.get(`http://localhost:8085/api/tasks/sprint/${activeSprint.id}`);
+            if (tasksResponse.data?.data) {
+              tasks = tasksResponse.data.data;
+              activeTaskCount = tasks.filter(task => task.status !== 'DONE').length;
+              completedTaskCount = tasks.filter(task => task.status === 'DONE').length;
+            }
+          } else {
+            // If no active sprint, get tasks from project (backlog)
+            const tasksResponse = await axios.get(`http://localhost:8085/api/tasks/project/${project.id}`);
+            if (tasksResponse.data?.data) {
+              tasks = tasksResponse.data.data.slice(0, 10); // Limit to 10 most recent tasks
+              activeTaskCount = tasks.filter(task => task.status !== 'DONE').length;
+              completedTaskCount = tasks.filter(task => task.status === 'DONE').length;
+            }
+          }
+
+          searchResults.push({
+            project: {
+              ...project,
+              userRole: project.userRole // Add user role to project info
+            },
+            activeSprint,
+            tasks,
+            sprintCount,
+            activeTaskCount,
+            completedTaskCount
+          });
+
+        } catch (error) {
+          // If error fetching details for this project, still include it with basic info
+          searchResults.push({
+            project: {
+              ...project,
+              userRole: project.userRole
+            },
+            activeSprint: null,
+            tasks: [],
+            sprintCount: 0,
+            activeTaskCount: 0,
+            completedTaskCount: 0
+          });
+        }
+      }
+
+      return searchResults;
+
+    } catch (error) {
+      console.error("Error searching boards with details:", error);
+      // If owner search fails, fallback to member search only
+      try {
+        const currentUserId = userData?.profile?.id || userData?.account?.id;
+        const memberOnlyResponse = await axios.get(`http://localhost:8083/api/projects/search/member?keyword=${encodeURIComponent(term)}&userId=${currentUserId}`);
+        const memberProjects = memberOnlyResponse.data?.data || [];
+        
+        // Return simplified results for member projects only
+        return memberProjects.slice(0, 5).map((project: any) => ({
+          project: {
+            ...project,
+            userRole: 'Member'
+          },
+          activeSprint: null,
+          tasks: [],
+          sprintCount: 0,
+          activeTaskCount: 0,
+          completedTaskCount: 0
+        }));
+      } catch (fallbackError) {
+        return [];
+      }
+    }
+  };
+
+  // ✅ NEW: Handle search board input change
+  const handleSearchBoardChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const term = e.target.value;
+    setSearchBoardQuery(term);
+    
+    if (term.trim().length > 2) {
+      try {
+        setIsSearchingBoard(true);
+        setShowSearchBoardResults(true);
+        
+        const results = await searchBoardsWithDetails(term);
+        setSearchBoardResults(results);
+        setSelectedBoardIndex(-1);
+        
+      } catch (err) {
+        setSearchBoardResults([]);
+        toast.error("Failed to search boards. Please try again.");
+      } finally {
+        setIsSearchingBoard(false);
+      }
+    } else {
+      setSearchBoardResults([]);
+      setShowSearchBoardResults(false);
+      setIsSearchingBoard(false);
+    }
+  };
+
+  // ✅ NEW: Handle search board submit
+  const handleSearchBoardSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (searchBoardResults.length > 0) {
+      const selectedResult = searchBoardResults[selectedBoardIndex >= 0 ? selectedBoardIndex : 0];
+      handleSelectSearchBoard(selectedResult);
+    }
+  };
+
+  // ✅ NEW: Handle search board selection
+  const handleSelectSearchBoard = (result: SearchBoardResult) => {
+    setSearchBoardQuery("");
+    setSearchBoardResults([]);
+    setShowSearchBoardResults(false);
+    setSelectedBoardIndex(-1);
+    
+    // Store selected project info
+    sessionStorage.setItem("currentProjectId", result.project.id);
+    sessionStorage.setItem("currentProjectName", result.project.name);
+    sessionStorage.setItem("currentProjectKey", result.project.key);
+    
+    // Navigate to project board
+    router.push(`/project/project_homescreen?projectId=${result.project.id}`);
+  };
+
+  // ✅ NEW: Handle keyboard navigation for search board
+  const handleSearchBoardKeyDown = (e: React.KeyboardEvent) => {
+    if (!showSearchBoardResults || searchBoardResults.length === 0) return;
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setSelectedBoardIndex(prev => 
+          prev < searchBoardResults.length - 1 ? prev + 1 : 0
+        );
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setSelectedBoardIndex(prev => 
+          prev > 0 ? prev - 1 : searchBoardResults.length - 1
+        );
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (selectedBoardIndex >= 0) {
+          handleSelectSearchBoard(searchBoardResults[selectedBoardIndex]);
+        } else if (searchBoardResults.length > 0) {
+          handleSelectSearchBoard(searchBoardResults[0]);
+        }
+        break;
+      case 'Escape':
+        setShowSearchBoardResults(false);
+        setSelectedBoardIndex(-1);
+        break;
+    }
+  };
+
   const fetchTasksForLatestSprint = async (
     projectId: string,
     sprintId: string
   ) => {
     try {
       setLoading(true);
-      console.log("🔄 Bắt đầu tải tasks...");
       const statuses: Task["status"][] = [
         "TODO",
         "IN_PROGRESS",
@@ -1379,14 +1274,10 @@ export default function ProjectBoardPage() {
         
         const allTasks = responses.flatMap((res, index) => {
           const statusTasks = res.data?.data || [];
-          console.log(`📋 Tasks cho ${statuses[index]}:`, statusTasks);
           return statusTasks;
         });
-
-        console.log("📦 Tất cả tasks từ API:", allTasks);
         
         if (allTasks.length === 0) {
-          console.log("⚠️ Không tìm thấy task nào");
           setTasks([]);
           setLoading(false);
           return;
@@ -1396,19 +1287,8 @@ export default function ProjectBoardPage() {
           ...task,
           status: task.status?.toUpperCase().replace(" ", "_") as Task["status"],
         }));
-
-        console.log("🎯 Tasks đã format:", formattedTasks);
-        console.log(`🔢 Tổng số tasks: ${formattedTasks.length}`);
-        
-        const todoCount = formattedTasks.filter(t => t.status === "TODO").length;
-        const inProgressCount = formattedTasks.filter(t => t.status === "IN_PROGRESS").length;
-        const reviewCount = formattedTasks.filter(t => t.status === "REVIEW").length;
-        const doneCount = formattedTasks.filter(t => t.status === "DONE").length;
-        
-        console.log(`📊 Phân bố tasks: TODO(${todoCount}), IN_PROGRESS(${inProgressCount}), REVIEW(${reviewCount}), DONE(${doneCount})`);
         
         setTasks(formattedTasks);
-        console.log("✅ Đã cập nhật state tasks");
         
         // Check for overdue tasks and send notifications
         try {
@@ -1417,19 +1297,15 @@ export default function ProjectBoardPage() {
             projectName: project?.name || "Unknown Project"
           }));
           await checkAndNotifyOverdueTasks(tasksWithProjectName);
-          console.log("✅ Overdue tasks check completed");
         } catch (overdueError) {
-          console.error("❌ Error checking overdue tasks:", overdueError);
           // Don't fail the main operation if overdue check fails
         }
       } catch (error) {
-        console.error("❌ Lỗi khi tải tasks từ API:", error);
         toast.error("Error loading tasks from API");
         // Set empty tasks array to ensure the UI renders properly
         setTasks([]);
       }
     } catch (err) {
-      console.error("❌ Lỗi khi tải tasks:", err);
       toast.error("Failed to load tasks");
       setTasks([]);
     } finally {
@@ -1440,17 +1316,13 @@ export default function ProjectBoardPage() {
   useEffect(() => {
     if (!projectId) return;
 
-    console.log("Loading data for project ID:", projectId);
-
     axios
       .get(`http://localhost:8083/api/projects/${projectId}`)
       .then((res) => {
         const projectData = res.data?.data;
-        console.log("Project data:", projectData);
         setProject(projectData);
       })
       .catch((err) => {
-        console.error("Error fetching project:", err);
         toast.error("Failed to load project details");
       });
 
@@ -1458,11 +1330,9 @@ export default function ProjectBoardPage() {
       .get(`http://localhost:8083/api/projects/${projectId}/users`)
       .then((res) => {
         const users = res.data?.data || [];
-        console.log("Project users:", users);
         setProjectUsers(users);
       })
       .catch((err) => {
-        console.error("Error fetching project users:", err);
         toast.error("Failed to load project users");
       });
 
@@ -1470,7 +1340,6 @@ export default function ProjectBoardPage() {
       .get(`http://localhost:8084/api/sprints/project/${projectId}`)
       .then((res) => {
         const sprintsData = res.data?.data || [];
-        console.log("Sprints data:", sprintsData);
         
         const formattedSprints = sprintsData.map((sprint: {id: string, name?: string, number?: number}) => ({
           id: sprint.id,
@@ -1482,7 +1351,6 @@ export default function ProjectBoardPage() {
         fetchLatestSprint();
       })
       .catch((err) => {
-        console.error("Error fetching sprints:", err);
         toast.error("Failed to load sprints");
         fetchLatestSprint();
       });
@@ -1496,7 +1364,6 @@ export default function ProjectBoardPage() {
       .then((res) => {
         // Handle new API response format with ResponseDataAPI
         const sprint = res.data?.data;
-        console.log("Active sprint response:", res.data);
 
         if (!sprint || !sprint.id) {
           fetchLatestNonCompletedSprint();
@@ -1504,14 +1371,12 @@ export default function ProjectBoardPage() {
         }
 
         const sprintId = sprint.id;
-        console.log("Using active sprint ID:", sprintId);
         setLatestSprintId(sprintId);
         setCurrentSprint(sprint); // Store the complete sprint info
 
         fetchTasksForLatestSprint(projectId, sprintId);
       })
       .catch((err) => {
-        console.error("Error fetching active sprint:", err);
         fetchLatestNonCompletedSprint();
       });
   };
@@ -1526,7 +1391,6 @@ export default function ProjectBoardPage() {
       .get(`http://localhost:8084/api/sprints/project/${projectId}`)
       .then((res) => {
         const sprintsData = res.data?.data || [];
-        console.log("All sprints:", sprintsData);
         
         // 🎯 Priority 1: Find ACTIVE sprints first (highest priority)
         const activeSprints = sprintsData.filter(
@@ -1540,7 +1404,6 @@ export default function ProjectBoardPage() {
           );
           
           const activeSprint = activeSprints[0];
-          console.log("🚀 Using ACTIVE sprint:", activeSprint);
           
           if (activeSprint && activeSprint.id) {
             setLatestSprintId(activeSprint.id);
@@ -1566,7 +1429,6 @@ export default function ProjectBoardPage() {
           );
           
           const latestSprint = notStartedSprints[0];
-          console.log("📅 Using latest NOT_STARTED sprint:", latestSprint);
           
           if (latestSprint && latestSprint.id) {
             setLatestSprintId(latestSprint.id);
@@ -1588,7 +1450,6 @@ export default function ProjectBoardPage() {
           );
           
           const mostRecentSprint = sprintsData[0];
-          console.log("📋 Using most recent sprint:", mostRecentSprint);
           
           if (mostRecentSprint && mostRecentSprint.id) {
             setLatestSprintId(mostRecentSprint.id);
@@ -1610,7 +1471,6 @@ export default function ProjectBoardPage() {
         }
         
         // 🎯 No sprints at all - show empty state with helpful guidance
-        console.log("No sprints found at all. Showing empty board with guidance.");
         setTasks([]);
         setLoading(false);
         toast.info("🚀 Welcome to your project board!", {
@@ -1618,7 +1478,6 @@ export default function ProjectBoardPage() {
         });
       })
       .catch((err) => {
-        console.error("Error fetching all sprints:", err);
         toast.error("Failed to load sprint details");
         setLoading(false);
       });
@@ -1633,17 +1492,9 @@ export default function ProjectBoardPage() {
 
     try {
       setLoading(true);
-      console.log("🔄 Đang tạo task mới:", {
-        title,
-        status,
-        projectId,
-        sprintId: latestSprintId,
-      });
 
       // Get current user ID for createdBy field
       const currentUserId = userData?.profile?.id || userData?.account?.id || localStorage.getItem("ownerId") || localStorage.getItem("userId") || undefined;
-      
-      console.log("🔍 Current user ID for createdBy:", currentUserId);
 
       // Clear input immediately for better UX
       setNewTasks((prev) => ({ ...prev, [status]: "" }));
@@ -1662,15 +1513,8 @@ export default function ProjectBoardPage() {
         completedAt: null,
         parentTaskId: null,
         tags: null,
-        createdBy: currentUserId, // Add createdBy field with current user ID
+        createdBy: currentUserId,
       });
-
-      // DEBUG: Log the complete response to understand structure
-      console.log("🔍 DEBUG - Full API Response:", res);
-      console.log("🔍 DEBUG - Response Status:", res.status);
-      console.log("🔍 DEBUG - Response Data:", res.data);
-      console.log("🔍 DEBUG - Response Data Type:", typeof res.data);
-      console.log("🔍 DEBUG - Response Data Keys:", res.data ? Object.keys(res.data) : "No data");
 
       // Try different ways to extract task data from response
       let newTaskFromAPI = null;
@@ -1678,37 +1522,22 @@ export default function ProjectBoardPage() {
       // Method 1: Check if data is in res.data.data
       if (res.data?.data) {
         newTaskFromAPI = res.data.data;
-        console.log("🔍 DEBUG - Found task in res.data.data:", newTaskFromAPI);
       }
       // Method 2: Check if data is directly in res.data
       else if (res.data && typeof res.data === 'object' && res.data.id) {
         newTaskFromAPI = res.data;
-        console.log("🔍 DEBUG - Found task directly in res.data:", newTaskFromAPI);
       }
       // Method 3: Check for other common response structures
       else if (res.data?.result) {
         newTaskFromAPI = res.data.result;
-        console.log("🔍 DEBUG - Found task in res.data.result:", newTaskFromAPI);
       }
       else if (res.data?.task) {
         newTaskFromAPI = res.data.task;
-        console.log("🔍 DEBUG - Found task in res.data.task:", newTaskFromAPI);
       }
       // Method 4: Check if response is successful but empty/different structure
       else if (res.status === 200 || res.status === 201) {
-        console.log("🔍 DEBUG - Response successful but no task data found, will use temporary approach");
         newTaskFromAPI = {}; // Empty object to trigger temporary task creation
       }
-
-      console.log("🔍 DEBUG - Extracted newTaskFromAPI:", newTaskFromAPI);
-      console.log("🔍 DEBUG - newTaskFromAPI Type:", typeof newTaskFromAPI);
-      
-      if (newTaskFromAPI && typeof newTaskFromAPI === 'object') {
-        console.log("🔍 DEBUG - newTaskFromAPI Keys:", Object.keys(newTaskFromAPI));
-        console.log("🔍 DEBUG - newTaskFromAPI.id:", newTaskFromAPI.id);
-      }
-      
-      console.log("✅ Task mới đã được tạo từ API:", newTaskFromAPI);
 
       // Check if we have valid task data OR if response was successful
       if (newTaskFromAPI !== null && (newTaskFromAPI.id || res.status === 200 || res.status === 201)) {
@@ -1732,7 +1561,7 @@ export default function ProjectBoardPage() {
           completedAt: newTaskFromAPI.completedAt || null,
           parentTaskId: newTaskFromAPI.parentTaskId || null,
           tags: newTaskFromAPI.tags || null,
-          createdBy: newTaskFromAPI.createdBy || currentUserId // Use current user ID
+          createdBy: newTaskFromAPI.createdBy || currentUserId
         };
 
         // Add to tasks state immediately
@@ -1740,16 +1569,13 @@ export default function ProjectBoardPage() {
         
         if (newTaskFromAPI.id) {
           toast.success("Task created successfully");
-          console.log("✅ Task created with real ID:", newTaskFromAPI.id);
         } else {
           toast.success("Task created successfully (refreshing to get ID...)");
-          console.log("⚠️ Task created but no ID in response, will refresh to get real data");
         }
         
         // Refresh tasks after a short delay to ensure consistency
         setTimeout(async () => {
           if (projectId && latestSprintId) {
-            console.log("🔄 Tải lại toàn bộ tasks sau khi tạo task mới");
             await fetchTasksForLatestSprint(projectId, latestSprintId);
           }
         }, 1000);
@@ -1768,8 +1594,6 @@ export default function ProjectBoardPage() {
         
         // If status is successful, still try to create temp task and refresh
         if (res.status >= 200 && res.status < 300) {
-          console.log("🔄 Status is successful but data structure unexpected, creating temporary task and refreshing...");
-          
           const tempTask: Task = {
             id: `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             title: title,
@@ -1786,7 +1610,7 @@ export default function ProjectBoardPage() {
             completedAt: null,
             parentTaskId: null,
             tags: null,
-            createdBy: currentUserId // Use current user ID instead of null
+            createdBy: currentUserId
           };
 
           setTasks((prev) => [...prev, tempTask]);
@@ -1795,7 +1619,6 @@ export default function ProjectBoardPage() {
           // Refresh immediately to get the real task
           setTimeout(async () => {
             if (projectId && latestSprintId) {
-              console.log("🔄 Tải lại toàn bộ tasks ngay lập tức để lấy dữ liệu chính xác");
               await fetchTasksForLatestSprint(projectId, latestSprintId);
             }
           }, 500);
@@ -1804,9 +1627,6 @@ export default function ProjectBoardPage() {
         }
       }
     } catch (err) {
-      console.log("📝 Error creating task - handling gracefully:", err);
-      
-      // Don't show technical error details to users
       toast.error("Failed to create task. Please try again.");
       
       // Restore input value on error
@@ -1818,8 +1638,6 @@ export default function ProjectBoardPage() {
 
   const handleUpdateTask = async (updatedTask: TaskData) => {
     try {
-      console.log("🔄 Đang cập nhật task:", updatedTask);
-      
       // Store original task for comparison
       const originalTask = selectedTask;
       
@@ -1842,22 +1660,16 @@ export default function ProjectBoardPage() {
         try {
           await sendTaskNotifications(updatedTask as Task, "TASK_UPDATED");
         } catch (notificationError) {
-          console.error("Failed to send task update notifications:", notificationError);
           // Don't fail the main operation if notification fails
         }
         
-        // Don't close the modal automatically to allow viewing the changes
-        // setSelectedTask(null);
-        
         setTimeout(async () => {
           if (projectId && latestSprintId) {
-            console.log("🔄 Tải lại toàn bộ tasks sau khi cập nhật");
             await fetchTasksForLatestSprint(projectId, latestSprintId);
           }
         }, 2000);
       }
     } catch (err) {
-      console.log("📝 Error updating task - handling gracefully:", err);
       toast.error("Failed to update task. Please try again.");
     }
   };
@@ -1957,16 +1769,12 @@ export default function ProjectBoardPage() {
   const getImageSource = (avatarData: string | undefined): string => {
     if (!avatarData) return '';
     
-    // Log để debug
-    console.log("Processing avatar data:", avatarData);
-    
     // Kiểm tra xem đây có phải là dữ liệu Base64 không
     if (avatarData.startsWith('/9j/') || avatarData.startsWith('data:image')) {
       // Nếu đã có định dạng data:image thì giữ nguyên, nếu không thêm vào
       const result = avatarData.startsWith('data:image') 
         ? avatarData 
         : `data:image/jpeg;base64,${avatarData}`;
-      console.log("Converted Base64 data to image source");
       return result;
     }
     
@@ -1980,19 +1788,16 @@ export default function ProjectBoardPage() {
       if (!hasExtension) {
         // Nếu URL không có phần mở rộng, thử với jpg
         processedUrl = `${avatarData}.jpg`;
-        console.log("Added .jpg extension to Cloudinary URL:", processedUrl);
       }
       
       // Thêm cache-busting để tránh bị cache
       const separator = processedUrl.includes('?') ? '&' : '?';
       const result = `${processedUrl}${separator}_t=${Date.now()}`;
-      console.log("Using Cloudinary URL with cache-busting:", result);
       return result;
     }
     
     // Nếu là URL khác, giữ nguyên
     if (avatarData.startsWith('http') || avatarData.startsWith('https')) {
-      console.log("Using direct URL:", avatarData);
       return avatarData;
     }
     
@@ -2044,13 +1849,10 @@ export default function ProjectBoardPage() {
       const img = new Image();
       
       img.onload = () => {
-        console.log("Image exists and loaded successfully:", currentUrlToTry);
         setIsCheckingImage(false);
       };
       
       img.onerror = () => {
-        console.error("Image doesn't exist or cannot be loaded:", currentUrlToTry);
-        
         // Try next extension if this is a Cloudinary URL
         if (currentUrlToTry.includes('cloudinary.com')) {
           const nextExtensionIndex = currentExtensionIndex + 1;
@@ -2079,7 +1881,6 @@ export default function ProjectBoardPage() {
             if (versionIndex !== -1) {
               urlParts.splice(versionIndex, 1);
               const urlWithoutVersion = urlParts.join('/');
-              console.log("Trying without version number:", urlWithoutVersion);
               
               setCurrentExtensionIndex(-1);
               setCurrentUrlToTry(urlWithoutVersion);
@@ -2089,22 +1890,18 @@ export default function ProjectBoardPage() {
         }
         
         // If all attempts fail, show fallback
-        console.error("All image loading attempts failed");
         setImageError(true);
         setIsCheckingImage(false);
       };
       
-      // Add cache busting parameter to avoid browser caching of failed requests
       const cacheBuster = `?t=${Date.now()}`;
       img.src = `${currentUrlToTry}${cacheBuster}`;
     }, [currentUrlToTry, currentExtensionIndex]);
     
-    // Xác định kích thước dựa trên tham số size
     const containerClass = size === "small" 
       ? "w-6 h-6" 
       : "w-8 h-8";
     
-    // Đang kiểm tra trạng thái ảnh
     if (isCheckingImage) {
       return (
         <div className={`${containerClass} flex items-center justify-center bg-gray-200 text-gray-500 text-xs font-medium rounded-full animate-pulse`}>
@@ -2113,7 +1910,6 @@ export default function ProjectBoardPage() {
       );
     }
     
-    // Nếu không có URL hoặc đã có lỗi, hiển thị default avatar
     if (!avatarUrl || imageError) {
       return (
         <div className={`${containerClass} relative rounded-full overflow-hidden`}>
@@ -2122,8 +1918,6 @@ export default function ProjectBoardPage() {
             alt={displayName} 
             className="w-full h-full object-cover"
             onError={(e) => {
-              console.error("Default avatar failed to load, showing initials instead");
-              // Nếu default avatar cũng không tải được, hiện chữ cái đầu
               (e.target as HTMLImageElement).style.display = 'none';
               (e.target as HTMLImageElement).parentElement!.classList.add('bg-blue-500', 'text-white', 'flex', 'items-center', 'justify-center', 'text-xs', 'font-medium');
               (e.target as HTMLImageElement).parentElement!.innerHTML = getInitials(displayName);
@@ -2133,14 +1927,11 @@ export default function ProjectBoardPage() {
       );
     }
     
-    // The URL is handled by the effect that tries different formats, we don't need to modify it here
     const finalUrl = avatarUrl;
     
-    // Nếu có URL, hiển thị ảnh với xử lý lỗi
     return (
       <div className={`${containerClass} relative rounded-full overflow-hidden`}>
         {imageError ? (
-          // Show initials when all image attempts have failed
           <div className="w-full h-full flex items-center justify-center bg-blue-500 text-white font-medium">
             {getInitials(displayName)}
           </div>
@@ -2150,9 +1941,6 @@ export default function ProjectBoardPage() {
             alt={displayName} 
             className="w-full h-full object-cover" 
             onError={() => {
-              console.error("Avatar load error in render:", isCheckingImage ? currentUrlToTry : finalUrl);
-              
-              // If we're already in the process of checking different URLs, don't interfere
               if (!isCheckingImage) {
                 setImageError(true);
               }
@@ -2175,10 +1963,6 @@ export default function ProjectBoardPage() {
     const [validAssignee, setValidAssignee] = useState(false);
 
     useEffect(() => {
-      console.log("Current task:", task);
-      console.log("AssigneeId:", task.assigneeId || "No assignee");
-      
-      // Kiểm tra xem assigneeId có phải là null, undefined hoặc chuỗi rỗng không
       const hasValidAssigneeId = !!task.assigneeId && task.assigneeId.trim().length > 0;
       setValidAssignee(hasValidAssigneeId);
       
@@ -2187,13 +1971,12 @@ export default function ProjectBoardPage() {
       }
     }, [task]);
 
-    // Chỉ tìm assignee nếu có assigneeId hợp lệ
     const assignee = (validAssignee && task.assigneeId) 
       ? projectUsers.find(u => u.id === task.assigneeId) 
       : null;
     
     useEffect(() => {
-      console.log("Found assignee:", assignee || "None");
+      // Removed debug logging
     }, [assignee]);
 
     useEffect(() => {
@@ -2295,16 +2078,13 @@ export default function ProjectBoardPage() {
 
     const handleAssignUser = async (userId: string, userName: string) => {
       try {
-        console.log("Assigning user:", userId || "none", userName);
-        
         // Validate task ID before proceeding - relaxed validation
         if (!task?.id || 
             task.id.startsWith('temp-') || 
             task.id.includes('undefined') || 
             task.id === 'new' ||
             task.id === '' ||
-            task.id.length < 5) {  // Relaxed validation
-          console.warn('⚠️ Cannot assign user to invalid/temporary task ID:', task?.id);
+            task.id.length < 5) {
           toast.error("Cannot assign user to temporary task. Please save the task first.");
           return;
         }
@@ -2316,8 +2096,6 @@ export default function ProjectBoardPage() {
         // Store previous assignee info for notification purposes
         const previousAssigneeId = task.assigneeId;
         const isReassignment = previousAssigneeId && previousAssigneeId !== userId;
-        
-        console.log(`🔄 Assigning task ${task.id} to user ${userId} (${userName})`);
         
         await axios.put(`http://localhost:8085/api/tasks/${task.id}`, {
           ...task,
@@ -2358,28 +2136,8 @@ export default function ProjectBoardPage() {
             const currentUserId = localStorage.getItem("ownerId") || localStorage.getItem("userId");
             const currentUserName = localStorage.getItem("username") || localStorage.getItem("fullname") || "Unknown User";
             
-            console.log("🔍 Current user info:", {
-              currentUserId,
-              currentUserName,
-              localStorage: {
-                ownerId: localStorage.getItem("ownerId"),
-                userId: localStorage.getItem("userId"),
-                username: localStorage.getItem("username"),
-                fullname: localStorage.getItem("fullname")
-              }
-            });
-            
             // Don't send notification if user assigns task to themselves
             if (currentUserId && currentUserId !== userId) {
-              console.log("🔔 Sending notification for task assignment:", {
-                fromUser: currentUserId,
-                fromName: currentUserName,
-                toUser: userId,
-                toName: userName,
-                isReassignment,
-                previousAssignee: previousAssigneeId
-              });
-              
               // Standard payload format - only essential fields
               const notificationData = {
                 type: isReassignment ? "TASK_REASSIGNED" : "TASK_ASSIGNED",
@@ -2393,8 +2151,6 @@ export default function ProjectBoardPage() {
                 taskId: task.id
               };
               
-              console.log("📤 Standard notification data to be sent:", notificationData);
-              
               try {
                 const notificationResponse = await axios.post(
                   "http://localhost:8089/api/notifications/create", 
@@ -2407,35 +2163,21 @@ export default function ProjectBoardPage() {
                 );
                 
                 if (notificationResponse.data) {
-                  console.log("✅ Notification created successfully:", notificationResponse.data);
                   toast.success(`${isReassignment ? 'Reassignment' : 'Assignment'} notification sent to ${userName}`);
                 } else {
-                  console.error("❌ Empty response from notification service");
                   throw new Error("No data in notification response");
                 }
               } catch (apiError) {
-                console.error("❌ Notification API error:", {
-                  error: apiError,
-                  request: notificationData,
-                  response: (apiError as any).response?.data
-                });
                 throw apiError; // Re-throw to be caught by outer catch
               }
               
             } else if (currentUserId === userId) {
-              console.log("⏭️ Not sending notification - user assigned task to themselves:", {
-                currentUserId,
-                assignedUserId: userId
-              });
+              // User assigned task to themselves - no notification needed
             } else {
-              console.log("⚠️ Could not send notification - missing current user ID:", {
-                currentUserId,
-                localStorage: Object.keys(localStorage)
-              });
+              // Missing current user ID - no notification sent
             }
             
           } catch (notificationError) {
-            console.error("❌ Error in notification process:", notificationError);
             // Don't show error toast to user as assignment still succeeded
           }
         } else {
@@ -2450,7 +2192,6 @@ export default function ProjectBoardPage() {
         
         await fetchProjectUsers();
       } catch (err) {
-        console.error("Error assigning user:", err);
         toast.error("Failed to assign user");
       }
     };
@@ -2458,46 +2199,36 @@ export default function ProjectBoardPage() {
     const getAvatarUrl = (user: any): string | undefined => {
       if (!user) return undefined;
       
-      // Kiểm tra và log thông tin user để debug
-      console.log("Getting avatar for user:", user.id, user.username || user.name);
-      
       // Nếu user có trường avatar và nó là URL đầy đủ hoặc dữ liệu Base64
       if (user.avatar && typeof user.avatar === 'string') {
         // Nếu là URL đầy đủ
         if (user.avatar.startsWith('http') || user.avatar.startsWith('https')) {
-          console.log("Using avatar URL from database:", user.avatar);
           return user.avatar;
         } 
         // Nếu là dữ liệu Base64
         else if (user.avatar.startsWith('/9j/') || user.avatar.startsWith('data:image')) {
-          console.log("Using Base64 avatar data from database");
           return user.avatar;
         }
         // Nếu là UUID hoặc tên file, tạo URL Cloudinary
         else {
           const cloudinaryUrl = `https://res.cloudinary.com/dwmospuhh/image/upload/avatars/${user.avatar}.jpg`;
-          console.log("Created Cloudinary URL from avatar value:", cloudinaryUrl);
           return cloudinaryUrl;
         }
       }
       
       // Các trường hợp khác giữ nguyên
       if (user.url && typeof user.url === 'string') {
-        console.log("Using direct URL:", user.url);
         return user.url;
       }
       
       if (user.avatarUrl && typeof user.avatarUrl === 'string') {
-        console.log("Using avatarUrl:", user.avatarUrl);
         return user.avatarUrl;
       }
       
       if (user.avatar_url && typeof user.avatar_url === 'string') {
-        console.log("Using avatar_url:", user.avatar_url);
         return user.avatar_url;
       }
       
-      console.log("No valid avatar URL found for user:", user.id);
       return undefined;
     };
 
@@ -2708,38 +2439,14 @@ export default function ProjectBoardPage() {
     // Only run on client side to prevent hydration mismatch
     if (typeof window === 'undefined') return;
     
-    console.log("🔍 === DEBUGGING LOCALSTORAGE FOR USER ID ===");
-    
-    // Kiểm tra các keys có thể chứa userId
-    const possibleUserKeys = ["userId", "currentUserId", "user_id", "ownerId", "userInfo", "currentUser"];
-    
-    possibleUserKeys.forEach(key => {
-      const value = localStorage.getItem(key);
-      console.log(`🔍 localStorage[${key}]:`, value);
-    });
-    
-    // Kiểm tra tất cả keys trong localStorage
-    console.log("🔍 All localStorage keys:", Object.keys(localStorage));
-    
-    // Thử parse userInfo nếu có
-    const userInfo = localStorage.getItem("userInfo");
-    if (userInfo) {
-      try {
-        const parsed = JSON.parse(userInfo);
-        console.log("🔍 Parsed userInfo:", parsed);
-        if (parsed.id) {
-          console.log("🔍 Found user ID in userInfo:", parsed.id);
-        }
-      } catch (e) {
-        console.log("🔍 userInfo is not JSON:", userInfo);
-      }
-    }
+    // Removed localStorage debugging
   }, []);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
         setShowSearchResults(false);
+        setShowSearchBoardResults(false);
       }
     }
     
@@ -2752,8 +2459,6 @@ export default function ProjectBoardPage() {
   // Function to check for overdue tasks and send notifications
   const checkAndSendOverdueNotifications = async () => {
     if (!projectId) return;
-
-    console.log('🔔 CHECKING OVERDUE TASKS: Starting overdue tasks check...');
     
     try {
       // 1. Fetch overdue tasks for current project
@@ -2761,15 +2466,13 @@ export default function ProjectBoardPage() {
       
       if (response.data?.status === "SUCCESS" && response.data?.data) {
         const overdueTasks = response.data.data;
-        console.log(`🔔 OVERDUE CHECK: Found ${overdueTasks.length} overdue tasks`);
         
         // 2. Send notifications for each overdue task
         for (const task of overdueTasks) {
           try {
             await sendTaskNotifications(task, "TASK_OVERDUE");
-            console.log(`✅ OVERDUE NOTIFICATION: Sent for task "${task.title}"`);
           } catch (notificationError) {
-            console.error(`❌ OVERDUE NOTIFICATION: Failed for task "${task.title}":`, notificationError);
+            // Silently handle notification errors
           }
         }
         
@@ -2778,11 +2481,9 @@ export default function ProjectBoardPage() {
             description: "Check your notifications for details"
           });
         }
-      } else {
-        console.log('✅ OVERDUE CHECK: No overdue tasks found');
       }
     } catch (error) {
-      console.error('❌ OVERDUE CHECK: Failed to check overdue tasks:', error);
+      // Silently handle overdue check errors
     }
   };
 
@@ -2947,6 +2648,13 @@ export default function ProjectBoardPage() {
     return Array.from(labels);
   }, [tasks]);
 
+  // ✅ NEW: Search board state
+  const [searchBoardQuery, setSearchBoardQuery] = useState("");
+  const [searchBoardResults, setSearchBoardResults] = useState<SearchBoardResult[]>([]);
+  const [showSearchBoardResults, setShowSearchBoardResults] = useState(false);
+  const [isSearchingBoard, setIsSearchingBoard] = useState(false);
+  const [selectedBoardIndex, setSelectedBoardIndex] = useState(-1);
+
   return (
     <div className="flex h-screen bg-gray-50">
       <NavigationProgress />
@@ -2974,7 +2682,6 @@ export default function ProjectBoardPage() {
                               textColor: "text-green-600",
                               bgColor: "bg-green-50",
                               borderColor: "border-green-200",
-                              icon: "🚀",
                               label: "Active Sprint"
                             };
                           case "NOT_STARTED":
@@ -2982,7 +2689,6 @@ export default function ProjectBoardPage() {
                               textColor: "text-blue-600", 
                               bgColor: "bg-blue-50",
                               borderColor: "border-blue-200",
-                              icon: "📅",
                               label: "Ready to Start"
                             };
                           case "COMPLETED":
@@ -2990,7 +2696,6 @@ export default function ProjectBoardPage() {
                               textColor: "text-gray-600",
                               bgColor: "bg-gray-50", 
                               borderColor: "border-gray-200",
-                              icon: "✅",
                               label: "Completed"
                             };
                           case "ARCHIVED":
@@ -2998,7 +2703,6 @@ export default function ProjectBoardPage() {
                               textColor: "text-purple-600",
                               bgColor: "bg-purple-50",
                               borderColor: "border-purple-200", 
-                              icon: "📦",
                               label: "Archived"
                             };
                           default:
@@ -3006,7 +2710,6 @@ export default function ProjectBoardPage() {
                               textColor: "text-gray-600",
                               bgColor: "bg-gray-50",
                               borderColor: "border-gray-200",
-                              icon: "📋",
                               label: "Sprint"
                             };
                         }
@@ -3016,7 +2719,7 @@ export default function ProjectBoardPage() {
                       
                       return (
                         <div className={`inline-flex items-center px-3 py-1.5 rounded-lg border ${style.bgColor} ${style.borderColor}`}>
-                          <span className="mr-2">{style.icon}</span>
+                          <span className="mr-2"></span>
                           <span className={`font-medium ${style.textColor}`}>
                             {style.label}: {sprintName}
                           </span>
@@ -3051,42 +2754,6 @@ export default function ProjectBoardPage() {
                     )}
                   </div>
                   
-                  {/* Owner/Admin controls */}
-                  {!permissionsLoading && (isOwner || canEdit) && (
-                    <div className="flex items-center gap-2">
-                      {canEdit && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            // Navigate to project settings/edit page
-                            router.push(`/project/settings?projectId=${projectId}`);
-                          }}
-                          className="text-xs"
-                        >
-                          <Edit className="w-3 h-3 mr-1" />
-                          Edit Project
-                        </Button>
-                      )}
-                      
-                      {canDelete && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            // Show delete confirmation
-                            if (confirm(`Are you sure you want to delete project "${project.name}"? This action cannot be undone.`)) {
-                              handleDeleteProject();
-                            }
-                          }}
-                          className="text-xs text-red-600 hover:text-red-700 border-red-300 hover:border-red-400"
-                        >
-                          Delete Project
-                        </Button>
-                      )}
-                    </div>
-                  )}
-                  
                   {/* Show role for non-owners */}
                   {!permissionsLoading && userPermissions && !isOwner && (
                     <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
@@ -3097,13 +2764,123 @@ export default function ProjectBoardPage() {
               )}
             </div>
             <div className="flex gap-2 items-center">
+              {/* ✅ NEW: Search Board Input */}
+              <div className="relative mr-4" ref={searchRef}>
+                <form onSubmit={handleSearchBoardSubmit} className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    type="text"
+                    placeholder="Search other boards..."
+                    value={searchBoardQuery}
+                    onChange={handleSearchBoardChange}
+                    onKeyDown={handleSearchBoardKeyDown}
+                    className="pl-10 pr-4 h-9 w-64 bg-white border-gray-200 rounded-lg placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 text-sm"
+                  />
+                  {isSearchingBoard && (
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                      <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+                    </div>
+                  )}
+                </form>
+                
+                {/* Search Results Dropdown */}
+                {showSearchBoardResults && (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-xl z-50 max-h-96 overflow-y-auto">
+                    {isSearchingBoard ? (
+                      <div className="p-4 text-center text-gray-500">
+                        <div className="animate-spin h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-2"></div>
+                        Searching boards...
+                      </div>
+                    ) : searchBoardResults.length > 0 ? (
+                      <div className="py-2">
+                        <div className="px-3 py-2 text-xs font-medium text-gray-500 bg-gray-50 border-b">
+                          Found {searchBoardResults.length} board{searchBoardResults.length !== 1 ? 's' : ''}
+                        </div>
+                        {searchBoardResults.map((result, index) => (
+                          <div
+                            key={result.project.id}
+                            onClick={() => handleSelectSearchBoard(result)}
+                            className={`p-4 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0 transition-all duration-150 ${
+                              selectedBoardIndex === index ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''
+                            }`}
+                          >
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-3 mb-2">
+                                  <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center text-white font-bold text-xs">
+                                    {result.project.name.substring(0, 2).toUpperCase()}
+                    </div>
+                                  <div>
+                                    <h4 className="font-semibold text-gray-900 text-sm">{result.project.name}</h4>
+                                    <div className="flex items-center gap-2">
+                                      <p className="text-xs text-gray-500">{result.project.key} • {result.project.projectType || 'Software'}</p>
+                                      {result.project.userRole && (
+                                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                          result.project.userRole === 'Project Owner' ? 'bg-purple-100 text-purple-700' :
+                                          result.project.userRole === 'Member & Owner' ? 'bg-gradient-to-r from-blue-100 to-purple-100 text-purple-700' :
+                                          'bg-blue-100 text-blue-700'
+                                        }`}>
+                                          {result.project.userRole}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                                
+                                {/* Project Stats */}
+                                <div className="flex items-center gap-3 text-xs text-gray-600 mb-2">
+                                  <div className="flex items-center gap-1">
+                                    <Target className="w-3 h-3" />
+                                    <span>{result.sprintCount} sprints</span>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <Calendar className="w-3 h-3" />
+                                    <span>{result.activeTaskCount} active</span>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <Users className="w-3 h-3" />
+                                    <span>{result.completedTaskCount} done</span>
+                                  </div>
+                                </div>
+                                
+                                {/* Active Sprint Info */}
+                                {result.activeSprint ? (
+                                  <div className="bg-green-50 border border-green-200 rounded-md p-2">
+                                    <div className="flex items-center gap-2">
+                                      <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+                                      <span className="text-xs font-medium text-green-700">
+                                        Active: {result.activeSprint.name}
+                                      </span>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="bg-gray-50 border border-gray-200 rounded-md p-2">
+                                    <span className="text-xs text-gray-600">No active sprint</span>
+                    </div>
+                  )}
+                              </div>
+                              <ArrowRight className="w-4 h-4 text-gray-400 ml-2" />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : searchBoardQuery.trim().length > 2 ? (
+                      <div className="p-4 text-center text-gray-500">
+                        <Search className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                        <p className="font-medium text-sm">No boards found</p>
+                        <p className="text-xs mt-1">No projects found matching "{searchBoardQuery}"</p>
+                      </div>
+                    ) : null}
+                </div>
+              )}
+            </div>
+
               <Button 
                 className="bg-blue-600 text-white hover:bg-blue-700"
                 onClick={() => window.location.href = `/project/backlog?projectId=${projectId}`}
               >
                 View Backlog
               </Button>
-              {/* ✅ ADD: Complete Sprint Button (only for PO/Owner) */}
               {project && currentSprint && currentSprint.status === "ACTIVE" && !permissionsLoading && (isOwner || userPermissions?.role === "PRODUCT_OWNER") && (
                 <Button 
                   className="bg-green-600 text-white hover:bg-green-700"
@@ -3113,6 +2890,15 @@ export default function ProjectBoardPage() {
                         const response = await axios.put(`http://localhost:8084/api/sprints/${currentSprint.id}/complete`);
                         if (response.data?.status === "SUCCESS") {
                           toast.success("Sprint completed successfully!");
+                          
+                          // ✅ CLEANUP: Remove SPRINT_OVERDUE notifications when sprint is completed
+                          try {
+                            await axios.delete(`http://localhost:8089/api/notifications/sprint/${currentSprint.id}/overdue`);
+                            console.log("✅ SPRINT_OVERDUE notifications cleaned up for completed sprint:", currentSprint.id);
+                          } catch (cleanupError) {
+                            console.log("📝 Failed to cleanup SPRINT_OVERDUE notifications (non-critical):", cleanupError);
+                          }
+                          
                           // Refresh sprint data
                           fetchLatestNonCompletedSprint();
                         } else {
@@ -3207,6 +2993,132 @@ export default function ProjectBoardPage() {
                       <h4 className="font-semibold text-gray-900 mb-2">Track Progress</h4>
                       <p className="text-gray-600">Monitor project progress with detailed analytics</p>
                     </div>
+                  </div>
+                  
+                  {/* ✅ NEW: Search Board Section */}
+                  <div className="mb-10">
+                    <div className="flex items-center justify-center gap-3 mb-6">
+                      <div className="h-px bg-gray-300 flex-1"></div>
+                      <h3 className="text-lg font-semibold text-gray-800 bg-amber-100 text-amber-700 px-4 py-2 rounded-full">
+                        🔍 Search for Existing Projects
+                      </h3>
+                      <div className="h-px bg-gray-300 flex-1"></div>
+                    </div>
+                    
+                    <div className="relative max-w-lg mx-auto">
+                      <form onSubmit={handleSearchBoardSubmit} className="relative">
+                        <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                        <Input
+                          type="text"
+                          placeholder="Search for project boards..."
+                          value={searchBoardQuery}
+                          onChange={handleSearchBoardChange}
+                          onKeyDown={handleSearchBoardKeyDown}
+                          className="pl-12 h-12 bg-gray-50 border-gray-200 rounded-xl placeholder-gray-500 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 text-sm font-medium shadow-sm"
+                        />
+                        {isSearchingBoard && (
+                          <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                            <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+                          </div>
+                        )}
+                      </form>
+                      
+                      {/* Search Results Dropdown */}
+                      {showSearchBoardResults && (
+                        <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-xl z-50 max-h-96 overflow-y-auto">
+                          {isSearchingBoard ? (
+                            <div className="p-4 text-center text-gray-500">
+                              <div className="animate-spin h-6 w-6 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-2"></div>
+                              Searching boards...
+                            </div>
+                          ) : searchBoardResults.length > 0 ? (
+                            <div className="py-2">
+                              <div className="px-3 py-2 text-xs font-medium text-gray-500 bg-gray-50 border-b">
+                                Found {searchBoardResults.length} project{searchBoardResults.length !== 1 ? 's' : ''}
+                              </div>
+                              {searchBoardResults.map((result, index) => (
+                                <div
+                                  key={result.project.id}
+                                  onClick={() => handleSelectSearchBoard(result)}
+                                  className={`p-4 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0 transition-all duration-150 ${
+                                    selectedBoardIndex === index ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''
+                                  }`}
+                                >
+                                  <div className="flex items-start justify-between">
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-3 mb-2">
+                                        <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">
+                                          {result.project.name.substring(0, 2).toUpperCase()}
+                                        </div>
+                                        <div>
+                                          <h4 className="font-semibold text-gray-900">{result.project.name}</h4>
+                                          <div className="flex items-center gap-2">
+                                            <p className="text-sm text-gray-500">{result.project.key} • {result.project.projectType || 'Software'}</p>
+                                            {result.project.userRole && (
+                                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                                result.project.userRole === 'Project Owner' ? 'bg-purple-100 text-purple-700' :
+                                                result.project.userRole === 'Member & Owner' ? 'bg-gradient-to-r from-blue-100 to-purple-100 text-purple-700' :
+                                                'bg-blue-100 text-blue-700'
+                                              }`}>
+                                                {result.project.userRole}
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+                                      
+                                      {/* Project Stats */}
+                                      <div className="flex items-center gap-4 text-xs text-gray-600 mb-2">
+                                        <div className="flex items-center gap-1">
+                                          <Target className="w-3 h-3" />
+                                          <span>{result.sprintCount} sprints</span>
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                          <Calendar className="w-3 h-3" />
+                                          <span>{result.activeTaskCount} active</span>
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                          <Users className="w-3 h-3" />
+                                          <span>{result.completedTaskCount} done</span>
+                                        </div>
+                                      </div>
+                                      
+                                      {/* Active Sprint Info */}
+                                      {result.activeSprint ? (
+                                        <div className="bg-green-50 border border-green-200 rounded-md p-2">
+                                          <div className="flex items-center gap-2">
+                                            <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+                                            <span className="text-xs font-medium text-green-700">
+                                              Active: {result.activeSprint.name}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <div className="bg-gray-50 border border-gray-200 rounded-md p-2">
+                                          <span className="text-xs text-gray-600">No active sprint</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                    <ArrowRight className="w-4 h-4 text-gray-400 ml-2" />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : searchBoardQuery.trim().length > 2 ? (
+                            <div className="p-6 text-center text-gray-500">
+                              <Search className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                              <p className="font-medium">No projects found</p>
+                              <p className="text-sm mt-1">No projects found matching "{searchBoardQuery}"</p>
+                              <p className="text-xs mt-2 text-gray-400">Try a different search term or ask a team member to invite you</p>
+                            </div>
+                          ) : null}
+                        </div>
+                      )}
+                    </div>
+                    
+                    <p className="text-sm text-gray-500 mt-4 text-center">
+                      Can't find the project you're looking for? Ask a team member to invite you.
+                    </p>
                   </div>
                   
                   {/* Action Buttons */}

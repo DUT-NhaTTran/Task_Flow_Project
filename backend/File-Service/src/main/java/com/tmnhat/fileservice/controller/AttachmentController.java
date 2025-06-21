@@ -1,6 +1,6 @@
 package com.tmnhat.fileservice.controller;
 
-import com.tmnhat.fileservice.payload.ResponseDataAPI;
+import com.tmnhat.common.payload.ResponseDataAPI;
 import com.tmnhat.fileservice.model.Attachment;
 import com.tmnhat.fileservice.service.AttachmentService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,6 +15,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.sql.SQLException;
 import java.util.List;
 import java.util.UUID;
 
@@ -34,13 +35,15 @@ public class AttachmentController {
             return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(attachments));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(ResponseDataAPI.error("Invalid UUID format: " + taskId));
+        } catch (SQLException e) {
+            return ResponseEntity.status(500).body(ResponseDataAPI.error("Database error: " + e.getMessage()));
         }
     }
 
     @PostMapping("/upload")
     public ResponseEntity<ResponseDataAPI> uploadFile(
             @RequestParam("file") MultipartFile file,
-            @RequestParam("taskId") String taskId) throws IOException {
+            @RequestParam("taskId") String taskId) {
         
         try {
             UUID taskUUID = UUID.fromString(taskId);
@@ -48,6 +51,10 @@ public class AttachmentController {
             return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(savedAttachment));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(ResponseDataAPI.error("Invalid UUID format: " + taskId));
+        } catch (IOException e) {
+            return ResponseEntity.status(500).body(ResponseDataAPI.error("File upload error: " + e.getMessage()));
+        } catch (SQLException e) {
+            return ResponseEntity.status(500).body(ResponseDataAPI.error("Database error: " + e.getMessage()));
         }
     }
 
@@ -64,21 +71,31 @@ public class AttachmentController {
             return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(attachment));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(ResponseDataAPI.error("Invalid UUID format: " + request.getTaskId()));
+        } catch (SQLException e) {
+            return ResponseEntity.status(500).body(ResponseDataAPI.error("Database error: " + e.getMessage()));
         }
     }
 
     @DeleteMapping("/{attachmentId}")
-    public ResponseEntity<ResponseDataAPI> deleteAttachment(@PathVariable Long attachmentId) throws IOException {
-        attachmentService.deleteAttachment(attachmentId);
-        return ResponseEntity.ok(ResponseDataAPI.successWithoutMetaAndData());
+    public ResponseEntity<ResponseDataAPI> deleteAttachment(@PathVariable Long attachmentId) {
+        try {
+            attachmentService.deleteAttachment(attachmentId);
+            return ResponseEntity.ok(ResponseDataAPI.successWithoutMetaAndData());
+        } catch (IOException e) {
+            return ResponseEntity.status(500).body(ResponseDataAPI.error("File deletion error: " + e.getMessage()));
+        } catch (SQLException e) {
+            return ResponseEntity.status(500).body(ResponseDataAPI.error("Database error: " + e.getMessage()));
+        }
     }
 
     @GetMapping("/download/{attachmentId}")
-    public ResponseEntity<Resource> downloadFile(@PathVariable String attachmentId) throws IOException {
+    public ResponseEntity<Resource> downloadFile(@PathVariable String attachmentId) {
         try {
-            // Tìm attachment dựa trên ID
-            Attachment attachment = attachmentService.findById(Long.parseLong(attachmentId))
-                    .orElseThrow(() -> new IllegalArgumentException("Attachment not found"));
+            // Find attachment by ID
+            Attachment attachment = attachmentService.findById(Long.parseLong(attachmentId));
+            if (attachment == null) {
+                return ResponseEntity.notFound().build();
+            }
 
             Path path = Paths.get(attachment.getFileUrl());
             Resource resource = new UrlResource(path.toUri());
@@ -88,7 +105,11 @@ public class AttachmentController {
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + attachment.getFileName() + "\"")
                     .body(resource);
         } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("Invalid attachment ID format");
+            return ResponseEntity.badRequest().build();
+        } catch (SQLException e) {
+            return ResponseEntity.status(500).build();
+        } catch (IOException e) {
+            return ResponseEntity.status(500).build();
         }
     }
 

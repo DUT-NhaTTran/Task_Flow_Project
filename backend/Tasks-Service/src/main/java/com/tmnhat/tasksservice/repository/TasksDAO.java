@@ -65,6 +65,41 @@ public class TasksDAO extends BaseDAO {
         executeUpdate(sql, stmt -> stmt.setObject(1, id));
     }
 
+    public void restoreTask(UUID id) throws SQLException {
+        String sql = "UPDATE tasks SET deleted_at = NULL WHERE id = ?";
+        executeUpdate(sql, stmt -> stmt.setObject(1, id));
+    }
+
+    public void restoreTasksByProject(UUID projectId) throws SQLException {
+        String sql = "UPDATE tasks SET deleted_at = NULL WHERE project_id = ? AND deleted_at IS NOT NULL";
+        executeUpdate(sql, stmt -> stmt.setObject(1, projectId));
+    }
+
+    public List<Tasks> getDeletedTasksByProject(UUID projectId) throws SQLException {
+        String sql = "SELECT * FROM tasks WHERE project_id = ? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC";
+        return executeQuery(sql, stmt -> {
+            stmt.setObject(1, projectId);
+            List<Tasks> tasks = new ArrayList<>();
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                tasks.add(mapResultSetToTask(rs));
+            }
+            return tasks;
+        });
+    }
+
+    public Tasks getTaskByIdIncludeDeleted(UUID id) throws SQLException {
+        String sql = "SELECT * FROM tasks WHERE id = ?";
+        return executeQuery(sql, stmt -> {
+            stmt.setObject(1, id);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                return mapResultSetToTask(rs);
+            }
+            return null;
+        });
+    }
+
     public Tasks getTaskById(UUID id) throws SQLException {
         String sql = "SELECT * FROM tasks WHERE id = ? AND deleted_at IS NULL";
         return executeQuery(sql, stmt -> {

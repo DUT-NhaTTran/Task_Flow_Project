@@ -9,7 +9,13 @@ import com.tmnhat.projectsservice.repository.ProjectDAO;
 import com.tmnhat.projectsservice.repository.ProjectMemberDAO;
 import com.tmnhat.projectsservice.service.ProjectService;
 import com.tmnhat.projectsservice.validation.ProjectValidator;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 
 import java.sql.SQLException;
 import java.util.List;
@@ -22,6 +28,7 @@ public class ProjectServiceImpl implements ProjectService {
 
     private final ProjectMemberDAO projectMemberDAO = new ProjectMemberDAO();
     private final ProjectDAO projectDAO = new ProjectDAO();
+    private RestTemplate restTemplate;
 
     @Override
     public void addProject(Projects project) {
@@ -217,7 +224,16 @@ public class ProjectServiceImpl implements ProjectService {
         try {
             return projectDAO.findLatestByOwnerId(ownerId);
         } catch (SQLException e) {
-            throw new RuntimeException("Failed to fetch latest project", e);
+            throw new DatabaseException("Error retrieving latest project by owner: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public List<Projects> getAllProjectsByOwnerId(UUID ownerId) {
+        try {
+            return projectDAO.findAllByOwnerId(ownerId);
+        } catch (SQLException e) {
+            throw new DatabaseException("Error retrieving projects by owner: " + e.getMessage());
         }
     }
 
@@ -267,13 +283,18 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
-    public UUID getScrumMasterId(UUID projectId) {
+    public UUID getManagerId(UUID projectId) {
         try {
-            return projectMemberDAO.getScrumMasterId(projectId);
+            UUID managerId = projectMemberDAO.getManagerId(projectId);
+            if (managerId == null) {
+                throw new DatabaseException("No Scrum Master or Product Owner found for project " + projectId);
+            }
+            return managerId;
         } catch (Exception e) {
-            throw new DatabaseException("Error retrieving scrum master ID: " + e.getMessage());
+            throw new DatabaseException("Error retrieving manager ID: " + e.getMessage());
         }
     }
+    
 
     // ✅ NEW: Soft delete methods implementation
     @Override
@@ -299,7 +320,43 @@ public class ProjectServiceImpl implements ProjectService {
             if (existingProject == null) {
                 throw new ResourceNotFoundException("Project not found with ID " + id);
             }
+            
+            // Restore the project
             projectDAO.restoreProject(id);
+            System.out.println("✅ Project restored: " + existingProject.getName());
+            
+            // ✅ NEW: Also restore all associated tasks for this project
+            try {
+                restTemplate = new RestTemplate();
+                String tasksServiceUrl = "http://localhost:8085/api/tasks/project/" + id + "/restore";
+                
+                // Set headers
+                HttpHeaders headers = new HttpHeaders();
+                headers.setContentType(MediaType.APPLICATION_JSON);
+                headers.set("X-User-Id", "SYSTEM"); // Use system user for restore operation
+                
+                HttpEntity<String> entity = new HttpEntity<>(headers);
+                
+                ResponseEntity<String> response = restTemplate.exchange(
+                    tasksServiceUrl, 
+                    HttpMethod.PUT, 
+                    entity, 
+                    String.class
+                );
+                
+                if (response.getStatusCode().is2xxSuccessful()) {
+                    System.out.println("✅ All tasks restored for project: " + id);
+                } else {
+                    System.out.println("⚠️ Warning: Failed to restore tasks for project " + id + 
+                                     " - Status: " + response.getStatusCode());
+                }
+                
+            } catch (Exception e) {
+                // Don't fail the project restore if task restore fails
+                System.err.println("⚠️ Warning: Failed to restore tasks for project " + id + ": " + e.getMessage());
+                System.out.println("📝 Project was restored but tasks may need manual restoration");
+            }
+            
         } catch (Exception e) {
             throw new DatabaseException("Error restoring project: " + e.getMessage());
         }

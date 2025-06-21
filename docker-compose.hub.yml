@@ -1,0 +1,229 @@
+version: '3.8'
+
+services:
+  # Common Service (Shared utilities and configurations)
+  common-service:
+    image: tranminnhatdut/taskflow-backend:common-latest
+    ports:
+      - "8081:8081"
+    environment:
+      - SPRING_PROFILES_ACTIVE=production
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/postgres
+      - SPRING_DATASOURCE_USERNAME=postgre
+      - SPRING_DATASOURCE_PASSWORD=Nhatvn123
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+
+  # AI Service (Python/FastAPI)
+  ai-service:
+    image: tranminnhatdut/taskflow-backend:ai-latest
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgre:Nhatvn123@postgres:5432/postgres
+      - REDIS_URL=redis://redis:6379
+      - API_ENV=production
+    depends_on:
+      - postgres
+      - redis
+      - common-service
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # User Service
+  user-service:
+    image: tranminnhatdut/taskflow-backend:user-latest
+    ports:
+      - "8086:8086"
+    environment:
+      - SPRING_PROFILES_ACTIVE=production
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/postgres
+      - SPRING_DATASOURCE_USERNAME=postgre
+      - SPRING_DATASOURCE_PASSWORD=Nhatvn123
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - COMMON_SERVICE_URL=http://common-service:8081
+    depends_on:
+      - postgres
+      - redis
+      - common-service
+    restart: unless-stopped
+
+  # Projects Service
+  projects-service:
+    image: tranminnhatdut/taskflow-backend:projects-latest
+    ports:
+      - "8083:8083"
+    environment:
+      - SPRING_PROFILES_ACTIVE=production
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/postgres
+      - SPRING_DATASOURCE_USERNAME=postgre
+      - SPRING_DATASOURCE_PASSWORD=Nhatvn123
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - COMMON_SERVICE_URL=http://common-service:8081
+    depends_on:
+      - postgres
+      - redis
+      - common-service
+    restart: unless-stopped
+
+  # Tasks Service
+  tasks-service:
+    image: tranminnhatdut/taskflow-backend:tasks-latest
+    ports:
+      - "8085:8085"
+    environment:
+      - SPRING_PROFILES_ACTIVE=production
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/postgres
+      - SPRING_DATASOURCE_USERNAME=postgre
+      - SPRING_DATASOURCE_PASSWORD=Nhatvn123
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - AI_SERVICE_URL=http://ai-service:8000
+      - COMMON_SERVICE_URL=http://common-service:8081
+    depends_on:
+      - postgres
+      - redis
+      - ai-service
+      - common-service
+    restart: unless-stopped
+
+  # Sprints Service
+  sprints-service:
+    image: tranminnhatdut/taskflow-backend:sprints-latest
+    ports:
+      - "8084:8084"
+    environment:
+      - SPRING_PROFILES_ACTIVE=production
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/postgres
+      - SPRING_DATASOURCE_USERNAME=postgre
+      - SPRING_DATASOURCE_PASSWORD=Nhatvn123
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - COMMON_SERVICE_URL=http://common-service:8081
+    depends_on:
+      - postgres
+      - redis
+      - common-service
+    restart: unless-stopped
+
+  # Accounts Service
+  accounts-service:
+    image: tranminnhatdut/taskflow-backend:accounts-latest
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=production
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/postgres
+      - SPRING_DATASOURCE_USERNAME=postgre
+      - SPRING_DATASOURCE_PASSWORD=Nhatvn123
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - COMMON_SERVICE_URL=http://common-service:8081
+    depends_on:
+      - postgres
+      - redis
+      - common-service
+    restart: unless-stopped
+
+  # Notification Service
+  notification-service:
+    image: tranminnhatdut/taskflow-backend:notification-latest
+    ports:
+      - "8089:8089"
+    environment:
+      - SPRING_PROFILES_ACTIVE=production
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/postgres
+      - SPRING_DATASOURCE_USERNAME=postgre
+      - SPRING_DATASOURCE_PASSWORD=Nhatvn123
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - COMMON_SERVICE_URL=http://common-service:8081
+    depends_on:
+      - postgres
+      - redis
+      - common-service
+    restart: unless-stopped
+
+  # File Service
+  file-service:
+    image: tranminnhatdut/taskflow-backend:file-latest
+    ports:
+      - "8087:8087"
+    environment:
+      - SPRING_PROFILES_ACTIVE=production
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/postgres
+      - SPRING_DATASOURCE_USERNAME=postgre
+      - SPRING_DATASOURCE_PASSWORD=Nhatvn123
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - UPLOAD_PATH=/app/uploads
+      - COMMON_SERVICE_URL=http://common-service:8081
+    depends_on:
+      - postgres
+      - redis
+      - common-service
+    restart: unless-stopped
+    volumes:
+      - file_uploads:/app/uploads
+
+  # PostgreSQL Database - Using existing database schema
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgre
+      - POSTGRES_PASSWORD=Nhatvn123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Không cần init script vì đã có database sẵn
+    restart: unless-stopped
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - common-service
+      - ai-service
+      - user-service
+      - projects-service
+      - tasks-service
+      - sprints-service
+      - accounts-service
+      - notification-service
+      - file-service
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  file_uploads:
+
+networks:
+  default:
+    driver: bridge 

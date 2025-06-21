@@ -40,35 +40,12 @@ public class AccountDAO extends BaseDAO {
         });
     }
 
-    public void updateAccount(UUID id, Accounts account) throws SQLException {
-        String sql = "UPDATE accounts SET email = ?, password = ?, user_id = ?, updated_at = ? WHERE id = ?";
-        executeUpdate(sql, stmt -> {
-            stmt.setString(1, account.getEmail());
-            stmt.setString(2, account.getPassword()); // Đã được hash bởi BCrypt nếu là mật khẩu mới
-            stmt.setObject(3, account.getUserId());
-            stmt.setTimestamp(4, account.getUpdatedAt() != null ? Timestamp.valueOf(account.getUpdatedAt()) : null);
-            stmt.setObject(5, id);
-        });
-    }
-
     public void updatePassword(UUID id, String newHashedPassword, LocalDateTime updatedAt) throws SQLException {
         String sql = "UPDATE accounts SET password = ?, updated_at = ? WHERE id = ?";
         executeUpdate(sql, stmt -> {
             stmt.setString(1, newHashedPassword); // Mật khẩu đã được hash bởi BCrypt
             stmt.setTimestamp(2, updatedAt != null ? Timestamp.valueOf(updatedAt) : null);
             stmt.setObject(3, id);
-        });
-    }
-
-    public Accounts getAccountById(UUID id) throws SQLException {
-        String sql = "SELECT * FROM accounts WHERE id = ?";
-        return executeQuery(sql, stmt -> {
-            stmt.setObject(1, id);
-            ResultSet rs = stmt.executeQuery();
-            if (rs.next()) {
-                return mapResultSetToAccount(rs);
-            }
-            return null;
         });
     }
 
@@ -96,13 +73,6 @@ public class AccountDAO extends BaseDAO {
         });
     }
 
-    public void deleteAccount(UUID id) throws SQLException {
-        String sql = "DELETE FROM accounts WHERE id = ?";
-        executeUpdate(sql, stmt -> {
-            stmt.setObject(1, id);
-        });
-    }
-
     public boolean existsByEmail(String email) throws SQLException {
         String sql = "SELECT COUNT(*) FROM accounts WHERE email = ?";
         return executeQuery(sql, stmt -> {
@@ -125,6 +95,7 @@ public class AccountDAO extends BaseDAO {
                 .updatedAt(rs.getTimestamp("updated_at") != null ? rs.getTimestamp("updated_at").toLocalDateTime() : null)
                 .build();
     }
+
     public UUID getUserIdByEmail(String email) throws SQLException {
         String sql = "SELECT user_id FROM accounts WHERE email = ?";
         return executeQuery(sql, stmt -> {
@@ -146,17 +117,6 @@ public class AccountDAO extends BaseDAO {
         executeUpdate(sql, stmt -> {
             stmt.setObject(1, userId);
             stmt.setObject(2, accountId);
-        });
-    }
-    public UUID getUserIdById(UUID accountId) throws SQLException {
-        String sql = "SELECT user_id FROM accounts WHERE id = ?";
-        return executeQuery(sql, stmt -> {
-            stmt.setObject(1, accountId);
-            ResultSet rs = stmt.executeQuery();
-            if (rs.next()) {
-                return (UUID) rs.getObject("user_id");
-            }
-            throw new ResourceNotFoundException("No user found for account ID: " + accountId);
         });
     }
     

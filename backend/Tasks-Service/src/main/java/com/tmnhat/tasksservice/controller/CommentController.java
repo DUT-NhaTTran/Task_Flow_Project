@@ -95,8 +95,6 @@ public class CommentController {
             
             Comment reply = commentService.addReply(commentId, userId, content);
             
-            // NOTE: Removed notification logic - frontend will handle this
-            System.out.println("🔄 New reply added to comment: " + commentId + " - Frontend should handle notification");
             
             return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(reply));
         } catch (Exception e) {

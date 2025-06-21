@@ -1,104 +1,138 @@
 package com.tmnhat.tasksservice.service;
 
 import com.tmnhat.tasksservice.model.Comment;
-import com.tmnhat.tasksservice.repository.CommentRepository;
+import com.tmnhat.tasksservice.repository.CommentsDAO;
+import com.tmnhat.common.exception.DatabaseException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 @Service
 public class CommentService {
     
     @Autowired
-    private CommentRepository commentRepository;
+    private CommentsDAO commentsDAO;
     
     // Get all comments for a task
     public List<Comment> getCommentsByTaskId(UUID taskId) {
-        return commentRepository.findByTaskIdAndNotDeleted(taskId);
+        try {
+            return commentsDAO.findByTaskIdAndNotDeleted(taskId);
+        } catch (SQLException e) {
+            throw new DatabaseException("Error retrieving comments for task: " + e.getMessage());
+        }
     }
     
     // Add new comment
     public Comment addComment(UUID taskId, String userId, String content) {
-        Comment comment = new Comment();
-        comment.setTaskId(taskId);
-        comment.setUserId(userId);
-        comment.setContent(content);
-        comment.setCreatedAt(LocalDateTime.now());
-        comment.setUpdatedAt(LocalDateTime.now());
-        comment.setIsDeleted(false);
-        
-        return commentRepository.save(comment);
+        try {
+            Comment comment = new Comment.Builder()
+                    .taskId(taskId)
+                    .userId(userId)
+                    .content(content)
+                    .createdAt(LocalDateTime.now())
+                    .updatedAt(LocalDateTime.now())
+                    .isDeleted(false)
+                    .build();
+            
+            return commentsDAO.addComment(comment);
+        } catch (SQLException e) {
+            throw new DatabaseException("Error adding comment: " + e.getMessage());
+        }
     }
     
     // Add reply to a comment
     public Comment addReply(Long parentCommentId, String userId, String content) {
-        // Get parent comment to extract taskId
-        Optional<Comment> parentComment = commentRepository.findById(parentCommentId);
-        if (parentComment.isEmpty()) {
-            throw new IllegalArgumentException("Parent comment not found");
+        try {
+            // Get parent comment to extract taskId
+            Comment parentComment = commentsDAO.findById(parentCommentId);
+            if (parentComment == null) {
+                throw new IllegalArgumentException("Parent comment not found");
+            }
+            
+            Comment reply = new Comment.Builder()
+                    .taskId(parentComment.getTaskId())
+                    .userId(userId)
+                    .content(content)
+                    .parentCommentId(parentCommentId)
+                    .createdAt(LocalDateTime.now())
+                    .updatedAt(LocalDateTime.now())
+                    .isDeleted(false)
+                    .build();
+            
+            return commentsDAO.addComment(reply);
+        } catch (SQLException e) {
+            throw new DatabaseException("Error adding reply: " + e.getMessage());
         }
-        
-        Comment reply = new Comment();
-        reply.setTaskId(parentComment.get().getTaskId());
-        reply.setUserId(userId);
-        reply.setContent(content);
-        reply.setParentCommentId(parentCommentId);
-        reply.setCreatedAt(LocalDateTime.now());
-        reply.setUpdatedAt(LocalDateTime.now());
-        reply.setIsDeleted(false);
-        
-        return commentRepository.save(reply);
     }
     
     // Update comment (only by owner)
     public Comment updateComment(Long commentId, String userId, String newContent) {
-        Optional<Comment> commentOpt = commentRepository.findById(commentId);
-        if (commentOpt.isEmpty()) {
-            throw new IllegalArgumentException("Comment not found");
+        try {
+            Comment comment = commentsDAO.findById(commentId);
+            if (comment == null) {
+                throw new IllegalArgumentException("Comment not found");
+            }
+            
+            if (!comment.getUserId().equals(userId)) {
+                throw new IllegalArgumentException("You can only edit your own comments");
+            }
+            
+            comment.setContent(newContent);
+            comment.setUpdatedAt(LocalDateTime.now());
+            return commentsDAO.updateComment(comment);
+        } catch (SQLException e) {
+            throw new DatabaseException("Error updating comment: " + e.getMessage());
         }
-        
-        Comment comment = commentOpt.get();
-        if (!comment.getUserId().equals(userId)) {
-            throw new IllegalArgumentException("You can only edit your own comments");
-        }
-        
-        comment.setContent(newContent);
-        return commentRepository.save(comment);
     }
     
     // Delete comment (soft delete)
     public void deleteComment(Long commentId, String userId) {
-        Optional<Comment> commentOpt = commentRepository.findById(commentId);
-        if (commentOpt.isEmpty()) {
-            throw new IllegalArgumentException("Comment not found");
+        try {
+            Comment comment = commentsDAO.findById(commentId);
+            if (comment == null) {
+                throw new IllegalArgumentException("Comment not found");
+            }
+            
+            if (!comment.getUserId().equals(userId)) {
+                throw new IllegalArgumentException("You can only delete your own comments");
+            }
+            
+            comment.setIsDeleted(true);
+            comment.setUpdatedAt(LocalDateTime.now());
+            commentsDAO.updateComment(comment);
+        } catch (SQLException e) {
+            throw new DatabaseException("Error deleting comment: " + e.getMessage());
         }
-        
-        Comment comment = commentOpt.get();
-        if (!comment.getUserId().equals(userId)) {
-            throw new IllegalArgumentException("You can only delete your own comments");
-        }
-        
-        comment.setIsDeleted(true);
-        commentRepository.save(comment);
     }
     
     // Get comment count for a task
     public Long getCommentCount(UUID taskId) {
-        return commentRepository.countByTaskIdAndNotDeleted(taskId);
+        try {
+            return commentsDAO.countByTaskIdAndNotDeleted(taskId);
+        } catch (SQLException e) {
+            throw new DatabaseException("Error counting comments: " + e.getMessage());
+        }
     }
     
     // Get comment by ID
     public Comment getCommentById(Long commentId) {
-        Optional<Comment> commentOpt = commentRepository.findById(commentId);
-        return commentOpt.orElse(null);
+        try {
+            return commentsDAO.findById(commentId);
+        } catch (SQLException e) {
+            throw new DatabaseException("Error retrieving comment: " + e.getMessage());
+        }
     }
     
     // Get replies for a comment
     public List<Comment> getReplies(Long commentId) {
-        return commentRepository.findByParentCommentIdAndIsDeletedFalse(commentId);
+        try {
+            return commentsDAO.findByParentCommentIdAndIsDeletedFalse(commentId);
+        } catch (SQLException e) {
+            throw new DatabaseException("Error retrieving replies: " + e.getMessage());
+        }
     }
 } 

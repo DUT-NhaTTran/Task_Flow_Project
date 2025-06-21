@@ -8,7 +8,6 @@ public interface AuthService {
     String register(String email, String password) throws Exception;
     String login(String email, String password) throws Exception;
     UUID getUserIdByEmail(String email) throws SQLException;
-    UUID getUserIdByAccountId(UUID accountId);
     Accounts getAccountByEmail(String email) throws SQLException;
     void linkUserIdToAccount(UUID accountId, UUID userId) throws SQLException;
     UUID getAccountIdByEmail(String email) throws SQLException;

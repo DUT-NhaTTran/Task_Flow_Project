@@ -173,9 +173,6 @@ public class SprintDAO extends BaseDAO {
             params.add(searchPattern);
         }
         
-        // Note: Assignee filter removed since sprints table doesn't have assignee_id column
-        // The assignee functionality would need to be implemented differently
-        
         // Status filter
         if (statuses != null && !statuses.isEmpty()) {
             sql.append(" AND status IN (");
@@ -216,8 +213,7 @@ public class SprintDAO extends BaseDAO {
     }
 
     public List<Map<String, Object>> getSprintAssignees(UUID projectId) throws SQLException {
-        // Since sprints don't have assignees, return empty list
-        // This could be modified to return assignees from tasks within sprints
+
         return new ArrayList<>();
     }
 
@@ -238,7 +234,7 @@ public class SprintDAO extends BaseDAO {
         });
     }
 
-    // ✅ NEW: Soft delete methods
+    //Soft delete methods
     public void cancelSprint(UUID sprintId) throws SQLException {
         String sql = "UPDATE sprints SET status = ?, updated_at = ? WHERE id = ?";
         executeUpdate(sql, stmt -> {
@@ -267,7 +263,7 @@ public class SprintDAO extends BaseDAO {
         });
     }
     
-    // ✅ NEW: Audit queries
+    // Audit queries
     public List<Sprints> getDeletedSprintsByProject(UUID projectId) throws SQLException {
         String sql = "SELECT * FROM sprints WHERE project_id = ? AND status = ? ORDER BY deleted_at DESC";
         return executeQuery(sql, stmt -> {
@@ -296,7 +292,7 @@ public class SprintDAO extends BaseDAO {
         });
     }
     
-    // ✅ NEW: Task migration support
+    // Task migration support
     public List<Map<String, Object>> getIncompleteTasksFromSprint(UUID sprintId) throws SQLException {
         String sql = "SELECT id, title, status, story_point, assignee_id FROM tasks WHERE sprint_id = ? AND status != 'DONE' AND deleted_at IS NULL";
         return executeQuery(sql, stmt -> {
