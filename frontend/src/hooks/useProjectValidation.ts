@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { API_CONFIG } from "@/lib/config";
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -25,7 +26,7 @@ export const useProjectValidation = ({
 
       try {
         console.log('🔍 Validating project:', projectId);
-        const response = await axios.get(`http://localhost:8083/api/projects/${projectId}`);
+        const response = await axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/${projectId}`);
         
         if (response.data?.status !== "SUCCESS" || !response.data?.data) {
           console.error('❌ Project validation failed:', response.data);

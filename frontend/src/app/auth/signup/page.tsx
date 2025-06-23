@@ -6,6 +6,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import axios from "axios"
 import { toast } from "sonner"
+import { API_CONFIG } from "@/lib/config";
 
 export default function SignUpPage() {
     const router = useRouter()
@@ -75,7 +76,7 @@ export default function SignUpPage() {
         try {
             // Step 1: Register account
             console.log("📝 Creating account...")
-            const registerRes = await axios.post("http://localhost:8080/api/auth/register", {
+            const registerRes = await axios.post(`${API_CONFIG.ACCOUNTS_SERVICE}/api/auth/register`, {
                 email: formData.email,
                 password: formData.password
             })
@@ -87,14 +88,14 @@ export default function SignUpPage() {
             console.log("✅ Account created successfully")
 
             // Step 2: Get account ID to create user profile
-            const accountRes = await axios.get(`http://localhost:8080/api/auth/account-id/${formData.email}`)
+            const accountRes = await axios.get(`${API_CONFIG.ACCOUNTS_SERVICE}/api/auth/account-id/${formData.email}`)
             const accountId = accountRes.data.accountId
 
             console.log("🔗 Account ID retrieved:", accountId)
 
             // Step 3: Create user profile
             console.log("👤 Creating user profile...")
-            const createUserRes = await axios.post("http://localhost:8086/api/users", {
+            const createUserRes = await axios.post(`${API_CONFIG.USER_SERVICE}/api/users`, {
                 username: formData.email.split('@')[0], // Use email prefix as default username
                 email: formData.email,
                 userRole: "USER"
@@ -109,7 +110,7 @@ export default function SignUpPage() {
 
             // Step 4: Link user ID to account
             console.log("🔗 Linking user to account...")
-            await axios.post(`http://localhost:8080/api/auth/link-user`, {
+            await axios.post(`${API_CONFIG.ACCOUNTS_SERVICE}/api/auth/link-user`, {
                 accountId: accountId,
                 userId: userId
             })

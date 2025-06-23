@@ -50,6 +50,7 @@ import {
 } from 'recharts'
 import { DropdownMenu } from "@/components/ui/dropdown-menu"
 import { toast } from "sonner"
+import { API_CONFIG } from "@/lib/config";
 
 interface Project {
     id: string;
@@ -287,7 +288,7 @@ export default function ProjectSummaryPage() {
     const fetchProjectData = async () => {
         try {
             setIsLoading(true);
-            const response = await axios.get(`http://localhost:8083/api/projects/${projectId}`);
+            const response = await axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/${projectId}`);
             if (response.data?.status === "SUCCESS" && response.data?.data) {
                 setProject(response.data.data);
             } else {
@@ -345,7 +346,7 @@ export default function ProjectSummaryPage() {
 
     const fetchProjectMembers = async () => {
         try {
-            const response = await axios.get(`http://localhost:8083/api/projects/${projectId}/users`);
+            const response = await axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/${projectId}/users`);
             const users = response.data?.data || [];
             
             const members = users.map((user: any) => ({
@@ -377,7 +378,7 @@ export default function ProjectSummaryPage() {
 
     const fetchCurrentSprint = async () => {
         try {
-            const response = await axios.get(`http://localhost:8084/api/sprints/project/${projectId}`);
+            const response = await axios.get(`${API_CONFIG.SPRINTS_SERVICE}/api/sprints/project/${projectId}`);
             const sprints = response.data?.data || [];
             const activeSprint = sprints.find((sprint: any) => sprint.status === 'ACTIVE') || sprints[0];
             if (activeSprint) {
@@ -397,7 +398,7 @@ export default function ProjectSummaryPage() {
 
     const fetchTaskStatistics = async () => {
         try {
-            const response = await axios.get(`http://localhost:8085/api/tasks/project/${projectId}`);
+            const response = await axios.get(`${API_CONFIG.TASKS_SERVICE}/api/tasks/project/${projectId}`);
             const tasks = Array.isArray(response.data) ? response.data : [];
             
             // Calculate date thresholds
@@ -463,7 +464,7 @@ export default function ProjectSummaryPage() {
 
     const fetchAllTasksWithDetails = async () => {
         try {
-            const response = await axios.get(`http://localhost:8085/api/tasks/project/${projectId}`);
+            const response = await axios.get(`${API_CONFIG.TASKS_SERVICE}/api/tasks/project/${projectId}`);
             const tasks = Array.isArray(response.data) ? response.data : [];
             setAllTasks(tasks);
             
@@ -516,7 +517,7 @@ export default function ProjectSummaryPage() {
 
     const fetchAllSprints = async () => {
         try {
-            const response = await axios.get(`http://localhost:8084/api/sprints/project/${projectId}`);
+            const response = await axios.get(`${API_CONFIG.SPRINTS_SERVICE}/api/sprints/project/${projectId}`);
             const sprints = response.data?.data || [];
             setAllSprints(sprints);
             
@@ -621,7 +622,7 @@ export default function ProjectSummaryPage() {
     
     const fetchRecentActivity = async () => {
         try {
-            const response = await axios.get(`http://localhost:8085/api/tasks/project/${projectId}/activity`);
+            const response = await axios.get(`${API_CONFIG.TASKS_SERVICE}/api/tasks/project/${projectId}/activity`);
             
             const activities = response.data?.data || response.data || [];
             
@@ -955,9 +956,9 @@ export default function ProjectSummaryPage() {
             // Fetch both owned projects and member projects
             const [ownedResponse, memberResponse] = await Promise.allSettled([
                 // Get projects where user is owner - FIXED: Use correct API
-                axios.get(`http://localhost:8083/api/projects/owner/${userId}`),
+                axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/owner/${userId}`),
                 // Get projects where user is member
-                axios.get(`http://localhost:8083/api/projects/search/member?keyword=&userId=${userId}`)
+                axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/search/member?keyword=&userId=${userId}`)
             ]);
 
             let allProjects: Project[] = [];

@@ -1,9 +1,9 @@
-package com.taskflow.notification.service.impl;
+package com.tmnhat.notificationservice.service.impl;
 
-import com.taskflow.notification.model.Notification;
-import com.taskflow.notification.payload.enums.NotificationType;
-import com.taskflow.notification.repository.NotificationDAO;
-import com.taskflow.notification.service.NotificationService;
+import com.tmnhat.notificationservice.model.Notification;
+import com.tmnhat.notificationservice.payload.enums.NotificationType;
+import com.tmnhat.notificationservice.repository.NotificationDAO;
+import com.tmnhat.notificationservice.service.NotificationService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 

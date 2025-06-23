@@ -549,7 +549,6 @@ export function NotificationDropdown({ userId }: NotificationDropdownProps) {
                 })
                 
                 // Log the number of notifications received
-                console.log(`Received ${fetchedNotifications.length} notifications from server`)
                 
                 // Update state
                 setNotifications(fetchedNotifications)
@@ -558,7 +557,7 @@ export function NotificationDropdown({ userId }: NotificationDropdownProps) {
                 
                 // Show notification for new unread items if dropdown is not open
                 if (!isOpen && newUnreadCount > unreadCount && unreadCount > 0) {
-                    toast.info(`You have ${newUnreadCount - unreadCount} new notification(s)`)
+                    toast.info('You have ${newUnreadCount - unreadCount} new notification(s)')
                 }
                 
                 if (isRefreshing || forceRefresh) {

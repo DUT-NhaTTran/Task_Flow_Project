@@ -1,7 +1,7 @@
 // src/app/layout.tsx
 
 import './globals.css'
-import { ReactNode } from 'react'
+import { ReactNode, Suspense } from 'react'
 import { Inter } from 'next/font/google'
 import { NavigationProvider } from '@/contexts/NavigationContext'
 import { Toaster } from 'sonner'
@@ -20,9 +20,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <html lang="en" className={inter.className}>
             <body>
                 <UserProvider>
-                    <NavigationProvider>
-                        {children}
-                    </NavigationProvider>
+                    <Suspense fallback={<div>Loading...</div>}>
+                        <NavigationProvider>
+                            {children}
+                        </NavigationProvider>
+                    </Suspense>
                     <Toaster position="top-right" />
                 </UserProvider>
             </body>

@@ -1,12 +1,16 @@
-package com.taskflow.notification.repository;
-import com.tmnhat.common.config.DatabaseConnection;
+package com.tmnhat.notificationservice.repository;
 import java.sql.Connection;
+import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 
 public abstract class BaseDAO {
     protected Connection getConnection() throws SQLException {
-        return DatabaseConnection.getConnection();
+        // Use environment variables or hardcoded values for now
+        String url = System.getProperty("spring.datasource.url", "jdbc:postgresql://postgres:5432/postgres");
+        String username = System.getProperty("spring.datasource.username", "postgre");
+        String password = System.getProperty("spring.datasource.password", "Nhatvn123");
+        return DriverManager.getConnection(url, username, password);
     }
 
     protected void executeUpdate(String query, SQLConsumer<PreparedStatement> consumer) throws SQLException {

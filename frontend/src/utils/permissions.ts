@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { API_CONFIG } from "@/lib/config";
 
 // Interface cho permissions response từ backend
 export interface UserPermissions {
@@ -34,7 +35,7 @@ export const getUserPermissions = async (userId: string, projectId: string): Pro
   
   try {
     console.log('🌐 Fetching fresh permissions for:', { userId, projectId });
-    const response = await axios.get(`http://localhost:8083/api/projects/${projectId}/members/${userId}/permissions`);
+    const response = await axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/${projectId}/members/${userId}/permissions`);
     
     console.log('📋 Permission API response:', response.data);
     

@@ -504,7 +504,7 @@ public class TasksController {
     }
 
     @GetMapping("/statuses/{projectId}")
-    public ResponseEntity<ResponseDataAPI> getTaskStatusesForCalendar(@PathVariable UUID projectId) {
+    public ResponseEntity<ResponseDataAPI> getTaskStatuses(@PathVariable UUID projectId) {
         List<String> statuses = taskService.getTaskStatusesForCalendar(projectId);
         return ResponseEntity.ok(ResponseDataAPI.successWithoutMeta(statuses));
     }

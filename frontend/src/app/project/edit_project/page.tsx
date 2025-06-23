@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { API_CONFIG } from "@/lib/config";
 import { useRouter, useSearchParams } from "next/navigation";
 import axios from "axios";
 import { ArrowLeft, Save, Settings, Users, Shield, FileText, UserPlus, X, Crown, User, Trash2 } from "lucide-react";
@@ -125,7 +126,7 @@ export default function EditProjectPage() {
     const fetchProjectData = async () => {
         try {
             setIsLoading(true);
-            const response = await axios.get(`http://localhost:8083/api/projects/${projectId}`);
+            const response = await axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/${projectId}`);
             
             if (response.data?.status === "SUCCESS" && response.data?.data) {
                 const projectData = response.data.data;
@@ -147,7 +148,7 @@ export default function EditProjectPage() {
                 let ownerName = 'Unknown Owner';
                 if (projectData.ownerId) {
                     try {
-                        const ownerResponse = await axios.get(`http://localhost:8086/api/users/${projectData.ownerId}`);
+                        const ownerResponse = await axios.get(`${API_CONFIG.USER_SERVICE}/api/users/${projectData.ownerId}`);
                         if (ownerResponse.data?.status === "SUCCESS" && ownerResponse.data?.data) {
                             const ownerData = ownerResponse.data.data;
                             ownerName = ownerData.fullname || ownerData.username || ownerData.email || 'Unknown Owner';
@@ -190,7 +191,7 @@ export default function EditProjectPage() {
     const fetchProjectMembers = async () => {
         try {
             setIsLoadingMembers(true);
-            const response = await axios.get(`http://localhost:8083/api/projects/${projectId}/users`);
+            const response = await axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/${projectId}/users`);
             
             if (response.data?.status === "SUCCESS" && response.data?.data) {
                 const membersList = response.data.data;
@@ -199,7 +200,7 @@ export default function EditProjectPage() {
                     membersList.map(async (member: any) => {
                         try {
                             const userId = member.userId || member.id;
-                            const userResponse = await axios.get(`http://localhost:8086/api/users/${userId}`);
+                            const userResponse = await axios.get(`${API_CONFIG.USER_SERVICE}/api/users/${userId}`);
                             
                             if (userResponse.data?.status === "SUCCESS" && userResponse.data?.data) {
                                 const userData = userResponse.data.data;
@@ -334,7 +335,7 @@ export default function EditProjectPage() {
                 ...(formData.updatedAt && { updatedAt: new Date().toISOString() })
             };
 
-            const response = await axios.patch(`http://localhost:8083/api/projects/${projectId}`, updateData);
+            const response = await axios.patch(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/${projectId}`, updateData);
 
             if (response.data?.status === "SUCCESS" || response.status === 200) {
                 toast.success("Project updated successfully!", {
@@ -390,7 +391,7 @@ export default function EditProjectPage() {
             };
             
             const response = await axios.patch(
-                `http://localhost:8083/api/projects/${projectId}/members/role`, 
+                `${API_CONFIG.PROJECTS_SERVICE}/api/projects/${projectId}/members/role`, 
                 requestPayload
             );
                         
@@ -428,7 +429,7 @@ export default function EditProjectPage() {
             
             setMemberToRemove(member);
             
-            const tasksResponse = await axios.get(`http://localhost:8084/api/tasks/project/${projectId}/assignee/${memberId}`);
+            const tasksResponse = await axios.get(`${API_CONFIG.SPRINTS_SERVICE}/api/tasks/project/${projectId}/assignee/${memberId}`);
             
             if (tasksResponse.data?.status === "SUCCESS" && tasksResponse.data?.data) {
                 setMemberTasks(tasksResponse.data.data);
@@ -449,7 +450,7 @@ export default function EditProjectPage() {
         if (!memberToRemove) return;
         
         try {
-            const response = await axios.delete(`http://localhost:8083/api/projects/${projectId}/members/${memberToRemove.id}`);
+            const response = await axios.delete(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/${projectId}/members/${memberToRemove.id}`);
             
             if (response.data?.status === "SUCCESS") {
                 setMembers(prev => prev.filter(member => member.id !== memberToRemove.id));
@@ -473,7 +474,7 @@ export default function EditProjectPage() {
     const fetchAllUsers = async () => {
         setIsLoadingUsers(true);
         try {
-            const response = await axios.get("http://localhost:8086/api/users");
+            const response = await axios.get(`${API_CONFIG.USER_SERVICE}/api/users`);
             
             if (response.data && response.data.status === "SUCCESS" && response.data.data) {
                 const currentUserId = getCurrentUserId();
@@ -531,7 +532,7 @@ export default function EditProjectPage() {
                 taskId: null
             };
 
-            const response = await axios.post('http://localhost:8089/api/notifications/create', notificationData);
+            const response = await axios.post(`${API_CONFIG.NOTIFICATION_SERVICE}/api/notifications/create`, notificationData);
             
             if (response.data?.status === "SUCCESS" || response.status === 200 || response.status === 201) {
                 toast.success(`Invitation sent to ${userEmail}`, {
@@ -600,7 +601,7 @@ export default function EditProjectPage() {
                     taskId: null
                 };
 
-                const response = await axios.post('http://localhost:8089/api/notifications/create', notificationData);
+                const response = await axios.post(`${API_CONFIG.NOTIFICATION_SERVICE}/api/notifications/create`, notificationData);
                 
                 if (response.data?.status === "SUCCESS" || response.status === 200 || response.status === 201) {
                     toast.success(`Invitation sent to ${inviteEmail}`, {

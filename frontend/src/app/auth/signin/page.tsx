@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation"
 import { useUser } from "@/contexts/UserContext"
 import UserStorageService from "@/services/userStorageService"
 import { toast } from "sonner"
+import { API_CONFIG } from "@/lib/config"
 
 export default function SignInPage() {
     const router = useRouter()
@@ -51,7 +52,7 @@ export default function SignInPage() {
             UserStorageService.clearLoggedInUser();
 
             // Step 1: Login via Auth service  
-            const loginRes = await axios.post("http://localhost:8080/api/auth/login", {
+            const loginRes = await axios.post(`${API_CONFIG.ACCOUNTS_SERVICE}/api/auth/login`, {
                 email,
                 password,
             });
@@ -66,7 +67,7 @@ export default function SignInPage() {
 
             // Step 2: Fetch user profile from Users service
             console.log("👤 Fetching user profile from Users service...");
-            const userProfileRes = await axios.get(`http://localhost:8086/api/users/${userId}`);
+            const userProfileRes = await axios.get(`${API_CONFIG.USER_SERVICE}/api/users/${userId}`);
             
             if (userProfileRes.data?.status !== "SUCCESS") {
                 throw new Error("Failed to fetch user profile");

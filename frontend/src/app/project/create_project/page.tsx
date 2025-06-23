@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import axios, { AxiosError } from "axios";
 import { useUser } from "@/contexts/UserContext";
+import { API_CONFIG } from "@/lib/config";
 
 interface User {
     id: string;
@@ -104,12 +105,12 @@ export default function CreateProjectPage() {
     const fetchAllUsers = async () => {
         setIsLoadingUsers(true);
         try {
-            const response = await axios.get("http://localhost:8086/api/users");
+            const response = await axios.get(`${API_CONFIG.USER_SERVICE}/api/users`);
             if (response.data && response.data.status === "SUCCESS" && response.data.data) {
                 // ✅ Filter out current user (owner) from the list
                 const users = response.data.data.filter((user: User) => user.id !== currentUser?.id);
                 setAllUsers(users);
-                console.log(`✅ Loaded ${users.length} users (excluding current user)`);
+                console.log(`Loaded ${users.length} users (excluding current user)`);
             } else {
                 console.error("Failed to fetch users:", response.data);
                 toast.error("Failed to load users");
@@ -163,11 +164,11 @@ export default function CreateProjectPage() {
                 };
 
                 console.log(`PROJECT: Sending standard invitation to ${user.username}:`, notificationData);
-                return axios.post('http://localhost:8089/api/notifications/create', notificationData);
+                return axios.post(`${API_CONFIG.NOTIFICATION_SERVICE}/api/notifications/create`, notificationData);
             });
 
             await Promise.all(invitationPromises);
-            console.log(`✅ PROJECT: ${selectedUsers.length} project invitations sent successfully`);
+            console.log(`PROJECT: ${selectedUsers.length} project invitations sent successfully`);
             toast.success(`Project invitations sent to ${selectedUsers.length} users`);
         } catch (error) {
             console.error('❌ PROJECT: Failed to send project invitations:', error);
@@ -194,7 +195,7 @@ export default function CreateProjectPage() {
                 createdAt: new Date().toISOString(),
             };
 
-            const res = await axios.post("http://localhost:8083/api/projects", payload);
+            const res = await axios.post(`${API_CONFIG.PROJECTS_SERVICE}/api/projects`, payload);
             const newProjectId: string = res.data?.data?.id;
 
             if (!newProjectId) {
@@ -216,7 +217,7 @@ export default function CreateProjectPage() {
                 updatedAt: new Date().toISOString()
             };
 
-            await axios.post("http://localhost:8084/api/sprints", sprintPayload);
+            await axios.post(`${API_CONFIG.SPRINTS_SERVICE}/api/sprints`, sprintPayload);
 
             // STEP 3: Auto-add project owner as member
             try {
@@ -225,7 +226,7 @@ export default function CreateProjectPage() {
                     roleInProject: "SCRUM_MASTER" // Owner role
                 };
                 
-                await axios.post(`http://localhost:8083/api/projects/${newProjectId}/members`, ownerMemberData);
+                await axios.post(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/${newProjectId}/members`, ownerMemberData);
             } catch (ownerError) {
                 console.warn("⚠️ STEP 3 WARNING: Failed to auto-add owner as member:", ownerError);
                 // Don't fail the whole process if this fails

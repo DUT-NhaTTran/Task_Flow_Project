@@ -3,6 +3,7 @@ package com.tmnhat.projectsservice.repository;
 import com.tmnhat.projectsservice.mapper.ProjectMapper;
 import com.tmnhat.projectsservice.model.Projects;
 import com.tmnhat.projectsservice.model.Users;
+import org.springframework.stereotype.Repository;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -10,6 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+@Repository
 public class ProjectMemberDAO extends BaseDAO {
 
     public void assignMember(UUID projectId, UUID userId, String role) throws SQLException {

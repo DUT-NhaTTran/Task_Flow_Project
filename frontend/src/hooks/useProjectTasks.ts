@@ -6,6 +6,7 @@ import {
   sendTaskOverdueNotification,
   sendTaskDeletedNotification 
 } from '@/utils/taskNotifications';
+import { API_CONFIG } from "@/lib/config";
 
 // Task interface matching the one used in project pages
 interface Task {
@@ -34,7 +35,7 @@ interface ErrorResponse {
 }
 
 // API base URL
-const API_BASE_URL = 'http://localhost:8085';
+const API_BASE_URL = `${API_CONFIG.TASKS_SERVICE}`;
 
 export const useProjectTasks = () => {
   const [loading, setLoading] = useState(false);
@@ -80,7 +81,7 @@ export const useProjectTasks = () => {
       if (task.projectId) {
         try {
           console.log('🔍 Fetching project info for scrum master...', task.projectId);
-          const projectResponse = await axios.get(`http://localhost:8086/api/projects/${task.projectId}`);
+          const projectResponse = await axios.get(`${API_CONFIG.USER_SERVICE}/api/projects/${task.projectId}`);
           
           if (projectResponse.data?.status === "SUCCESS" && projectResponse.data?.data?.scrumMasterId) {
             const scrumMasterId = projectResponse.data.data.scrumMasterId;
@@ -96,7 +97,7 @@ export const useProjectTasks = () => {
 
       // Send notifications to all unique recipients using existing utility
       const uniqueRecipients = [...new Set(recipients)];
-      console.log(`📤 Final unique recipients (${uniqueRecipients.length}):`, uniqueRecipients);
+      console.log(`Final unique recipients (${uniqueRecipients.length}):`, uniqueRecipients);
 
       if (uniqueRecipients.length === 0) {
         console.log('⚠️ No recipients found for notifications');
@@ -116,7 +117,6 @@ export const useProjectTasks = () => {
         );
       }
 
-      console.log(`✅ Task status change notifications completed: ${uniqueRecipients.length} sent successfully`);
       
     } catch (notifError) {
       console.error('❌ Failed to send task status change notification:', notifError);

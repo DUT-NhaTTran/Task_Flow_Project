@@ -1,6 +1,7 @@
 package com.tmnhat.projectsservice.repository;
 
 import com.tmnhat.projectsservice.model.Projects;
+import org.springframework.stereotype.Repository;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -10,6 +11,7 @@ import java.util.List;
 import java.util.UUID;
 import java.time.LocalDateTime;
 
+@Repository
 public class ProjectDAO extends BaseDAO {
 
     public void addProject(Projects project) throws SQLException {

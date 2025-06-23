@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { useUser } from "@/contexts/UserContext";
 import { ArrowLeft, Save, Key, Shield, Eye, EyeOff, Lock } from "lucide-react";
 import axios from "axios";
+import { API_CONFIG } from "@/lib/config";
 
 interface PasswordChangeForm {
     currentPassword: string;
@@ -107,7 +108,7 @@ export default function AccountSettingsPage() {
             console.log('🔐 Changing password for user:', currentUser.id);
 
             const response = await axios.put(
-                `http://localhost:8080/api/auth/change-password/${currentUser.id}`,
+                `${API_CONFIG.ACCOUNTS_SERVICE}/api/auth/change-password/${currentUser.id}`,
                 {
                     currentPassword: passwordForm.currentPassword,
                     newPassword: passwordForm.newPassword

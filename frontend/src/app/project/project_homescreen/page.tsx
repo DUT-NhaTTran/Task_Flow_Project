@@ -33,6 +33,7 @@ import {
 import { Edit, Search, ArrowRight, Calendar, Users, Target } from "lucide-react";
 import { useUser } from "@/contexts/UserContext";
 import { Filter } from "lucide-react";
+import { API_CONFIG } from "@/lib/config";
 
 // Interface definitions
 interface Project {
@@ -210,6 +211,13 @@ export default function ProjectBoardPage() {
     updatedDateTo: ''
   });
 
+  // ✅ NEW: Search board state
+  const [searchBoardQuery, setSearchBoardQuery] = useState("");
+  const [searchBoardResults, setSearchBoardResults] = useState<SearchBoardResult[]>([]);
+  const [showSearchBoardResults, setShowSearchBoardResults] = useState(false);
+  const [isSearchingBoard, setIsSearchingBoard] = useState(false);
+  const [selectedBoardIndex, setSelectedBoardIndex] = useState(-1);
+
   // ✅ NEW: Handle filter changes
   const handleFilterChange = (filterType: keyof FilterState, value: any) => {
     setFilters(prev => ({
@@ -304,7 +312,7 @@ export default function ProjectBoardPage() {
   // Fetch project data using the provided API
   const fetchProject = async (projectId: string) => {
     try {
-      const response = await axios.get(`http://localhost:8083/api/projects/${projectId}`);
+      const response = await axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/${projectId}`);
       
       if (response.data?.status === "SUCCESS" && response.data?.data) {
         const projectData = response.data.data;
@@ -406,7 +414,7 @@ export default function ProjectBoardPage() {
     setLoadingProjects(true);
     
     try {
-      const response = await axios.get(`http://localhost:8083/api/projects/search/member?keyword=&userId=${currentUserId}`);
+      const response = await axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/search/member?keyword=&userId=${currentUserId}`);
       
       if (!mountedRef.current) {
         return;
@@ -516,7 +524,7 @@ export default function ProjectBoardPage() {
     setTasks(updatedTasks);
 
     try {
-      const response = await axios.put(`http://localhost:8085/api/tasks/${task.id}`, {
+      const response = await axios.put(`${API_CONFIG.TASKS_SERVICE}/api/tasks/${task.id}`, {
         ...task,
         status: newStatus,
         completedAt: newStatus === "DONE" ? new Date().toISOString() : null
@@ -526,7 +534,7 @@ export default function ProjectBoardPage() {
         // ✅ CLEANUP: Remove TASK_OVERDUE notifications when task is completed
         if (newStatus === "DONE") {
           try {
-            await axios.delete(`http://localhost:8089/api/notifications/task/${task.id}/overdue`);
+            await axios.delete(`${API_CONFIG.NOTIFICATION_SERVICE}/api/notifications/task/${task.id}/overdue`);
             console.log("✅ TASK_OVERDUE notifications cleaned up for completed task:", task.id);
           } catch (cleanupError) {
             console.log("📝 Failed to cleanup TASK_OVERDUE notifications (non-critical):", cleanupError);
@@ -563,7 +571,7 @@ export default function ProjectBoardPage() {
 
       let taskWithCreatedBy = task;
       try {
-        const taskDetailResponse = await axios.get(`http://localhost:8085/api/tasks/${task.id}`);
+        const taskDetailResponse = await axios.get(`${API_CONFIG.TASKS_SERVICE}/api/tasks/${task.id}`);
         
         if (taskDetailResponse.data?.status === "SUCCESS" && taskDetailResponse.data?.data) {
           taskWithCreatedBy = {
@@ -607,7 +615,7 @@ export default function ProjectBoardPage() {
       try {
         const projectApiId = taskWithCreatedBy.projectId || projectId;
         if (projectApiId) {
-          const productOwnerResponse = await axios.get(`http://localhost:8083/api/projects/${projectApiId}/manager_id`);
+          const productOwnerResponse = await axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/${projectApiId}/manager_id`);
           
           if (productOwnerResponse.data?.status === "SUCCESS" && productOwnerResponse.data?.data) {
             productOwnerId = productOwnerResponse.data.data;
@@ -658,7 +666,7 @@ export default function ProjectBoardPage() {
 
       const notificationPromises = notifications.map(async (notification) => {
         try {
-          const response = await axios.post(`http://localhost:8089/api/notifications/create`, notification);
+          const response = await axios.post(`${API_CONFIG.NOTIFICATION_SERVICE}/api/notifications/create`, notification);
           return { success: true };
         } catch (error) {
           return { success: false, error };
@@ -688,7 +696,7 @@ export default function ProjectBoardPage() {
 
       let taskWithCreatedBy = task;
       try {
-        const taskDetailResponse = await axios.get(`http://localhost:8085/api/tasks/${task.id}`);
+        const taskDetailResponse = await axios.get(`${API_CONFIG.TASKS_SERVICE}/api/tasks/${task.id}`);
         
         if (taskDetailResponse.data?.status === "SUCCESS" && taskDetailResponse.data?.data) {
           taskWithCreatedBy = {
@@ -719,7 +727,7 @@ export default function ProjectBoardPage() {
       try {
         const projectApiId = taskWithCreatedBy.projectId || projectId;
         if (projectApiId) {
-          const productOwnerResponse = await axios.get(`http://localhost:8083/api/projects/${projectApiId}/manager_id`);
+          const productOwnerResponse = await axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/${projectApiId}/manager_id`);
           
           if (productOwnerResponse.data?.status === "SUCCESS" && productOwnerResponse.data?.data) {
             const productOwnerId = productOwnerResponse.data.data;
@@ -789,7 +797,7 @@ export default function ProjectBoardPage() {
 
       const notificationPromises = notifications.map(async (notification) => {
         try {
-          const response = await axios.post(`http://localhost:8089/api/notifications/create`, notification);
+          const response = await axios.post(`${API_CONFIG.NOTIFICATION_SERVICE}/api/notifications/create`, notification);
           return { success: true };
         } catch (error) {
           return { success: false, error };
@@ -840,7 +848,7 @@ export default function ProjectBoardPage() {
         }
         
         // If not found in current tasks, fetch from API
-        const response = await axios.get(`http://localhost:8085/api/tasks/${urlTaskId}`);
+        const response = await axios.get(`${API_CONFIG.TASKS_SERVICE}/api/tasks/${urlTaskId}`);
         
         if (response.data?.data) {
           const fetchedTask = response.data.data;
@@ -923,7 +931,7 @@ export default function ProjectBoardPage() {
       }
 
       // Sử dụng API search/member với userId của người dùng hiện tại
-      const apiUrl = `http://localhost:8083/api/projects/search/member?keyword=${encodeURIComponent(term)}&userId=${currentUserId}`;
+      const apiUrl = `${API_CONFIG.PROJECTS_SERVICE}/api/projects/search/member?keyword=${encodeURIComponent(term)}&userId=${currentUserId}`;
       
       const res = await axios.get(apiUrl);
       
@@ -1030,9 +1038,9 @@ export default function ProjectBoardPage() {
       // Search in parallel: projects where user is member AND projects where user is owner
       const [memberProjectsResponse, ownerProjectsResponse] = await Promise.all([
         // Search projects that user is member of
-        axios.get(`http://localhost:8083/api/projects/search/member?keyword=${encodeURIComponent(term)}&userId=${currentUserId}`),
+        axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/search/member?keyword=${encodeURIComponent(term)}&userId=${currentUserId}`),
         // Get all projects where user is owner
-        axios.get(`http://localhost:8083/api/projects/owner/${currentUserId}`)
+        axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/owner/${currentUserId}`)
       ]);
       
       const memberProjects = memberProjectsResponse.data?.data || [];
@@ -1080,11 +1088,11 @@ export default function ProjectBoardPage() {
       for (const project of uniqueProjects.slice(0, 8)) { // Increase limit to 8 since we might have more results
         try {
           // Get active sprint for project
-          const sprintResponse = await axios.get(`http://localhost:8084/api/sprints/project/${project.id}/active`);
+          const sprintResponse = await axios.get(`${API_CONFIG.SPRINTS_SERVICE}/api/sprints/project/${project.id}/active`);
           const activeSprint = sprintResponse.data?.data;
 
           // Get all sprints count
-          const allSprintsResponse = await axios.get(`http://localhost:8084/api/sprints/project/${project.id}`);
+          const allSprintsResponse = await axios.get(`${API_CONFIG.SPRINTS_SERVICE}/api/sprints/project/${project.id}`);
           const sprintCount = allSprintsResponse.data?.data?.length || 0;
 
           // Get tasks for the project
@@ -1093,7 +1101,7 @@ export default function ProjectBoardPage() {
           let completedTaskCount = 0;
 
           if (activeSprint) {
-            const tasksResponse = await axios.get(`http://localhost:8085/api/tasks/sprint/${activeSprint.id}`);
+            const tasksResponse = await axios.get(`${API_CONFIG.TASKS_SERVICE}/api/tasks/sprint/${activeSprint.id}`);
             if (tasksResponse.data?.data) {
               tasks = tasksResponse.data.data;
               activeTaskCount = tasks.filter(task => task.status !== 'DONE').length;
@@ -1101,7 +1109,7 @@ export default function ProjectBoardPage() {
             }
           } else {
             // If no active sprint, get tasks from project (backlog)
-            const tasksResponse = await axios.get(`http://localhost:8085/api/tasks/project/${project.id}`);
+            const tasksResponse = await axios.get(`${API_CONFIG.TASKS_SERVICE}/api/tasks/project/${project.id}`);
             if (tasksResponse.data?.data) {
               tasks = tasksResponse.data.data.slice(0, 10); // Limit to 10 most recent tasks
               activeTaskCount = tasks.filter(task => task.status !== 'DONE').length;
@@ -1144,7 +1152,7 @@ export default function ProjectBoardPage() {
       // If owner search fails, fallback to member search only
       try {
         const currentUserId = userData?.profile?.id || userData?.account?.id;
-        const memberOnlyResponse = await axios.get(`http://localhost:8083/api/projects/search/member?keyword=${encodeURIComponent(term)}&userId=${currentUserId}`);
+        const memberOnlyResponse = await axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/search/member?keyword=${encodeURIComponent(term)}&userId=${currentUserId}`);
         const memberProjects = memberOnlyResponse.data?.data || [];
         
         // Return simplified results for member projects only
@@ -1265,7 +1273,7 @@ export default function ProjectBoardPage() {
       
       try {
         const promises = statuses.map((status) =>
-          axios.get(`http://localhost:8085/api/tasks/filter_details`, {
+          axios.get(`${API_CONFIG.TASKS_SERVICE}/api/tasks/filter_details`, {
             params: { status, projectId, sprintId },
           })
         );
@@ -1317,7 +1325,7 @@ export default function ProjectBoardPage() {
     if (!projectId) return;
 
     axios
-      .get(`http://localhost:8083/api/projects/${projectId}`)
+      .get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/${projectId}`)
       .then((res) => {
         const projectData = res.data?.data;
         setProject(projectData);
@@ -1327,7 +1335,7 @@ export default function ProjectBoardPage() {
       });
 
     axios
-      .get(`http://localhost:8083/api/projects/${projectId}/users`)
+      .get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/${projectId}/users`)
       .then((res) => {
         const users = res.data?.data || [];
         setProjectUsers(users);
@@ -1337,7 +1345,7 @@ export default function ProjectBoardPage() {
       });
 
     axios
-      .get(`http://localhost:8084/api/sprints/project/${projectId}`)
+      .get(`${API_CONFIG.SPRINTS_SERVICE}/api/sprints/project/${projectId}`)
       .then((res) => {
         const sprintsData = res.data?.data || [];
         
@@ -1360,7 +1368,7 @@ export default function ProjectBoardPage() {
     if (!projectId) return;
     
     axios
-      .get(`http://localhost:8084/api/sprints/project/${projectId}/active`)
+      .get(`${API_CONFIG.SPRINTS_SERVICE}/api/sprints/project/${projectId}/active`)
       .then((res) => {
         // Handle new API response format with ResponseDataAPI
         const sprint = res.data?.data;
@@ -1388,7 +1396,7 @@ export default function ProjectBoardPage() {
     }
     
     axios
-      .get(`http://localhost:8084/api/sprints/project/${projectId}`)
+      .get(`${API_CONFIG.SPRINTS_SERVICE}/api/sprints/project/${projectId}`)
       .then((res) => {
         const sprintsData = res.data?.data || [];
         
@@ -1500,7 +1508,7 @@ export default function ProjectBoardPage() {
       setNewTasks((prev) => ({ ...prev, [status]: "" }));
 
       // Create task via API first
-      const res = await axios.post("http://localhost:8085/api/tasks", {
+      const res = await axios.post(`${API_CONFIG.TASKS_SERVICE}/api/tasks`, {
         title,
         content: title,
         status,
@@ -1644,7 +1652,7 @@ export default function ProjectBoardPage() {
       // Update the selected task in the state first for immediate UI update
       setSelectedTask(updatedTask);
       
-      const res = await axios.put(`http://localhost:8085/api/tasks/${updatedTask.id}`, updatedTask);
+      const res = await axios.put(`${API_CONFIG.TASKS_SERVICE}/api/tasks/${updatedTask.id}`, updatedTask);
       
       if (res.data?.status === "SUCCESS") {
         toast.success("Task updated successfully");
@@ -1717,7 +1725,7 @@ export default function ProjectBoardPage() {
     // Nếu không tìm thấy user trong projectUsers, gọi API
     try {
       // Gọi API để lấy thông tin user
-      const response = await axios.get(`http://localhost:8086/api/users/${userId}`);
+      const response = await axios.get(`${API_CONFIG.USER_SERVICE}/api/users/${userId}`);
       const userData = response.data?.data;
       
       if (!userData) {
@@ -2014,7 +2022,7 @@ export default function ProjectBoardPage() {
       
       try {
         setLoadingUsers(true);
-        const res = await axios.get(`http://localhost:8086/api/users/project/${projectId}`);
+        const res = await axios.get(`${API_CONFIG.USER_SERVICE}/api/users/project/${projectId}`);
         const users = res.data?.data || [];
         
         // Cập nhật danh sách users
@@ -2097,7 +2105,7 @@ export default function ProjectBoardPage() {
         const previousAssigneeId = task.assigneeId;
         const isReassignment = previousAssigneeId && previousAssigneeId !== userId;
         
-        await axios.put(`http://localhost:8085/api/tasks/${task.id}`, {
+        await axios.put(`${API_CONFIG.TASKS_SERVICE}/api/tasks/${task.id}`, {
           ...task,
           assigneeId: userId || null,
           assigneeName: isValid ? userName : "Unassigned"
@@ -2153,7 +2161,7 @@ export default function ProjectBoardPage() {
               
               try {
                 const notificationResponse = await axios.post(
-                  "http://localhost:8089/api/notifications/create", 
+                  `${API_CONFIG.NOTIFICATION_SERVICE}/api/notifications/create`, 
                   notificationData,
                   {
                     headers: {
@@ -2462,7 +2470,7 @@ export default function ProjectBoardPage() {
     
     try {
       // 1. Fetch overdue tasks for current project
-      const response = await axios.get(`http://localhost:8085/api/tasks/project/${projectId}/overdue`);
+      const response = await axios.get(`${API_CONFIG.TASKS_SERVICE}/api/tasks/project/${projectId}/overdue`);
       
       if (response.data?.status === "SUCCESS" && response.data?.data) {
         const overdueTasks = response.data.data;
@@ -2647,13 +2655,6 @@ export default function ProjectBoardPage() {
     });
     return Array.from(labels);
   }, [tasks]);
-
-  // ✅ NEW: Search board state
-  const [searchBoardQuery, setSearchBoardQuery] = useState("");
-  const [searchBoardResults, setSearchBoardResults] = useState<SearchBoardResult[]>([]);
-  const [showSearchBoardResults, setShowSearchBoardResults] = useState(false);
-  const [isSearchingBoard, setIsSearchingBoard] = useState(false);
-  const [selectedBoardIndex, setSelectedBoardIndex] = useState(-1);
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -2887,13 +2888,13 @@ export default function ProjectBoardPage() {
                   onClick={async () => {
                     if (confirm(`Are you sure you want to complete the current sprint "${currentSprint.name}"?`)) {
                       try {
-                        const response = await axios.put(`http://localhost:8084/api/sprints/${currentSprint.id}/complete`);
+                        const response = await axios.put(`${API_CONFIG.SPRINTS_SERVICE}/api/sprints/${currentSprint.id}/complete`);
                         if (response.data?.status === "SUCCESS") {
                           toast.success("Sprint completed successfully!");
                           
                           // ✅ CLEANUP: Remove SPRINT_OVERDUE notifications when sprint is completed
                           try {
-                            await axios.delete(`http://localhost:8089/api/notifications/sprint/${currentSprint.id}/overdue`);
+                            await axios.delete(`${API_CONFIG.NOTIFICATION_SERVICE}/api/notifications/sprint/${currentSprint.id}/overdue`);
                             console.log("✅ SPRINT_OVERDUE notifications cleaned up for completed sprint:", currentSprint.id);
                           } catch (cleanupError) {
                             console.log("📝 Failed to cleanup SPRINT_OVERDUE notifications (non-critical):", cleanupError);
@@ -3405,7 +3406,7 @@ export default function ProjectBoardPage() {
                 setSelectedTask(parentTask);
               } else {
                 // If not found, fetch from API
-                const response = await axios.get(`http://localhost:8085/api/tasks/${parentTaskId}`);
+                const response = await axios.get(`${API_CONFIG.TASKS_SERVICE}/api/tasks/${parentTaskId}`);
                 if (response.data?.status === "SUCCESS") {
                   setSelectedTask(response.data.data as Task);
                 } else {

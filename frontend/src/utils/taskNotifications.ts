@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { safeValidateUUID, validateProjectId, validateUserId, validateTaskId, validateSprintId } from './uuidUtils';
+import { API_CONFIG } from "@/lib/config";
 
 interface Task {
   id: string;
@@ -71,7 +72,6 @@ const markSprintOverdueNotificationSent = (sprintId: string): void => {
     if (!sentNotifications.includes(sprintId)) {
       sentNotifications.push(sprintId);
       localStorage.setItem(SPRINT_OVERDUE_NOTIFICATIONS_KEY, JSON.stringify(sentNotifications));
-      console.log(`📝 SPRINT OVERDUE: Marked sprint ${sprintId} as notified`);
     }
   } catch (error) {
     console.error('Error saving sent sprint notification to localStorage:', error);
@@ -97,7 +97,6 @@ const cleanupSprintOverdueNotifications = (activeSprints: Sprint[]): void => {
     
     if (cleanedNotifications.length !== sentNotifications.length) {
       localStorage.setItem(SPRINT_OVERDUE_NOTIFICATIONS_KEY, JSON.stringify(cleanedNotifications));
-      console.log(`🧹 SPRINT OVERDUE: Cleaned up ${sentNotifications.length - cleanedNotifications.length} old notification records`);
     }
   } catch (error) {
     console.error('Error cleaning up sprint notifications:', error);
@@ -150,9 +149,7 @@ export const sendTaskOverdueNotification = async (task: Task): Promise<void> => 
       taskId: validatedTaskId
     };
 
-    console.log('📤 TASK OVERDUE: Sending notification:', notificationData);
-    await axios.post(`http://localhost:8089/api/notifications/create`, notificationData);
-    console.log('✅ TASK OVERDUE: Notification sent successfully for task:', task.id);
+    await axios.post(`${API_CONFIG.NOTIFICATION_SERVICE}/api/notifications/create`, notificationData);
   } catch (error) {
     console.error('❌ TASK OVERDUE: Failed to send notification:', error);
   }
@@ -204,9 +201,7 @@ export const sendTaskStatusChangedNotification = async (
       taskId: validatedTaskId
     };
 
-    console.log('📤 TASK STATUS CHANGED: Sending notification:', notificationData);
-    await axios.post(`http://localhost:8089/api/notifications/create`, notificationData);
-    console.log('✅ TASK STATUS CHANGED: Notification sent successfully');
+    await axios.post(`${API_CONFIG.NOTIFICATION_SERVICE}/api/notifications/create`, notificationData);
   } catch (error) {
     console.error('❌ TASK STATUS CHANGED: Failed to send notification:', error);
   }
@@ -248,9 +243,7 @@ export const sendTaskDeletedNotification = async (
       taskId: validatedTaskId
     };
 
-    console.log('📤 TASK DELETED: Sending notification:', notificationData);
-    await axios.post(`http://localhost:8089/api/notifications/create`, notificationData);
-    console.log('✅ TASK DELETED: Notification sent successfully');
+    await axios.post(`${API_CONFIG.NOTIFICATION_SERVICE}/api/notifications/create`, notificationData);
   } catch (error) {
     console.error('❌ TASK DELETED: Failed to send notification:', error);
   }
@@ -277,16 +270,11 @@ export const sendSprintOverdueNotification = async (
   poUserId: string, 
   scrumMasterId?: string
 ): Promise<void> => {
-  console.log('🔔 SPRINT OVERDUE: Starting notification process for sprint:', sprint.name);
-  console.log('🔔 SPRINT OVERDUE: Sprint data:', sprint);
-  console.log('🔔 SPRINT OVERDUE: PO User ID:', poUserId);
-  console.log('🔔 SPRINT OVERDUE: Scrum Master ID:', scrumMasterId);
+
   
   try {
     // Validate UUIDs before sending
-    console.log('🔍 SPRINT OVERDUE: Validating project ID:', sprint.projectId);
     const validatedProjectId = sprint.projectId ? validateProjectId(sprint.projectId) : null;
-    console.log('🔍 SPRINT OVERDUE: Validated project ID:', validatedProjectId);
     
     if (!validatedProjectId) {
       console.error('❌ SPRINT OVERDUE: Cannot send notification - invalid project ID');
@@ -297,10 +285,8 @@ export const sendSprintOverdueNotification = async (
     if (scrumMasterId && scrumMasterId !== poUserId) {
       recipients.push(scrumMasterId);
     }
-    console.log('🔍 SPRINT OVERDUE: Recipients list:', recipients);
 
     for (const recipientId of recipients) {
-      console.log('🔍 SPRINT OVERDUE: Processing recipient:', recipientId);
       
       try {
         const validatedRecipientId = validateUserId(recipientId);
@@ -319,15 +305,11 @@ export const sendSprintOverdueNotification = async (
           // Remove sprintId and actionUrl - backend doesn't support them in /create endpoint
         };
 
-        console.log('📤 SPRINT OVERDUE: Sending notification payload:', JSON.stringify(notificationData, null, 2));
         
-        const response = await axios.post(`http://localhost:8089/api/notifications/create`, notificationData);
-        console.log('✅ SPRINT OVERDUE: Response received:', response.status, response.data);
-        console.log('✅ SPRINT OVERDUE: Notification sent successfully for sprint:', sprint.id, 'to recipient:', recipientId);
+        const response = await axios.post(`${API_CONFIG.NOTIFICATION_SERVICE}/api/notifications/create`, notificationData);
         
       } catch (recipientError: any) {
-        console.error('❌ SPRINT OVERDUE: Failed to send notification to recipient:', recipientId);
-        console.error('❌ SPRINT OVERDUE: Recipient error details:', recipientError);
+       
         if (recipientError.response) {
           console.error('❌ SPRINT OVERDUE: Error response status:', recipientError.response.status);
           console.error('❌ SPRINT OVERDUE: Error response data:', recipientError.response.data);
@@ -337,14 +319,11 @@ export const sendSprintOverdueNotification = async (
     
     // Mark notification as sent after all recipients have been processed
     markSprintOverdueNotificationSent(sprint.id);
-    console.log('📝 SPRINT OVERDUE: Marked sprint as notified for future checks');
     
   } catch (error: any) {
     console.error('❌ SPRINT OVERDUE: General error in sendSprintOverdueNotification:', error);
     if (error.response) {
-      console.error('❌ SPRINT OVERDUE: Error response status:', error.response.status);
-      console.error('❌ SPRINT OVERDUE: Error response data:', error.response.data);
-      console.error('❌ SPRINT OVERDUE: Error response headers:', error.response.headers);
+    
     }
     console.error('❌ SPRINT OVERDUE: Error stack trace:', error.stack);
   }
@@ -368,28 +347,16 @@ export const checkAndNotifyOverdueSprints = async (
     if (isSprintOverdue(sprint)) {
       // Check if we've already sent notification for this sprint
       if (hasSprintOverdueNotificationBeenSent(sprint.id)) {
-        console.log(`📋 SPRINT OVERDUE: Sprint "${sprint.name}" is overdue but notification already sent, skipping...`);
         alreadyNotifiedCount++;
         continue;
       }
       
-      console.log(`📅 SPRINT OVERDUE: Sprint "${sprint.name}" is overdue, sending notifications...`);
       await sendSprintOverdueNotification(sprint, poUserId, scrumMasterId);
       overdueCount++;
     }
   }
   
-  if (overdueCount > 0) {
-    console.log(`✅ SPRINT OVERDUE CHECK: Found ${overdueCount} new overdue sprint(s), notifications sent`);
-  }
   
-  if (alreadyNotifiedCount > 0) {
-    console.log(`📋 SPRINT OVERDUE CHECK: Skipped ${alreadyNotifiedCount} sprint(s) that were already notified`);
-  }
-  
-  if (overdueCount === 0 && alreadyNotifiedCount === 0) {
-    console.log('✅ SPRINT OVERDUE CHECK: No overdue sprints found');
-  }
 };
 
 // Reset notification status for a specific sprint (e.g., when sprint is completed or reopened)

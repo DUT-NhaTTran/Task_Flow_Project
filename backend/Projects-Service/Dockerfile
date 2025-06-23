@@ -1,22 +1,4 @@
-# Multi-stage build for Java Spring Boot with Common dependency
-FROM eclipse-temurin:21-jdk AS common-build
-
-# Install Maven
-RUN apt-get update && \
-    apt-get install -y maven && \
-    rm -rf /var/lib/apt/lists/*
-
-# Set working directory
-WORKDIR /app
-
-# Copy common service files
-COPY common ./common/
-
-# Build common module first
-WORKDIR /app/common
-RUN mvn clean install -DskipTests
-
-# Main build stage for Projects Service
+# Build stage for Projects Service with Common dependency
 FROM eclipse-temurin:21-jdk AS build
 
 # Install Maven
@@ -25,19 +7,25 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Set working directory
-WORKDIR /app
+WORKDIR /workspace
 
-# Copy common artifact from previous stage
-COPY --from=common-build /root/.m2 /root/.m2
+# Copy parent pom and common module first
+COPY pom.xml .
+COPY common/ ./common/
 
-# Copy projects service files
-COPY Projects-Service/pom.xml ./
-COPY Projects-Service/src ./src/
-COPY Projects-Service/mvnw ./
-COPY Projects-Service/.mvn ./.mvn/
+# Build and install common module first
+WORKDIR /workspace/common
+RUN mvn clean install -DskipTests
 
-# Build the application
-RUN ./mvnw clean package -DskipTests
+# Copy Projects Service pom and source
+WORKDIR /workspace
+COPY Projects-Service/pom.xml ./Projects-Service/
+COPY Projects-Service/src/ ./Projects-Service/src/
+
+# Build the projects service
+WORKDIR /workspace/Projects-Service
+RUN mvn dependency:go-offline -DskipTests
+RUN mvn clean package -DskipTests
 
 # Runtime stage
 FROM eclipse-temurin:21-jre
@@ -49,7 +37,7 @@ RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 # Copy built jar from build stage
-COPY --from=build /app/target/*.jar app.jar
+COPY --from=build /workspace/Projects-Service/target/*.jar app.jar
 
 # Create non-root user
 RUN addgroup --system spring && adduser --system spring --ingroup spring

@@ -1,4 +1,4 @@
-package com.taskflow.notification.payload.enums;
+package com.tmnhat.notificationservice.payload.enums;
 
 public enum NotificationType {
     TASK_CREATED,

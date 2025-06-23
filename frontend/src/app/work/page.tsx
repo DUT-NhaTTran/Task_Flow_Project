@@ -22,6 +22,7 @@ import {
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import axios from "axios";
+import { API_CONFIG } from "@/lib/config";
 
 // Types
 interface Task {
@@ -146,7 +147,7 @@ export default function AllWorkPage() {
     
     try {
       // Fetch projects using the correct API
-      const projectsRes = await axios.get(`http://localhost:8083/api/projects/search/member?keyword=&userId=${userId}`);
+      const projectsRes = await axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/search/member?keyword=&userId=${userId}`);
       const userProjects = Array.isArray(projectsRes.data?.data) ? projectsRes.data.data : [];
       
 
@@ -157,7 +158,7 @@ export default function AllWorkPage() {
       const allTasks: Task[] = [];
       for (const project of userProjects) {
         try {
-          const tasksRes = await axios.get(`http://localhost:8085/api/tasks/project/${project.id}`);
+          const tasksRes = await axios.get(`${API_CONFIG.TASKS_SERVICE}/api/tasks/project/${project.id}`);
           const projectTasks = Array.isArray(tasksRes.data) ? tasksRes.data : [];
           
           const tasksWithProjectInfo = projectTasks.map((task: Task) => ({

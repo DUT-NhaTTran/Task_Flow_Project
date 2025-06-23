@@ -1,22 +1,4 @@
-# Multi-stage build for Java Spring Boot with Common dependency
-FROM eclipse-temurin:21-jdk AS common-build
-
-# Install Maven
-RUN apt-get update && \
-    apt-get install -y maven && \
-    rm -rf /var/lib/apt/lists/*
-
-# Set working directory
-WORKDIR /app
-
-# Copy common service files
-COPY common ./common/
-
-# Build common module first
-WORKDIR /app/common
-RUN mvn clean install -DskipTests
-
-# Main build stage for File Service
+# Build stage for File Service with Common dependency
 FROM eclipse-temurin:21-jdk AS build
 
 # Install Maven
@@ -25,16 +7,17 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Set working directory
-WORKDIR /app
+WORKDIR /workspace
 
-# Copy common artifact from previous stage
-COPY --from=common-build /root/.m2 /root/.m2
+# Copy the entire backend workspace (this Dockerfile should be run from backend directory)
+COPY . .
 
-# Copy file service files
-COPY File-Service/pom.xml ./
-COPY File-Service/src ./src/
+# First, build and install the common module
+WORKDIR /workspace/common
+RUN mvn clean install -DskipTests
 
-# Build the application
+# Then build the file service
+WORKDIR /workspace/File-Service
 RUN mvn clean package -DskipTests
 
 # Runtime stage
@@ -47,7 +30,7 @@ RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 # Copy built jar from build stage
-COPY --from=build /app/target/*.jar app.jar
+COPY --from=build /workspace/File-Service/target/*.jar app.jar
 
 # Create non-root user
 RUN addgroup --system spring && adduser --system spring --ingroup spring

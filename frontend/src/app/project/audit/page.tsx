@@ -8,6 +8,7 @@ import { TopNavigation } from "@/components/ui/top-navigation";
 import { toast } from "sonner";
 import { useUserStorage } from "@/hooks/useUserStorage";
 import { useNavigation } from "@/contexts/NavigationContext";
+import { API_CONFIG } from "@/lib/config";
 
 interface DeletedSprint {
   id: string;
@@ -67,7 +68,7 @@ export default function AuditPage() {
     try {
       // Fetch deleted sprints from Sprints service
       const deletedSprintsResponse = await axios.get(
-        `http://localhost:8084/api/sprints/project/${projectId}/deleted`,
+        `${API_CONFIG.SPRINTS_SERVICE}/api/sprints/project/${projectId}/deleted`,
         {
           headers: {
             "X-User-Id": userId
@@ -75,7 +76,7 @@ export default function AuditPage() {
         }
       );
       // Fetch cancelled sprints from Sprints service
-      const cancelledSprintsUrl = `http://localhost:8084/api/sprints/project/${projectId}/cancelled`;
+      const cancelledSprintsUrl = `${API_CONFIG.SPRINTS_SERVICE}/api/sprints/project/${projectId}/cancelled`;
       const cancelledSprintsResponse = await axios.get(
         cancelledSprintsUrl,
         {
@@ -112,7 +113,7 @@ export default function AuditPage() {
     }
     try {
       await axios.put(
-        `http://localhost:8084/api/sprints/${sprintId}/restore`,
+        `${API_CONFIG.SPRINTS_SERVICE}/api/sprints/${sprintId}/restore`,
         {},
         {
           headers: {

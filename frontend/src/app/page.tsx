@@ -1,11 +1,14 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, Suspense } from "react"
 import { useRouter } from "next/navigation"
 import { useUser } from "@/contexts/UserContext"
 import UserStorageService from "@/services/userStorageService"
 
-export default function HomePage() {
+// Disable static optimization for this page
+export const dynamic = 'force-dynamic'
+
+function HomePageContent() {
   const router = useRouter()
   const { currentUser, clearCurrentUserId } = useUser()
 
@@ -42,5 +45,20 @@ export default function HomePage() {
         <p className="text-sm text-gray-500 mt-2">Please wait while we verify your session.</p>
       </div>
     </div>
+  )
+}
+
+export default function HomePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="bg-white rounded-lg shadow-md p-8 text-center">
+          <div className="animate-spin h-8 w-8 border-2 border-blue-600 rounded-full border-t-transparent mx-auto mb-4"></div>
+          <h2 className="text-lg font-semibold text-gray-700">Loading...</h2>
+        </div>
+      </div>
+    }>
+      <HomePageContent />
+    </Suspense>
   )
 }

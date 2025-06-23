@@ -1,4 +1,4 @@
-package com.taskflow.notification;
+package com.tmnhat.notificationservice;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

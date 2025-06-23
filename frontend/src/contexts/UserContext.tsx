@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import axios from 'axios';
+import { API_CONFIG } from '@/lib/config';
 
 // Export types for external usage
 export interface User {
@@ -101,14 +102,14 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
       try {
         console.log("🔄 UserContext: Trying auth service...");
         const authResponse = await axios.get(
-          `http://localhost:8080/api/auth/${currentUserId}/user-id`,
+          `${API_CONFIG.ACCOUNTS_SERVICE}/api/auth/${currentUserId}/user-id`,
           { timeout: 5000 } // 5 second timeout
         );
 
         if (authResponse.data && authResponse.data.userId) {
           // Then fetch full user details
           const userResponse = await axios.get(
-            `http://localhost:8086/api/users/${authResponse.data.userId}`,
+            `${API_CONFIG.USER_SERVICE}/api/users/${authResponse.data.userId}`,
             { timeout: 5000 }
           );
           
@@ -126,7 +127,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
         try {
           console.log("🔄 UserContext: Trying direct user service...");
           const directResponse = await axios.get(
-            `http://localhost:8086/api/users/${currentUserId}`,
+            `${API_CONFIG.USER_SERVICE}/api/users/${currentUserId}`,
             { timeout: 5000 }
           );
           
@@ -211,7 +212,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
       
       // Try user service directly first (more reliable)
       try {
-        const response = await axios.get(`http://localhost:8086/api/users/${userId}`, {
+        const response = await axios.get(`${API_CONFIG.USER_SERVICE}/api/users/${userId}`, {
           timeout: 5000 // 5 second timeout
         });
         if (response.data?.data) {

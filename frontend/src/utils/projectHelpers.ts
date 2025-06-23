@@ -1,4 +1,5 @@
 import axios from "axios";
+import { API_CONFIG } from "@/lib/config";
 import { toast } from "sonner";
 
 export interface Project {
@@ -57,7 +58,7 @@ export const getUserId = () => {
 export const testUserService = async () => {
     try {
         console.log('🏥 Testing User Service connectivity...');
-        const response = await axios.get('http://localhost:8086/api/users', { 
+        const response = await axios.get(`${API_CONFIG.USER_SERVICE}/api/users`, { 
             timeout: 3000,
             params: { limit: 1 }
         });
@@ -105,7 +106,7 @@ export const fetchUserDetailsWithFallback = async (userId: string, userDetailsCa
             return fallbackData;
         }
 
-        const response = await axios.get(`http://localhost:8086/api/users/${userId}`, { timeout: 10000 });
+        const response = await axios.get(`${API_CONFIG.USER_SERVICE}/api/users/${userId}`, { timeout: 10000 });
         
         if (response.data?.status === "SUCCESS" && response.data?.data) {
             const userData = response.data.data;
@@ -170,7 +171,7 @@ export const sendProjectDeletionNotifications = async (deletedProject: Project, 
         
         // Check notification service health
         try {
-            await axios.get(`http://localhost:8089/api/notifications/health`, { timeout: 5000 });
+            await axios.get(`${API_CONFIG.NOTIFICATION_SERVICE}/api/notifications/health`, { timeout: 5000 });
         } catch (healthError: any) {
             throw new Error('Notification service is not available');
         }
@@ -231,7 +232,7 @@ export const sendProjectDeletionNotifications = async (deletedProject: Project, 
             };
             
             try {
-                const response = await axios.post(`http://localhost:8089/api/notifications/create`, apiPayload, {
+                const response = await axios.post(`${API_CONFIG.NOTIFICATION_SERVICE}/api/notifications/create`, apiPayload, {
                     headers: { 'Content-Type': 'application/json' },
                     timeout: 15000
                 });
@@ -251,7 +252,7 @@ export const sendProjectDeletionNotifications = async (deletedProject: Project, 
         const successful = results.filter(r => r.success).length;
         const failed = results.filter(r => !r.success).length;
         
-        console.log(`📊 Notification Results: ${successful} successful, ${failed} failed`);
+        console.log(`Notification Results: ${successful} successful, ${failed} failed`);
         
         if (successful === 0 && results.length > 0) {
             throw new Error(`All notifications failed (${failed}/${results.length})`);

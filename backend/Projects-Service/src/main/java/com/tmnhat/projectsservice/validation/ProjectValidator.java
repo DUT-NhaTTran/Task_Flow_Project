@@ -8,22 +8,22 @@ import java.util.UUID;
 public class ProjectValidator {
 
     public static void validateProject(Projects project) {
-        if (project == null) {
-            throw new BadRequestException("Project data is required");
-        }
         if (project.getName() == null || project.getName().trim().isEmpty()) {
-            throw new BadRequestException("Project name cannot be empty");
-        }
-        if (project.getDescription() == null || project.getDescription().trim().isEmpty()) {
-            throw new BadRequestException("Project description cannot be empty");
+            throw new BadRequestException("Project name is required");
         }
         if (project.getOwnerId() == null) {
-            throw new BadRequestException("Owner ID cannot be null");
+            throw new BadRequestException("Owner ID is required");
+        }
+        if (project.getKey() == null || project.getKey().trim().isEmpty()) {
+            throw new BadRequestException("Project key is required");
+        }
+        if (project.getProjectType() == null || project.getProjectType().trim().isEmpty()) {
+            throw new BadRequestException("Project type is required");
         }
     }
 
-    public static void validateProjectId(UUID id) {
-        if (id == null) {
+    public static void validateProjectId(UUID projectId) {
+        if (projectId == null) {
             throw new BadRequestException("Project ID is required");
         }
     }

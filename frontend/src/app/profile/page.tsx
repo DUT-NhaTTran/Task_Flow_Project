@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { useUser } from "@/contexts/UserContext";
 import { ArrowLeft, Save, Upload, Camera, User, Shield, Calendar, Phone, X } from "lucide-react";
 import axios from "axios";
+import { API_CONFIG } from "@/lib/config";
 
 interface UserProfile {
     id: string;
@@ -203,7 +204,7 @@ export default function ProfilePage() {
             formData.append('avatar', file);
 
             const response = await axios.patch(
-                `http://localhost:8086/api/users/${profile.id}/avatar`,
+                `${API_CONFIG.USER_SERVICE}/api/users/${profile.id}/avatar`,
                 formData,
                 { headers: { 'Content-Type': 'multipart/form-data' } }
             );
@@ -251,7 +252,7 @@ export default function ProfilePage() {
             };
 
             const response = await axios.put(
-                `http://localhost:8086/api/users/${profile.id}`,
+                `${API_CONFIG.USER_SERVICE}/api/users/${profile.id}`,
                 updateData,
                 { headers: { 'Content-Type': 'application/json' } }
             );
@@ -261,7 +262,7 @@ export default function ProfilePage() {
                 if (profile.userRole !== originalProfile.userRole) {
                     try {
                         await axios.patch(
-                            `http://localhost:8086/api/users/${profile.id}/role?role=${profile.userRole}`,
+                            `${API_CONFIG.USER_SERVICE}/api/users/${profile.id}/role?role=${profile.userRole}`,
                             {},
                             { headers: { 'Content-Type': 'application/json' } }
                         );

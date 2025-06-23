@@ -1,9 +1,9 @@
-package com.taskflow.notification.controller;
+package com.tmnhat.notificationservice.controller;
 
-import com.taskflow.notification.model.Notification;
-import com.taskflow.notification.payload.enums.NotificationType;
-import com.taskflow.notification.service.NotificationService;
-import com.tmnhat.common.payload.ResponseDataAPI;
+import com.tmnhat.notificationservice.model.Notification;
+import com.tmnhat.notificationservice.payload.enums.NotificationType;
+import com.tmnhat.notificationservice.service.NotificationService;
+import com.tmnhat.notificationservice.payload.ResponseDataAPI;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;

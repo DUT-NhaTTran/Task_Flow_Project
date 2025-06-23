@@ -1,7 +1,7 @@
-package com.taskflow.notification.repository;
+package com.tmnhat.notificationservice.repository;
 
-import com.taskflow.notification.model.Notification;
-import com.taskflow.notification.payload.enums.NotificationType;
+import com.tmnhat.notificationservice.model.Notification;
+import com.tmnhat.notificationservice.payload.enums.NotificationType;
 import org.springframework.stereotype.Repository;
 
 import java.sql.ResultSet;

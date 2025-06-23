@@ -22,6 +22,7 @@ import {
   canStartEndSprints,
   UserPermissions
 } from "@/utils/permissions";
+import { API_CONFIG } from "@/lib/config";
 
 // Custom debounce function
 const debounce = (func: (...args: any[]) => void, delay: number) => {
@@ -895,7 +896,7 @@ export default function CalendarPage() {
         return [];
       }
 
-      const response = await axios.get(`http://localhost:8083/api/projects/${projectId}/users`, {
+      const response = await axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/${projectId}/users`, {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
@@ -922,7 +923,7 @@ export default function CalendarPage() {
     additionalInfo?: string
   ) => {
     try {
-      console.log(`🔔 CALENDAR NOTIFICATION: Starting ${notificationType} notification process...`);
+      console.log(`CALENDAR NOTIFICATION: Starting ${notificationType} notification process...`);
       
       // Validate projectId before proceeding
       if (!projectId) {
@@ -961,18 +962,16 @@ export default function CalendarPage() {
       const currentUserId = userData.account?.id || userData.profile?.id;
       const currentUserName = userData.profile?.username || userData.profile?.firstName || userData.account?.email || 'User';
 
-      console.log(`🔔 CALENDAR NOTIFICATION: Starting ${notificationType} for sprint "${sprint.name}"`);
 
       // Fetch project members
       const projectMembers = await fetchProjectMembers();
-      console.log(`👥 CALENDAR NOTIFICATION: Found ${projectMembers.length} project members`);
 
       // Fetch project details to get product owner
       let productOwnerId: string | null = null;
       let projectName = "TaskFlow Project";
       
       try {
-        const projectResponse = await axios.get(`http://localhost:8083/api/projects/${validatedProjectId}`);
+        const projectResponse = await axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/${validatedProjectId}`);
         if (projectResponse.data?.status === "SUCCESS" && projectResponse.data?.data) {
           productOwnerId = projectResponse.data.data.ownerId; // Product Owner, not Scrum Master
           projectName = projectResponse.data.data.name || projectName;
@@ -1057,7 +1056,7 @@ export default function CalendarPage() {
 
 
         try {
-          const response = await axios.post('http://localhost:8089/api/notifications/create', notificationData, {
+          const response = await axios.post(`${API_CONFIG.NOTIFICATION_SERVICE}/api/notifications/create`, notificationData, {
             headers: {
               'Content-Type': 'application/json',
               'Accept': 'application/json',
@@ -1080,14 +1079,8 @@ export default function CalendarPage() {
       const successful = results.filter(r => r.status === 'fulfilled').length;
       const failed = results.filter(r => r.status === 'rejected').length;
 
-      console.log(`📊 CALENDAR NOTIFICATION: Results - ${successful} successful, ${failed} failed out of ${recipientIds.length} total`);
 
-      if (successful > 0) {
-        console.log(`✅ CALENDAR NOTIFICATION: ${successful} ${notificationType} notifications sent successfully`);
-      }
-      if (failed > 0) {
-        console.warn(`❌ CALENDAR NOTIFICATION: ${failed} notifications failed to send`);
-      }
+    
 
     } catch (error) {
       console.error(`❌ CALENDAR NOTIFICATION: Failed to send ${notificationType} notifications:`, error);
@@ -1108,7 +1101,7 @@ export default function CalendarPage() {
         } else {
           // Call filter API for sprints
           const sprintsResponse = await axios.get(
-            `http://localhost:8084/api/sprints/project/${projectId}/calendar/filter`,
+            `${API_CONFIG.SPRINTS_SERVICE}/api/sprints/project/${projectId}/calendar/filter`,
             {
               params: { search: searchValue }
             }
@@ -1279,7 +1272,7 @@ export default function CalendarPage() {
 
         // Fetch all sprints for the project
         const sprintsResponse = await axios.get(
-          `http://localhost:8084/api/sprints/project/${projectId}`
+          `${API_CONFIG.SPRINTS_SERVICE}/api/sprints/project/${projectId}`
         );
         const sprintsData = sprintsResponse.data?.data || [];
         setAllSprints(sprintsData); // Store all sprints
@@ -1375,7 +1368,7 @@ export default function CalendarPage() {
       // Get original sprint for comparison (to detect changes)
       const originalSprint = sprints.find(s => s.id === updatedSprint.id) || allSprints.find(s => s.id === updatedSprint.id);
 
-      const response = await axios.put(`http://localhost:8084/api/sprints/${updatedSprint.id}`, {
+      const response = await axios.put(`${API_CONFIG.SPRINTS_SERVICE}/api/sprints/${updatedSprint.id}`, {
         name: updatedSprint.name,
         goal: updatedSprint.goal,
         startDate: updatedSprint.startDate,
@@ -1403,7 +1396,6 @@ export default function CalendarPage() {
           if (originalSprint) {
             // Check for status changes first (highest priority)
             if (originalSprint.status !== updatedSprint.status) {
-              console.log(`🔍 CALENDAR: Sprint status changed from "${originalSprint.status}" to "${updatedSprint.status}"`);
               
               // Handle specific status change notifications
               if (originalSprint.status === "NOT_STARTED" && updatedSprint.status === "ACTIVE") {
@@ -1415,7 +1407,7 @@ export default function CalendarPage() {
                 await sendSprintNotificationToMembers("SPRINT_COMPLETED", updatedSprint);
               } else {
                 // Other status changes - send general update
-                await sendSprintNotificationToMembers("SPRINT_UPDATED", updatedSprint, `Status changed to ${updatedSprint.status}`);
+                await sendSprintNotificationToMembers("SPRINT_UPDATED", updatedSprint, 'Status changed to ${updatedSprint.status}');
               }
             }
             // Check if goal was specifically updated (if no status change)
@@ -1516,7 +1508,7 @@ export default function CalendarPage() {
     try {
       const updatedSprint = { ...sprint, status: "ACTIVE" };
       
-      const response = await axios.put(`http://localhost:8084/api/sprints/${sprint.id}`, {
+      const response = await axios.put(`${API_CONFIG.SPRINTS_SERVICE}/api/sprints/${sprint.id}`, {
         name: sprint.name,
         goal: sprint.goal,
         startDate: sprint.startDate,
@@ -1568,7 +1560,7 @@ export default function CalendarPage() {
     try {
       const updatedSprint = { ...sprint, status: "COMPLETED" };
       
-      const response = await axios.put(`http://localhost:8084/api/sprints/${sprint.id}`, {
+      const response = await axios.put(`${API_CONFIG.SPRINTS_SERVICE}/api/sprints/${sprint.id}`, {
         name: sprint.name,
         goal: sprint.goal,
         startDate: sprint.startDate,

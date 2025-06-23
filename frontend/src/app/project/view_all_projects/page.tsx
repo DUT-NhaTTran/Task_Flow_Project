@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import { useUserStorage } from "@/hooks/useUserStorage";
 import { toast } from "sonner";
 import { ProjectTable } from "@/components/projects/ProjectTable";
+import { API_CONFIG } from "@/lib/config";
 import { 
     Project, 
     getUserId, 
@@ -50,7 +51,7 @@ export default function ProjectsPage() {
                 return projectDetailsCache[projectId];
             }
 
-            const response = await axios.get(`http://localhost:8083/api/projects/${projectId}?includeDeleted=true`);
+            const response = await axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/${projectId}?includeDeleted=true`);
             
             if (response.data?.status === "SUCCESS" && response.data?.data) {
                 const projectData = response.data.data;
@@ -149,8 +150,8 @@ export default function ProjectsPage() {
 
             // Fetch both owned and member projects
             const [ownedResponse, memberResponse] = await Promise.allSettled([
-                axios.get(`http://localhost:8083/api/projects/owner/${userId}`),
-                axios.get(`http://localhost:8083/api/projects/search/member?keyword=&userId=${userId}`)
+                axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/owner/${userId}`),
+                axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/search/member?keyword=&userId=${userId}`)
             ]);
 
             let allProjects: Project[] = [];
@@ -201,8 +202,8 @@ export default function ProjectsPage() {
 
             // Fetch both owned and member projects (including deleted)
             const [ownedResponse, memberResponse] = await Promise.allSettled([
-                axios.get(`http://localhost:8083/api/projects/owner/${userId}`),
-                axios.get(`http://localhost:8083/api/projects/search/member?keyword=&userId=${userId}&includeDeleted=true`)
+                axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/owner/${userId}`),
+                axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/search/member?keyword=&userId=${userId}&includeDeleted=true`)
             ]);
 
             let allProjects: Project[] = [];
@@ -246,7 +247,7 @@ export default function ProjectsPage() {
             const userId = getUserId();
             if (!userId) return;
 
-            const res = await axios.get("http://localhost:8083/api/projects/search/member", {
+            const res = await axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/search/member`, {
                 params: { keyword: term, userId: userId },
             });
             
@@ -271,8 +272,8 @@ export default function ProjectsPage() {
 
             // Fetch both owned and member projects
             const [ownedResponse, memberResponse] = await Promise.allSettled([
-                axios.get(`http://localhost:8083/api/projects/owner/${userId}`),
-                axios.get(`http://localhost:8083/api/projects/member/${userId}`)
+                axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/owner/${userId}`),
+                axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/member/${userId}`)
             ]);
 
             let allUserProjects: Project[] = [];
@@ -341,7 +342,7 @@ export default function ProjectsPage() {
         try {
             toast.loading("Restoring project...", { id: `restore-${projectId}` });
 
-            const restoreResponse = await axios.put(`http://localhost:8083/api/projects/${projectId}/restore`, {
+            const restoreResponse = await axios.put(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/${projectId}/restore`, {
                 restoredBy: getUserId(),
                 restoredAt: new Date().toISOString()
             });
@@ -390,7 +391,7 @@ export default function ProjectsPage() {
             // Get project members for notification
             let projectMembers: any[] = [];
             try {
-                const membersResponse = await axios.get(`http://localhost:8083/api/projects/${projectToDelete.id}/users`);
+                const membersResponse = await axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/${projectToDelete.id}/users`);
                 projectMembers = parseApiResponse(membersResponse.data);
             } catch (memberError) {
                 console.warn('⚠️ Failed to fetch project members:', memberError);
@@ -411,7 +412,7 @@ export default function ProjectsPage() {
             // Soft delete project
             toast.loading("Archiving project...", { id: `delete-${projectToDelete.id}` });
             
-            const softDeleteResponse = await axios.put(`http://localhost:8083/api/projects/${projectToDelete.id}/soft-delete`, {
+            const softDeleteResponse = await axios.put(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/${projectToDelete.id}/soft-delete`, {
                 deletedAt: new Date().toISOString(),
                 deletedBy: getUserId()
             });
@@ -466,7 +467,7 @@ export default function ProjectsPage() {
         try {
             toast.loading("Permanently deleting project...", { id: `permanent-delete-${projectToPermanentDelete.id}` });
 
-            const deleteResponse = await axios.delete(`http://localhost:8083/api/projects/${projectToPermanentDelete.id}/permanent`);
+            const deleteResponse = await axios.delete(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/${projectToPermanentDelete.id}/permanent`);
 
             if (deleteResponse.data?.status === "SUCCESS" || deleteResponse.status === 200) {
                 setDeletedProjects(prev => prev.filter(p => p.id !== projectToPermanentDelete.id));

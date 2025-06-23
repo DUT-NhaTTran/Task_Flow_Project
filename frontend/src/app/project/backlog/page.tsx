@@ -36,6 +36,7 @@ import { TaskMigrationModal } from "@/components/sprints/TaskMigrationModal";
 import { useProjectTasks } from "@/hooks/useProjectTasks";
 import { checkAndNotifyOverdueSprints, resetSprintOverdueNotification } from "@/utils/taskNotifications";
 import { useUser } from "@/contexts/UserContext";
+import { API_CONFIG } from "@/lib/config";
 
 interface SprintOption {
   id: string;
@@ -192,7 +193,7 @@ export default function BacklogPage() {
       }
 
       const response = await axios.get(
-        `http://localhost:8086/api/users/${userId}`,
+        `${API_CONFIG.USER_SERVICE}/api/users/${userId}`,
         {
           headers: { "X-User-Id": currentUserId }
         }
@@ -270,7 +271,7 @@ export default function BacklogPage() {
       if (!userId) return;
 
       const response = await axios.get(
-        `http://localhost:8083/api/projects/${projectId}/users`,
+        `${API_CONFIG.PROJECTS_SERVICE}/api/projects/${projectId}/users`,
         {
           headers: { "X-User-Id": userId }
         }
@@ -477,7 +478,7 @@ export default function BacklogPage() {
       setIsLoading(true);
       try {
         // Fetch tasks for this project
-        const tasksResponse = await axios.get(`http://localhost:8085/api/tasks/project/${projectId}`);
+        const tasksResponse = await axios.get(`${API_CONFIG.TASKS_SERVICE}/api/tasks/project/${projectId}`);
         if (tasksResponse.data) {
           const allTasks = tasksResponse.data || [];
           setTasks(allTasks);
@@ -490,7 +491,7 @@ export default function BacklogPage() {
         }
 
         // Fetch sprints for this project
-        const sprintsResponse = await axios.get(`http://localhost:8084/api/sprints/project/${projectId}`);
+        const sprintsResponse = await axios.get(`${API_CONFIG.SPRINTS_SERVICE}/api/sprints/project/${projectId}`);
         
         // Check if the API returns {data: [...]} structure
         if (sprintsResponse.data && sprintsResponse.data.data) {
@@ -563,14 +564,14 @@ export default function BacklogPage() {
         headers['X-User-Id'] = userData.account.id;
       }
       
-      const response = await axios.post("http://localhost:8085/api/tasks", newTask, { headers });
+      const response = await axios.post(`${API_CONFIG.TASKS_SERVICE}/api/tasks`, newTask, { headers });
       
       // Check if the response contains data (success)
       if (response.data) {
         toast.success("Task created successfully");
         
         // Reload tasks to get the new one with proper ID
-        const tasksResponse = await axios.get(`http://localhost:8085/api/tasks/project/${projectId}`);
+        const tasksResponse = await axios.get(`${API_CONFIG.TASKS_SERVICE}/api/tasks/project/${projectId}`);
         if (tasksResponse.data) {
           const allTasks = tasksResponse.data || [];
           setTasks(allTasks);
@@ -609,7 +610,7 @@ export default function BacklogPage() {
       // Get user ID from userData
       const userIdForHeader = userData?.profile?.id || userData?.account?.id || '';
       
-      const response = await axios.put(`http://localhost:8085/api/tasks/${taskId}`, updatedTask, {
+      const response = await axios.put(`${API_CONFIG.TASKS_SERVICE}/api/tasks/${taskId}`, updatedTask, {
         headers: {
           'Content-Type': 'application/json',
           'X-User-Id': userIdForHeader,
@@ -675,7 +676,7 @@ export default function BacklogPage() {
             // 3. Add scrum master - fetch from project API
             try {
               if (taskToUpdate.projectId) {
-                const projectResponse = await axios.get(`http://localhost:8083/api/projects/${taskToUpdate.projectId}`);
+                const projectResponse = await axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/${taskToUpdate.projectId}`);
                 if (projectResponse.data?.status === "SUCCESS" && projectResponse.data?.data?.scrumMasterId) {
                   const scrumMasterId = projectResponse.data.data.scrumMasterId;
                   if (scrumMasterId !== actorUserId && scrumMasterId !== taskToUpdate.assigneeId && scrumMasterId !== taskToUpdate.createdBy) {
@@ -696,7 +697,7 @@ export default function BacklogPage() {
                   recipientUserId: recipientId
                 };
 
-                return axios.post('http://localhost:8089/api/notifications/create', statusNotificationData);
+                return axios.post(`${API_CONFIG.NOTIFICATION_SERVICE}/api/notifications/create`, statusNotificationData);
               });
 
               await Promise.all(notificationPromises);
@@ -755,7 +756,7 @@ export default function BacklogPage() {
         return [];
       }
 
-      const response = await axios.get(`http://localhost:8083/api/projects/${projectId}/users`, {
+      const response = await axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/${projectId}/users`, {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
@@ -822,7 +823,7 @@ export default function BacklogPage() {
       let projectName = "TaskFlow Project";
       
       try {
-        const projectResponse = await axios.get(`http://localhost:8083/api/projects/${validatedProjectId}`);
+        const projectResponse = await axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/${validatedProjectId}`);
         if (projectResponse.data?.status === "SUCCESS" && projectResponse.data?.data) {
           scrumMasterId = projectResponse.data.data.scrumMasterId;
           projectName = projectResponse.data.data.name || projectName;
@@ -908,7 +909,7 @@ export default function BacklogPage() {
 
 
         try {
-          const response = await axios.post('http://localhost:8089/api/notifications/create', notificationData, {
+          const response = await axios.post(`${API_CONFIG.NOTIFICATION_SERVICE}/api/notifications/create`, notificationData, {
             headers: {
               'Content-Type': 'application/json',
               'Accept': 'application/json',
@@ -998,7 +999,7 @@ export default function BacklogPage() {
         return;
       }
 
-      const response = await axios.get(`http://localhost:8083/api/projects/${projectId}`, {
+      const response = await axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/${projectId}`, {
         headers: { "X-User-Id": userId }
       });
 
@@ -1052,7 +1053,7 @@ export default function BacklogPage() {
       };
 
       
-      const response = await axios.post("http://localhost:8084/api/sprints", newSprint);
+      const response = await axios.post(`${API_CONFIG.SPRINTS_SERVICE}/api/sprints`, newSprint);
 
       if (response.data) {
         toast.success("Sprint created successfully");
@@ -1126,7 +1127,7 @@ export default function BacklogPage() {
     if (!projectId) return;
     
     try {
-      const sprintsResponse = await axios.get(`http://localhost:8084/api/sprints/project/${projectId}`);
+      const sprintsResponse = await axios.get(`${API_CONFIG.SPRINTS_SERVICE}/api/sprints/project/${projectId}`);
       
       // Check if the API returns {data: [...]} structure
       if (sprintsResponse.data && sprintsResponse.data.data) {
@@ -1175,7 +1176,7 @@ export default function BacklogPage() {
 
       
       // Use PUT method as configured in the backend
-      const response = await axios.put(`http://localhost:8084/api/sprints/${currentSprint.id}`, sprintUpdate);
+      const response = await axios.put(`${API_CONFIG.SPRINTS_SERVICE}/api/sprints/${currentSprint.id}`, sprintUpdate);
 
       if (response.data && response.data.status === "SUCCESS") {
         toast.success("Sprint updated successfully");
@@ -1249,7 +1250,7 @@ export default function BacklogPage() {
       if (!projectId) return;
       
       try {
-        const tasksResponse = await axios.get(`http://localhost:8085/api/tasks/project/${projectId}`);
+        const tasksResponse = await axios.get(`${API_CONFIG.TASKS_SERVICE}/api/tasks/project/${projectId}`);
         if (tasksResponse.data) {
           const allTasks = tasksResponse.data || [];
           setTasks(allTasks);
@@ -1344,7 +1345,7 @@ export default function BacklogPage() {
   // Handle starting a sprint
   const handleStartSprint = async (sprintId: string) => {
     try {
-      const response = await axios.post(`http://localhost:8084/api/sprints/${sprintId}/start`);
+      const response = await axios.post(`${API_CONFIG.SPRINTS_SERVICE}/api/sprints/${sprintId}/start`);
       
       if (response.data && response.data.status === "SUCCESS") {
         toast.success("Sprint started successfully");
@@ -1368,7 +1369,7 @@ export default function BacklogPage() {
   // Handle completing a sprint
   const handleCompleteSprint = async (sprintId: string) => {
     try {
-      const response = await axios.post(`http://localhost:8084/api/sprints/${sprintId}/complete`);
+      const response = await axios.post(`${API_CONFIG.SPRINTS_SERVICE}/api/sprints/${sprintId}/complete`);
       
       if (response.data && response.data.status === "SUCCESS") {
         toast.success("Sprint completed successfully");

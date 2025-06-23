@@ -5,9 +5,9 @@
          http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.taskflow</groupId>
+    <groupId>com.tmnhat</groupId>
     <artifactId>notification-service</artifactId>
-    <version>1.0.0</version>
+    <version>0.0.1-SNAPSHOT</version>
     <packaging>jar</packaging>
 
     <name>Notification Service</name>
@@ -16,13 +16,13 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.2.0</version>
+        <version>3.4.4</version>
         <relativePath/>
     </parent>
 
     <properties>
         <java.version>17</java.version>
-        <spring-cloud.version>2023.0.0</spring-cloud.version>
+        <spring-cloud.version>2024.0.0</spring-cloud.version>
     </properties>
 
     <dependencies>
@@ -32,7 +32,8 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
         
-         <dependency>
+        <!-- Common module dependency -->
+        <dependency>
             <groupId>com.tmnhat</groupId>
             <artifactId>common</artifactId>
             <version>0.0.1-SNAPSHOT</version>
@@ -74,11 +75,7 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-websocket</artifactId>
         </dependency>
-         <dependency>
-            <groupId>com.tmnhat</groupId>
-            <artifactId>common</artifactId>
-            <version>0.0.1-SNAPSHOT</version>
-        </dependency>
+
         <!-- Jackson for JSON processing -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
@@ -97,13 +94,13 @@
             </dependency>
         </dependencies>
     </dependencyManagement>
-<build>
-    <plugins>
-        <plugin>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-maven-plugin</artifactId>
-        </plugin>
-    </plugins>
-</build>
 
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
 </project> 

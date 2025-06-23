@@ -9,6 +9,7 @@ import com.tmnhat.projectsservice.repository.ProjectDAO;
 import com.tmnhat.projectsservice.repository.ProjectMemberDAO;
 import com.tmnhat.projectsservice.service.ProjectService;
 import com.tmnhat.projectsservice.validation.ProjectValidator;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -26,8 +27,12 @@ import java.util.HashMap;
 @Service
 public class ProjectServiceImpl implements ProjectService {
 
-    private final ProjectMemberDAO projectMemberDAO = new ProjectMemberDAO();
-    private final ProjectDAO projectDAO = new ProjectDAO();
+    @Autowired
+    private ProjectMemberDAO projectMemberDAO;
+    
+    @Autowired
+    private ProjectDAO projectDAO;
+    
     private RestTemplate restTemplate;
 
     @Override

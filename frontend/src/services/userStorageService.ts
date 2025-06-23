@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { API_CONFIG } from "@/lib/config";
 
 // Interface cho User từ Users table
 export interface UserProfile {
@@ -182,8 +183,8 @@ export class UserStorageService {
       console.log('🔄 Syncing user data from server:', userId);
 
       const [userResponse, accountResponse] = await Promise.all([
-        axios.get(`http://localhost:8086/api/users/${userId}`),
-        axios.get(`http://localhost:8088/api/auth/account/${userId}`)
+        axios.get(`${API_CONFIG.USER_SERVICE}/api/users/${userId}`),
+        axios.get(`${API_CONFIG.AI_SERVICE}/api/auth/account/${userId}`)
       ]);
 
       if (userResponse.data?.status === 'SUCCESS' && accountResponse.data?.status === 'SUCCESS') {

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { API_CONFIG } from "@/lib/config";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
@@ -216,7 +217,7 @@ export default function TiptapEditor({ content, onChange, taskId, onAttachmentUp
         
         console.log(`Uploading file: ${file.name} for task: ${taskId}`);
         
-        const response = await axios.post("http://localhost:8085/api/attachments/upload", formData, {
+        const response = await axios.post(`${API_CONFIG.TASKS_SERVICE}/api/attachments/upload`, formData, {
           headers: { "Content-Type": "multipart/form-data" },
         });
 

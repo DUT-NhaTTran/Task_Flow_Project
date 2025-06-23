@@ -28,6 +28,7 @@ import { toast } from "sonner"
 import { NotificationDropdown } from "@/components/ui/notification-dropdown"
 import { useUser } from "@/contexts/UserContext"
 import { UserAvatar } from "@/components/ui/user-avatar"
+import { API_CONFIG } from "@/lib/config";
 
 // Interface for Project
 interface Project {
@@ -80,8 +81,8 @@ export function TopNavigation() {
             
             // Fetch both owned and member projects
             const [ownedResponse, memberResponse] = await Promise.allSettled([
-                axios.get(`http://localhost:8083/api/projects/user/${currentUser.id}`),
-                axios.get(`http://localhost:8083/api/projects/member/${currentUser.id}`)
+                axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/user/${currentUser.id}`),
+                axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/member/${currentUser.id}`)
             ]);
 
             let allProjects: Project[] = [];
@@ -102,7 +103,7 @@ export function TopNavigation() {
             );
 
             setUserProjects(uniqueProjects);
-            console.log(`✅ Loaded ${uniqueProjects.length} user projects`);
+            console.log(`Loaded ${uniqueProjects.length} user projects`);
             
         } catch (error) {
             console.error("❌ Error fetching user projects:", error);
@@ -179,9 +180,9 @@ export function TopNavigation() {
             // Search in both owned projects and member projects
             const [ownedResponse, memberResponse] = await Promise.allSettled([
                 // Get projects where user is owner
-                axios.get(`http://localhost:8083/api/projects/user/${currentUserId}`),
+                axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/user/${currentUserId}`),
                 // Get projects where user is member  
-                axios.get(`http://localhost:8083/api/projects/search/member?keyword=${encodeURIComponent(term)}&userId=${currentUserId}`)
+                axios.get(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/search/member?keyword=${encodeURIComponent(term)}&userId=${currentUserId}`)
             ]);
 
             let allProjects: Project[] = [];
@@ -207,7 +208,6 @@ export function TopNavigation() {
             );
 
             setSearchResults(uniqueProjects);
-            console.log(`✅ Found ${uniqueProjects.length} projects (owned + member)`);
             
         } catch (error) {
             console.error("❌ Error searching projects:", error);

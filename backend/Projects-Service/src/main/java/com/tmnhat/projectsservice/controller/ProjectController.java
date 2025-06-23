@@ -1,5 +1,6 @@
 package com.tmnhat.projectsservice.controller;
 
+
 import com.tmnhat.common.config.WebConfig;
 import com.tmnhat.common.payload.ResponseDataAPI;
 import com.tmnhat.projectsservice.model.ProjectMembers;
@@ -8,11 +9,12 @@ import com.tmnhat.projectsservice.model.Users;
 import com.tmnhat.projectsservice.service.ProjectService;
 import com.tmnhat.projectsservice.service.Impl.ProjectServiceImpl;
 import com.tmnhat.projectsservice.validation.ProjectValidator;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import com.tmnhat.projectsservice.payload.enums.ProjectRole;
+
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -25,11 +27,8 @@ import java.util.UUID;
 @RequestMapping("api/projects")
 public class ProjectController {
 
-    private final ProjectService projectService;
-
-    public ProjectController() {
-        this.projectService = new ProjectServiceImpl();
-    }
+    @Autowired
+    private ProjectService projectService;
 
     @GetMapping("/search")
     public ResponseEntity<?> searchProjects(@RequestParam String keyword) {
@@ -216,8 +215,8 @@ public class ProjectController {
                 return ResponseEntity.ok(ResponseDataAPI.error("User not found in project"));
             }
     
-            boolean isOwner = ProjectRole.PRODUCT_OWNER.equalsIgnoreCase(role);
-            boolean isScrumMaster = ProjectRole.SCRUM_MASTER.equalsIgnoreCase(role);
+            boolean isOwner = "PRODUCT_OWNER".equalsIgnoreCase(role);
+            boolean isScrumMaster = "SCRUM_MASTER".equalsIgnoreCase(role);
     
             Map<String, Object> permissions = new HashMap<>();
             permissions.put("userId", userId);

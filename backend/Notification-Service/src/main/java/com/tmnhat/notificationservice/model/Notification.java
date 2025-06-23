@@ -1,6 +1,6 @@
-package com.taskflow.notification.model;
+package com.tmnhat.notificationservice.model;
 
-import com.taskflow.notification.payload.enums.NotificationType;
+import com.tmnhat.notificationservice.payload.enums.NotificationType;
 import java.time.LocalDateTime;
 import java.util.UUID;
 

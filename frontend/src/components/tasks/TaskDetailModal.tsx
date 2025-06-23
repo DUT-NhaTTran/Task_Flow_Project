@@ -15,6 +15,7 @@ import {
 } from "@/utils/permissions";
 import { useUserStorage } from "@/hooks/useUserStorage";
 import { useNavigation } from "@/contexts/NavigationContext";
+import { API_CONFIG } from "@/lib/config";
 
 // Import TipTap editor component dynamically to avoid SSR issues
 const TiptapEditor = dynamic(() => import("@/components/ui/tiptap-editor"), {
@@ -186,13 +187,7 @@ export default function TaskDetailModal({
         setPermissionsLoading(true);
         try {
           const permissions = await getUserPermissions(userData.account.id, task.projectId);
-          console.log('🔐 TASK MODAL PERMISSION DEBUG:', {
-            userId: userData.account.id,
-            projectId: task.projectId,
-            permissions,
-            taskCreator: task.createdBy,
-            taskAssignee: task.assigneeId
-          });
+          
           setUserPermissions(permissions);
         } catch (error) {
           console.error('Error fetching permissions:', error);
@@ -316,7 +311,7 @@ export default function TaskDetailModal({
 
         // Save to attachments table
         const promise = axios
-          .post("http://localhost:8087/api/attachments/create", attachmentData)
+          .post(`${API_CONFIG.FILE_SERVICE}/api/attachments/create`, attachmentData)
           .then((response) => {
             if (response.data?.status === "SUCCESS") {
              
@@ -354,7 +349,7 @@ export default function TaskDetailModal({
 
         // Save to attachments table
         const promise = axios
-          .post("http://localhost:8087/api/attachments/create", attachmentData)
+          .post(`${API_CONFIG.FILE_SERVICE}/api/attachments/create`, attachmentData)
           .then((response) => {
             if (response.data?.status === "SUCCESS") {
              
@@ -420,7 +415,7 @@ export default function TaskDetailModal({
         setLoadingUsers(true);
 
         const response = await axios.get(
-          `http://localhost:8086/api/users/project/${projectIdKey}`
+          `${API_CONFIG.USER_SERVICE}/api/users/project/${projectIdKey}`
         );
 
         if (response.data?.status === "SUCCESS") {
@@ -533,7 +528,7 @@ export default function TaskDetailModal({
         try {
           // Upload the file to the dedicated File Service with enhanced timeout and retry logic
           const response = await axios.post(
-            "http://localhost:8087/api/attachments/upload",
+            `${API_CONFIG.FILE_SERVICE}/api/attachments/upload`,
             formData,
             {
               headers: {
@@ -761,7 +756,7 @@ export default function TaskDetailModal({
 
       // Step 4: Save task with text-only description to Tasks-Service
       const response = await axios.put(
-        `http://localhost:8085/api/tasks/${taskToSave.id}`,
+        `${API_CONFIG.TASKS_SERVICE}/api/tasks/${taskToSave.id}`,
         taskToSave,
         {
           headers: {
@@ -801,7 +796,7 @@ export default function TaskDetailModal({
             
             try {
               
-              const userApiResponse = await axios.get(`http://localhost:8086/api/users/${currentUserId}/username`, {
+              const userApiResponse = await axios.get(`${API_CONFIG.USER_SERVICE}/api/users/${currentUserId}/username`, {
                 timeout: 5000
               });
 
@@ -857,7 +852,7 @@ export default function TaskDetailModal({
              
               // Send notification to notification service
               const notificationResponse = await axios.post(
-                "http://localhost:8089/api/notifications/create",
+                `${API_CONFIG.NOTIFICATION_SERVICE}/api/notifications/create`,
                 notificationData
               );
 
@@ -906,15 +901,15 @@ export default function TaskDetailModal({
               let currentUserName = "Unknown User";
               
               try {
-                console.log(`🔍 FRONTEND: Getting username for status change notification: ${currentUserId}`);
+                console.log(`FRONTEND: Getting username for status change notification: ${currentUserId}`);
                 
-                const userApiResponse = await axios.get(`http://localhost:8086/api/users/${currentUserId}/username`, {
+                const userApiResponse = await axios.get(`${API_CONFIG.USER_SERVICE}/api/users/${currentUserId}/username`, {
                   timeout: 5000
                 });
 
                 if (userApiResponse.data?.status === "SUCCESS" && userApiResponse.data?.data) {
                   currentUserName = userApiResponse.data.data;
-                  console.log(`✅ FRONTEND: Got username for status change: '${currentUserName}'`);
+                  console.log(`FRONTEND: Got username for status change: ${currentUserName}`);
                 } else {
                   console.warn(`⚠️ FRONTEND: User Service API returned invalid response for status change`);
                 }
@@ -975,7 +970,7 @@ export default function TaskDetailModal({
               let scrumMasterId = null;
               try {
                 if (editedTask.projectId) {
-                  const projectResponse = await axios.get(`http://localhost:8086/api/projects/${editedTask.projectId}`);
+                  const projectResponse = await axios.get(`${API_CONFIG.USER_SERVICE}/api/projects/${editedTask.projectId}`);
                   
                   if (projectResponse.data?.status === "SUCCESS" && projectResponse.data?.data?.scrumMasterId) {
                     scrumMasterId = projectResponse.data.data.scrumMasterId;
@@ -1013,7 +1008,7 @@ export default function TaskDetailModal({
                     recipientUserId: recipientId
                   };
 
-                  return axios.post('http://localhost:8089/api/notifications/create', statusNotificationData);
+                  return axios.post(`${API_CONFIG.NOTIFICATION_SERVICE}/api/notifications/create`, statusNotificationData);
                 });
 
                 const notificationResponses = await Promise.all(notificationPromises);
@@ -1023,8 +1018,7 @@ export default function TaskDetailModal({
                 ).length;
 
                 if (successCount > 0) {
-                  console.log(`✅ FRONTEND: ${successCount}/${uniqueRecipients.length} status change notifications sent successfully`);
-                  toast.success(`Status changed from "${getStatusDisplayName(originalStatus)}" to "${getStatusDisplayName(newStatus)}" - ${successCount} notifications sent`);
+                  toast.success('Status changed from "${getStatusDisplayName(originalStatus)}" to "${getStatusDisplayName(newStatus)}" - ${successCount} notifications sent');
                 } else {
                   console.warn('⚠️ FRONTEND: No status change notifications were sent successfully');
                   toast.warning(`Status changed but notifications failed`);
@@ -1081,7 +1075,7 @@ export default function TaskDetailModal({
               `Deleting attachment ${attachmentToRemove.id} from attachments table`
             );
             const response = await axios.delete(
-              `http://localhost:8087/api/attachments/${attachmentToRemove.id}`
+              `${API_CONFIG.FILE_SERVICE}/api/attachments/${attachmentToRemove.id}`
             );
             if (response.data?.status === "SUCCESS") {
               console.log(
@@ -1306,7 +1300,7 @@ export default function TaskDetailModal({
       }
 
       const response = await axios.post(
-        "http://localhost:8085/api/tasks",
+        `${API_CONFIG.TASKS_SERVICE}/api/tasks`,
         subtaskData,
         { headers }
       );
@@ -1350,7 +1344,7 @@ export default function TaskDetailModal({
       console.log("Saving web link to attachments table:", attachmentData);
 
       const response = await axios.post(
-        "http://localhost:8087/api/attachments/create",
+        `${API_CONFIG.FILE_SERVICE}/api/attachments/create`,
         attachmentData
       );
 
@@ -1426,11 +1420,10 @@ export default function TaskDetailModal({
 
       // Delete all subtasks first
       if (subtasks.length > 0) {
-        console.log(`Deleting ${subtasks.length} subtask(s) first...`);
         
-        const deleteSubtaskPromises = subtasks.map((subtask: any) =>
-          axios.delete(`http://localhost:8085/api/tasks/${subtask.id}`)
-        );
+                  const deleteSubtaskPromises = subtasks.map((subtask: any) =>
+            axios.delete(`${API_CONFIG.TASKS_SERVICE}/api/tasks/${subtask.id}`)
+          );
 
         try {
           await Promise.all(deleteSubtaskPromises);
@@ -1446,7 +1439,7 @@ export default function TaskDetailModal({
       // Send notification before deleting the main task
       if (currentUser?.id && currentUser?.username && editedTask.projectId) {
         try {
-          await axios.post('http://localhost:8089/api/notifications/create', {
+          await axios.post(`${API_CONFIG.NOTIFICATION_SERVICE}/api/notifications/create`, {
             userId: editedTask.assigneeId || editedTask.createdBy, // Notify assignee or creator
             type: 'TASK_DELETED',
             message: `Task "${editedTask.title}" has been deleted by ${currentUser.username}`,
@@ -1462,7 +1455,7 @@ export default function TaskDetailModal({
 
       // Delete the main task
       const response = await axios.delete(
-        `http://localhost:8085/api/tasks/${editedTask.id}`
+        `${API_CONFIG.TASKS_SERVICE}/api/tasks/${editedTask.id}`
       );
 
       if (response.data?.status === "SUCCESS") {
@@ -1505,7 +1498,7 @@ export default function TaskDetailModal({
       console.log("Adding comment:", commentData);
 
       const response = await axios.post(
-        "http://localhost:8085/api/comments",
+        `${API_CONFIG.TASKS_SERVICE}/api/comments`,
         commentData
       );
 
@@ -1554,7 +1547,7 @@ export default function TaskDetailModal({
       console.log("Adding reply to comment:", parentCommentId, replyData);
 
       const response = await axios.post(
-        `http://localhost:8085/api/comments/${parentCommentId}/reply`,
+        `${API_CONFIG.TASKS_SERVICE}/api/comments/${parentCommentId}/reply`,
         replyData
       );
 
@@ -1600,7 +1593,7 @@ export default function TaskDetailModal({
     try {
       console.log("🔍 Fetching comments for task:", taskId);
       const response = await axios.get(
-        `http://localhost:8085/api/comments/task/${taskId}`
+        `${API_CONFIG.TASKS_SERVICE}/api/comments/task/${taskId}`
       );
 
       if (response.data?.status === "SUCCESS") {
@@ -1632,7 +1625,7 @@ export default function TaskDetailModal({
     try {
 
       const response = await axios.delete(
-        `http://localhost:8085/api/comments/${commentId}?userId=${currentUser.id}`
+        `${API_CONFIG.TASKS_SERVICE}/api/comments/${commentId}?userId=${currentUser.id}`
       );
 
       if (response.data?.status === "SUCCESS") {
@@ -1855,7 +1848,7 @@ export default function TaskDetailModal({
     try {
       console.log("Fetching attachments (files/images only) for task:", taskId);
       const response = await axios.get(
-        `http://localhost:8087/api/attachments/task/${taskId}`
+        `${API_CONFIG.FILE_SERVICE}/api/attachments/task/${taskId}`
       );
       if (response.data?.status === "SUCCESS" && response.data.data) {
         // Filter chỉ lấy file và ảnh thật, không lấy web links và task links
@@ -1898,7 +1891,7 @@ export default function TaskDetailModal({
     try {
       console.log("Fetching child work items for task:", taskId);
       // Sử dụng getAllTasks và filter by parentTaskId ở frontend - API tasks ở port 8085
-      const response = await axios.get(`http://localhost:8085/api/tasks`);
+      const response = await axios.get(`${API_CONFIG.TASKS_SERVICE}/api/tasks`);
       if (response.data?.status === "SUCCESS") {
         const allTasks = response.data.data || [];
         // Filter tasks có parentTaskId = taskId hiện tại và đảm bảo task hợp lệ
@@ -1916,7 +1909,7 @@ export default function TaskDetailModal({
       }
     } catch (error) {
       console.error(
-        "Error fetching child work items from http://localhost:8085/api/tasks:",
+        "Error fetching child work items from ${API_CONFIG.TASKS_SERVICE}/api/tasks:",
         error
       );
       if (error instanceof Error) {
@@ -1944,7 +1937,7 @@ export default function TaskDetailModal({
     try {
       // Sử dụng File-Service để lấy attachments có type = 'link' - API attachments ở port 8087
       const response = await axios.get(
-        `http://localhost:8087/api/attachments/task/${taskId}`
+        `${API_CONFIG.FILE_SERVICE}/api/attachments/task/${taskId}`
       );
 
       if (response.data?.status === "SUCCESS") {
@@ -1987,7 +1980,7 @@ export default function TaskDetailModal({
     try {
       // Sử dụng File-Service để lấy attachments có type = 'task_link' - API attachments ở port 8087
       const response = await axios.get(
-        `http://localhost:8087/api/attachments/task/${taskId}`
+        `${API_CONFIG.FILE_SERVICE}/api/attachments/task/${taskId}`
       );
 
       if (response.data?.status === "SUCCESS") {
@@ -2006,7 +1999,7 @@ export default function TaskDetailModal({
               console.log("🔗 Fetching target task:", link.file_url);
               // Fetch thông tin của target task
               const targetTaskResponse = await axios.get(
-                `http://localhost:8085/api/tasks/${link.file_url}`
+                `${API_CONFIG.TASKS_SERVICE}/api/tasks/${link.file_url}`
               );
               const targetTask = targetTaskResponse.data?.data;
 
@@ -2353,7 +2346,7 @@ export default function TaskDetailModal({
     try {
       setIsSearching(true);
       // Search all tasks in the project
-      const response = await axios.get(`http://localhost:8085/api/tasks`);
+      const response = await axios.get(`${API_CONFIG.TASKS_SERVICE}/api/tasks`);
 
       if (response.data?.status === "SUCCESS") {
         const allTasks = response.data.data || [];
@@ -2393,7 +2386,7 @@ export default function TaskDetailModal({
       console.log("Saving linked work item to attachments table:", attachmentData);
 
       const response = await axios.post(
-        "http://localhost:8087/api/attachments/create",
+        `${API_CONFIG.FILE_SERVICE}/api/attachments/create`,
         attachmentData
       );
 
@@ -2475,7 +2468,7 @@ export default function TaskDetailModal({
       if (editedTask.assigneeId) {
         try {
           const historyResponse = await axios.get(
-            `http://localhost:8085/api/tasks/user/${editedTask.assigneeId}/completed`
+            `${API_CONFIG.TASKS_SERVICE}/api/tasks/user/${editedTask.assigneeId}/completed`
           );
           assigneeHistory = historyResponse.data.data || [];
         } catch (error) {
@@ -2485,7 +2478,7 @@ export default function TaskDetailModal({
 
       // Call the AI service API for task estimation
       const response = await axios.post(
-        `http://localhost:8085/api/tasks/${editedTask.id}/estimate-story-points`,
+        `${API_CONFIG.TASKS_SERVICE}/api/tasks/${editedTask.id}/estimate-story-points`,
         {
           title: editedTask.title,
           description: editedTask.description || "",
@@ -3116,9 +3109,9 @@ export default function TaskDetailModal({
                               <img
                                 src={
                                   fileUrl.startsWith("/api")
-                                    ? `http://localhost:8087${fileUrl}`
+                                    ? `${API_CONFIG.FILE_SERVICE}${fileUrl}`
                                     : fileUrl.startsWith("/uploads/")
-                                    ? `http://localhost:8087${fileUrl}`
+                                    ? `${API_CONFIG.FILE_SERVICE}${fileUrl}`
                                     : fileUrl
                                 }
                                 alt={displayName}
@@ -3217,11 +3210,11 @@ export default function TaskDetailModal({
                             <a
                               href={
                                 typeof attachment === "object" && attachment.id
-                                  ? `http://localhost:8087/api/attachments/download/${attachment.id}`
+                                  ? `${API_CONFIG.FILE_SERVICE}/api/attachments/download/${attachment.id}`
                                   : fileUrl.startsWith("/api")
-                                  ? `http://localhost:8087${fileUrl}`
+                                  ? `${API_CONFIG.FILE_SERVICE}${fileUrl}`
                                   : fileUrl.startsWith("/uploads/")
-                                  ? `http://localhost:8087${fileUrl}`
+                                  ? `${API_CONFIG.FILE_SERVICE}${fileUrl}`
                                   : fileUrl
                               }
                               download={displayName}
@@ -3496,7 +3489,7 @@ export default function TaskDetailModal({
                                     try {
                                       // Update status via API
                                       const response = await axios.put(
-                                        `http://localhost:8085/api/tasks/${item.id}`,
+                                        `${API_CONFIG.TASKS_SERVICE}/api/tasks/${item.id}`,
                                         {
                                           ...item,
                                           status: newStatus,
@@ -3548,7 +3541,7 @@ export default function TaskDetailModal({
                                   try {
                                     // Update assignee via API
                                     const response = await axios.put(
-                                      `http://localhost:8085/api/tasks/${item.id}`,
+                                      `${API_CONFIG.TASKS_SERVICE}/api/tasks/${item.id}`,
                                       {
                                         ...item,
                                         assigneeId: newAssigneeId,
@@ -3777,7 +3770,7 @@ export default function TaskDetailModal({
                                 // Xóa linked work item từ database
                                 console.log("Deleting linked work item from database:", item.id);
                                 const response = await axios.delete(
-                                  `http://localhost:8087/api/attachments/${item.id}`
+                                  `${API_CONFIG.FILE_SERVICE}/api/attachments/${item.id}`
                                 );
 
                                 if (response.data?.status === "SUCCESS") {
@@ -3964,7 +3957,7 @@ export default function TaskDetailModal({
                                 // Xóa web link từ database
                                 console.log("Deleting web link from database:", link.id);
                                 const response = await axios.delete(
-                                  `http://localhost:8087/api/attachments/${link.id}`
+                                  `${API_CONFIG.FILE_SERVICE}/api/attachments/${link.id}`
                                 );
 
                                 if (response.data?.status === "SUCCESS") {

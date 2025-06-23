@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import { toast } from "sonner";
+import { API_CONFIG } from "@/lib/config";
 import { useUserStorage } from "@/hooks/useUserStorage";
 
 interface Task {
@@ -56,10 +57,10 @@ export function TaskMigrationModal({
       const userId = userData?.account?.id || userData?.profile?.id;
       
       const [tasksRes, sprintsRes] = await Promise.all([
-        axios.get(`http://localhost:8084/api/sprints/${sprintId}/incomplete-tasks`, {
+        axios.get(`${API_CONFIG.SPRINTS_SERVICE}/api/sprints/${sprintId}/incomplete-tasks`, {
           headers: { "X-User-Id": userId }
         }),
-        axios.get(`http://localhost:8084/api/sprints/project/${projectId}`, {
+        axios.get(`${API_CONFIG.SPRINTS_SERVICE}/api/sprints/project/${projectId}`, {
           headers: { "X-User-Id": userId }
         })
       ]);
@@ -97,14 +98,14 @@ export function TaskMigrationModal({
       // Step 1: Migrate tasks based on choice
       if (globalChoice === "backlog" && taskIds.length > 0) {
         await axios.put(
-          `http://localhost:8084/api/sprints/move-specific-tasks-to-backlog`,
+          `${API_CONFIG.SPRINTS_SERVICE}/api/sprints/move-specific-tasks-to-backlog`,
           { taskIds },
           { headers: { "X-User-Id": userId, "Content-Type": "application/json" } }
         );
         toast.success(`${taskIds.length} tasks moved to backlog`);
       } else if (globalChoice === "sprint" && targetSprintId && taskIds.length > 0) {
         await axios.put(
-          `http://localhost:8084/api/sprints/move-specific-tasks-to-sprint/${targetSprintId}`,
+          `${API_CONFIG.SPRINTS_SERVICE}/api/sprints/move-specific-tasks-to-sprint/${targetSprintId}`,
           { taskIds },
           { headers: { "X-User-Id": userId, "Content-Type": "application/json" } }
         );
@@ -117,7 +118,7 @@ export function TaskMigrationModal({
       // Step 2: Cancel or delete the sprint
       const endpoint = action === "cancel" ? "cancel" : "soft-delete";
       await axios.put(
-        `http://localhost:8084/api/sprints/${sprintId}/${endpoint}`,
+        `${API_CONFIG.SPRINTS_SERVICE}/api/sprints/${sprintId}/${endpoint}`,
         {},
         { headers: { "X-User-Id": userId, "Content-Type": "application/json" } }
       );
