@@ -406,8 +406,12 @@ export default function ProjectSummaryPage() {
             const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
             const fourteenDaysFromNow = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
             
+            // ✅ NEW LOGIC: Count ALL tasks (parents + subtasks) separately
+            const parentTasks = tasks.filter((task: any) => !task.parentTaskId);
+            const subtasks = tasks.filter((task: any) => task.parentTaskId);
+            
             const stats = {
-                total: tasks.length,
+                total: tasks.length, // Count ALL tasks (parent + subtasks)
                 todo: tasks.filter((task: any) => task.status === 'TODO').length,
                 inProgress: tasks.filter((task: any) => task.status === 'IN_PROGRESS').length,
                 done: tasks.filter((task: any) => task.status === 'DONE').length,
@@ -416,7 +420,7 @@ export default function ProjectSummaryPage() {
                     return new Date(task.dueDate) < new Date() && task.status !== 'DONE';
                 }).length,
                 
-                // 14-day statistics
+                // 14-day statistics (count all tasks)
                 completedLast14Days: tasks.filter((task: any) => {
                     if (task.status !== 'DONE') return false;
                     const dateToCheck = task.completedAt || task.updatedAt;
@@ -528,9 +532,12 @@ export default function ProjectSummaryPage() {
 
     const calculateTeamWorkload = async (tasks: any[]) => {
         try {
+            // ✅ Count ALL tasks (parents + subtasks) for workload calculation
+            const allTasks = tasks;
+            
             // Get all assigned tasks
-            const assignedTasks = tasks.filter(task => task.assigneeId);
-            const unassignedTasks = tasks.filter(task => !task.assigneeId);
+            const assignedTasks = allTasks.filter(task => task.assigneeId);
+            const unassignedTasks = allTasks.filter(task => !task.assigneeId);
             
             const assigneeGroups = assignedTasks.reduce((acc: any, task: any) => {
                 let assigneeName = 'Unknown User';
@@ -586,7 +593,7 @@ export default function ProjectSummaryPage() {
                 return acc;
             }, {});
             
-            const totalTasks = tasks.length;
+            const totalTasks = allTasks.length;
             const workloadData: any[] = [];
             
             // Add unassigned work
@@ -1052,16 +1059,17 @@ export default function ProjectSummaryPage() {
 
     const calculatePriorityBreakdown = (tasks: any[], selectedSprintId: string) => {
         try {
-            let filteredTasks = tasks;
+            // ✅ Include ALL tasks (parents + subtasks)
+            let allTasks = tasks;
             
             // Filter tasks based on selected sprint
             if (selectedSprintId === 'all') {
-                filteredTasks = tasks;
+                // Use all tasks
             } else {
-                filteredTasks = tasks.filter(task => task.sprintId === selectedSprintId);
+                allTasks = allTasks.filter(task => task.sprintId === selectedSprintId);
             }
             
-            const priorityBreakdown = filteredTasks.reduce((acc: any, task: any) => {
+            const priorityBreakdown = allTasks.reduce((acc: any, task: any) => {
                 const priority = task.priority || 'Medium';
                 acc[priority] = (acc[priority] || 0) + 1;
                 return acc;
@@ -1558,7 +1566,7 @@ export default function ProjectSummaryPage() {
                                             </ResponsiveContainer>
                                             <div className="absolute inset-0 flex flex-col items-center justify-center">
                                                 <div className="text-3xl font-bold">{taskStats.total}</div>
-                                                <div className="text-sm text-gray-600">Total work items</div>
+                                                <div className="text-sm text-gray-600">Total tasks</div>
                                             </div>
                                         </div>
                                         <div className="space-y-3">
@@ -1849,7 +1857,7 @@ export default function ProjectSummaryPage() {
                                 <CardHeader>
                                     <CardTitle className="text-lg">Types of work</CardTitle>
                                     <CardDescription>
-                                        Get a breakdown of work items by their types. <a href="#" className="text-blue-600 hover:underline">View all items</a>
+                                        Get a breakdown of work items by their types. Shows both parent tasks and subtasks separately. Most tasks are standalone parents, some have 1 subtask. <a href="#" className="text-blue-600 hover:underline">View all items</a>
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent>

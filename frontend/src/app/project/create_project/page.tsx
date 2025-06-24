@@ -4,7 +4,7 @@ import { Sidebar } from "@/components/ui/sidebar";
 import { TopNavigation } from "@/components/ui/top-navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Info, X, Search, UserPlus } from "lucide-react";
+import { Info, X, Search, UserPlus, Brain } from "lucide-react";
 import { Dropdown } from "@/components/ui/drop-down";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import axios, { AxiosError } from "axios";
 import { useUser } from "@/contexts/UserContext";
 import { API_CONFIG } from "@/lib/config";
+import AIProjectCreationModal from "@/components/projects/AIProjectCreationModal";
 
 interface User {
     id: string;
@@ -19,6 +20,11 @@ interface User {
     email: string;
     avatar?: string;
     userRole?: string;
+}
+
+interface SelectedUser extends User {
+    userId?: string;
+    role?: string;
 }
 
 // ✅ Avatar Component for better reusability
@@ -75,10 +81,13 @@ export default function CreateProjectPage() {
     
     // ✅ New states for user invitation
     const [allUsers, setAllUsers] = useState<User[]>([]);
-    const [selectedUsers, setSelectedUsers] = useState<User[]>([]);
+    const [selectedUsers, setSelectedUsers] = useState<SelectedUser[]>([]);
     const [searchTerm, setSearchTerm] = useState("");
     const [showUserDropdown, setShowUserDropdown] = useState(false);
     const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+    
+    // ✅ AI Project Creation Modal state
+    const [showAIModal, setShowAIModal] = useState(false);
     
     const router = useRouter();
 
@@ -92,11 +101,8 @@ export default function CreateProjectPage() {
     // ✅ Simplified useEffect with UserContext
     useEffect(() => {
         if (!userLoading && currentUser) {
-            console.log("✅ Current user from context:", currentUser);
-            // Fetch users when we have current user
             fetchAllUsers();
         } else if (!userLoading && !currentUser) {
-            console.warn("❌ No current user found in context");
             toast.error("Please log in to create a project");
         }
     }, [currentUser, userLoading]);
@@ -110,13 +116,10 @@ export default function CreateProjectPage() {
                 // ✅ Filter out current user (owner) from the list
                 const users = response.data.data.filter((user: User) => user.id !== currentUser?.id);
                 setAllUsers(users);
-                console.log(`Loaded ${users.length} users (excluding current user)`);
             } else {
-                console.error("Failed to fetch users:", response.data);
                 toast.error("Failed to load users");
             }
         } catch (error) {
-            console.error("Error fetching users:", error);
             toast.error("Error loading users");
         } finally {
             setIsLoadingUsers(false);
@@ -132,7 +135,12 @@ export default function CreateProjectPage() {
 
     // ✅ Add user to selected list
     const addUser = (user: User) => {
-        setSelectedUsers([...selectedUsers, user]);
+        const userWithRole: SelectedUser = {
+            ...user,
+            userId: user.id,
+            role: user.userRole || 'Developer'
+        };
+        setSelectedUsers([...selectedUsers, userWithRole]);
         setSearchTerm("");
         setShowUserDropdown(false);
     };
@@ -163,17 +171,20 @@ export default function CreateProjectPage() {
                     taskId: null // No task associated with project invitation
                 };
 
-                console.log(`PROJECT: Sending standard invitation to ${user.username}:`, notificationData);
                 return axios.post(`${API_CONFIG.NOTIFICATION_SERVICE}/api/notifications/create`, notificationData);
             });
 
             await Promise.all(invitationPromises);
-            console.log(`PROJECT: ${selectedUsers.length} project invitations sent successfully`);
             toast.success(`Project invitations sent to ${selectedUsers.length} users`);
         } catch (error) {
-            console.error('❌ PROJECT: Failed to send project invitations:', error);
             toast.error('Failed to send some invitations');
         }
+    };
+
+    // ✅ Handle AI project creation success
+    const handleAIProjectCreated = (projectId: string) => {
+        toast.success("AI Project created successfully!");
+        router.push(`/project/project_homescreen?projectId=${projectId}`);
     };
 
     const handleSubmit = async () => {
@@ -202,10 +213,8 @@ export default function CreateProjectPage() {
                 toast.error("Project created but no ID returned.");
                 return;
             }
-            console.log("✅ STEP 1 SUCCESS: Project created with ID:", newProjectId);
 
             // ✅ STEP 2: Create Sprint
-            console.log("🚀 STEP 2: Creating default sprint...");
             const sprintPayload = {
                 name: "Sprint 1",
                 projectId: newProjectId,
@@ -228,34 +237,21 @@ export default function CreateProjectPage() {
                 
                 await axios.post(`${API_CONFIG.PROJECTS_SERVICE}/api/projects/${newProjectId}/members`, ownerMemberData);
             } catch (ownerError) {
-                console.warn("⚠️ STEP 3 WARNING: Failed to auto-add owner as member:", ownerError);
                 // Don't fail the whole process if this fails
             }
 
             // ✅ STEP 4: Send project invitations
-            console.log("🚀 STEP 4: Sending notifications...");
             await sendProjectInvitations(newProjectId, name);
-            console.log("✅ STEP 4 SUCCESS: Notifications sent");
 
             // ✅ STEP 5: Navigate to project
-            console.log("🚀 STEP 5: Navigating to project...");
             const redirectUrl = `/project/project_homescreen?projectId=${newProjectId}`;
-            console.log("✅ REDIRECT: Navigating to:", redirectUrl);
             
             toast.success("Project and default sprint created successfully!");
             router.push(redirectUrl);
-            console.log("✅ STEP 5 SUCCESS: Navigation initiated");
 
         } catch (err: unknown) {
             if (axios.isAxiosError(err)) {
                 const axiosErr = err as AxiosError<{ message?: string; error?: string }>;
-                console.error("❌ PROJECT: Axios Error:", axiosErr.response?.data);
-                console.error("❌ PROJECT: Error details:", {
-                    status: axiosErr.response?.status,
-                    statusText: axiosErr.response?.statusText,
-                    url: axiosErr.config?.url,
-                    method: axiosErr.config?.method
-                });
                 
                 // Better error messaging
                 const errorMessage = axiosErr.response?.data?.message || 
@@ -265,10 +261,8 @@ export default function CreateProjectPage() {
                                    
                 toast.error("Error creating project: " + errorMessage);
             } else if (err instanceof Error) {
-                console.error("❌ PROJECT: Error:", err.message);
                 toast.error("Error: " + err.message);
             } else {
-                console.error("❌ PROJECT: Unknown error", err);
                 toast.error("Unknown error occurred.");
             }
         }
@@ -310,10 +304,10 @@ export default function CreateProjectPage() {
                         </div>
                         <div>
                             <label className="block text-sm font-semibold mb-1">
-                                Project Type <span className="text-red-500">*</span>
+                                Project Type
                             </label>
                             <Dropdown
-                                placeholder="Select project type"
+                                placeholder="Select project type (optional)"
                                 options={["Team-managed", "Company-managed"]}
                                 onSelect={setProjectType}
                             />
@@ -424,12 +418,19 @@ export default function CreateProjectPage() {
                         </div>
                     </div>
 
-                    <div className="flex space-x-4 mt-10">
+                    <div className="flex flex-wrap gap-4 mt-10">
                         <Button variant="outline" className="text-sm">Cancel</Button>
                         <Button
+                            onClick={() => setShowAIModal(true)}
+                            className="text-sm bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700 border-0"
+                        >
+                            <Brain className="h-4 w-4 mr-2" />
+                            Follow AI Create
+                        </Button>
+                        <Button
                             onClick={handleSubmit}
-                            disabled={!name || !key || !description || !projectType || !access || !deadline || !currentUser || userLoading}
-                            className={`text-sm ${name && key && description && projectType && access && deadline && currentUser ? "bg-[#0052CC] text-white" : "bg-gray-300 text-gray-600"}`}
+                            disabled={!name || !key || !description || !access || !deadline || !currentUser || userLoading}
+                            className={`text-sm ${name && key && description && access && deadline && currentUser ? "bg-[#0052CC] text-white" : "bg-gray-300 text-gray-600"}`}
                         >
                             {userLoading ? (
                                 <>Loading...</>
@@ -442,6 +443,14 @@ export default function CreateProjectPage() {
                     </div>
                 </main>
             </div>
+            
+            {/* ✅ AI Project Creation Modal */}
+            <AIProjectCreationModal
+                isOpen={showAIModal}
+                onClose={() => setShowAIModal(false)}
+                onProjectCreated={handleAIProjectCreated}
+                availableUsers={allUsers}
+            />
             
             {/* Click outside to close dropdown */}
             {showUserDropdown && (

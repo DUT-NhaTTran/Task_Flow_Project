@@ -17,9 +17,6 @@ public class ProjectValidator {
         if (project.getKey() == null || project.getKey().trim().isEmpty()) {
             throw new BadRequestException("Project key is required");
         }
-        if (project.getProjectType() == null || project.getProjectType().trim().isEmpty()) {
-            throw new BadRequestException("Project type is required");
-        }
     }
 
     public static void validateProjectId(UUID projectId) {

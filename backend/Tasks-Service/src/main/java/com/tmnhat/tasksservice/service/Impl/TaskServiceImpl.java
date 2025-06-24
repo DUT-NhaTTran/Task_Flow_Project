@@ -187,10 +187,7 @@ public class TaskServiceImpl implements TaskService {
             // Update status in database
             tasksDAO.changeTaskStatus(taskId, status);
             
-            // NOTE: Removed automatic notification sending - frontend will handle this
-            System.out.println("🔄 Task status changed from " + oldStatus + " to " + newStatus + 
-                             " - Frontend should handle notification");
-            
+
         } catch (Exception e) {
             throw new DatabaseException("Error changing task status: " + e.getMessage());
         }
@@ -429,7 +426,7 @@ public class TaskServiceImpl implements TaskService {
     }
 
     // AI Service Configuration
-    private static final String AI_SERVICE_URL = "http://localhost:8088";
+    private static final String AI_SERVICE_URL = System.getenv().getOrDefault("AI_SERVICE_URL", "http://ai-service:8088");
     private final RestTemplate restTemplate = new RestTemplate();
 
     @Override

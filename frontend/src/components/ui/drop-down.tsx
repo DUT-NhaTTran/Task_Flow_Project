@@ -22,7 +22,9 @@ export function Dropdown({
 }: DropdownProps) {
     const [selected, setSelected] = React.useState(defaultValue || placeholder)
     const [open, setOpen] = React.useState(false)
+    const [dropUp, setDropUp] = React.useState(false)
     const dropdownRef = React.useRef<HTMLDivElement>(null)
+    const menuRef = React.useRef<HTMLDivElement>(null)
 
     // Update selected value when defaultValue changes
     React.useEffect(() => {
@@ -47,6 +49,19 @@ export function Dropdown({
             document.removeEventListener('mousedown', handleClickOutside)
         }
     }, [open])
+
+    // Auto-position dropdown to prevent clipping
+    React.useEffect(() => {
+        if (open && dropdownRef.current) {
+            const rect = dropdownRef.current.getBoundingClientRect()
+            const menuHeight = Math.min(options.length * 40 + 16, 240) // Estimate menu height (max-h-60)
+            const spaceBelow = window.innerHeight - rect.bottom
+            const spaceAbove = rect.top
+            
+            // Open upward if there's not enough space below but enough space above
+            setDropUp(spaceBelow < menuHeight && spaceAbove > menuHeight)
+        }
+    }, [open, options.length])
 
     const handleSelect = (option: string) => {
         console.log('Dropdown selecting:', option) // Debug log
@@ -100,7 +115,12 @@ export function Dropdown({
                     <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
                     
                     {/* Dropdown menu */}
-                    <div className="absolute z-50 mt-1 w-full min-w-max border border-gray-200 rounded-md bg-white shadow-lg">
+                    <div 
+                        ref={menuRef}
+                        className={`absolute z-50 w-full min-w-max border border-gray-200 rounded-md bg-white shadow-lg ${
+                            dropUp ? 'bottom-full mb-1' : 'top-full mt-1'
+                        }`}
+                    >
                         <div className="py-1 max-h-60 overflow-auto">
                             {options.map((option) => {
                                 const isSelected = option === selected

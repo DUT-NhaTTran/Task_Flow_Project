@@ -1296,7 +1296,16 @@ export default function ProjectBoardPage() {
           status: task.status?.toUpperCase().replace(" ", "_") as Task["status"],
         }));
         
+        // ✅ Enhance tasks with assignee names
+        try {
+          const { enhanceTasksWithAssigneeNames } = await import('@/utils/taskHelpers');
+          const enhancedTasks = await enhanceTasksWithAssigneeNames(formattedTasks);
+          setTasks(enhancedTasks);
+          console.log(`✅ Enhanced ${enhancedTasks.filter(t => t.assigneeId).length} tasks with assignee names`);
+        } catch (enhanceError) {
+          console.warn('Failed to enhance tasks with assignee names:', enhanceError);
         setTasks(formattedTasks);
+        }
         
         // Check for overdue tasks and send notifications
         try {
@@ -1406,10 +1415,18 @@ export default function ProjectBoardPage() {
         );
         
         if (activeSprints.length > 0) {
-          // Sort by most recent start date if multiple active sprints
-          activeSprints.sort((a: any, b: any) => 
-            new Date(b.startDate).getTime() - new Date(a.startDate).getTime()
-          );
+          // Sort active sprints: prioritize non-test sprints first, then by creation date
+          activeSprints.sort((a: any, b: any) => {
+            const aIsTest = (a.name || '').toLowerCase().includes('test');
+            const bIsTest = (b.name || '').toLowerCase().includes('test');
+            
+            // If one is test and other is not, prioritize non-test
+            if (aIsTest && !bIsTest) return 1;
+            if (!aIsTest && bIsTest) return -1;
+            
+            // If both are test or both are not test, sort by creation date (newest first)
+            return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+          });
           
           const activeSprint = activeSprints[0];
           
@@ -1503,6 +1520,25 @@ export default function ProjectBoardPage() {
 
       // Get current user ID for createdBy field
       const currentUserId = userData?.profile?.id || userData?.account?.id || localStorage.getItem("ownerId") || localStorage.getItem("userId") || undefined;
+
+      console.log("🔍 DEBUG Task Creation:", {
+        title,
+        status,
+        projectId,
+        sprintId: latestSprintId,
+        currentUserId,
+        userDataProfile: userData?.profile,
+        userDataAccount: userData?.account,
+        localStorageOwnerId: localStorage.getItem("ownerId"),
+        localStorageUserId: localStorage.getItem("userId"),
+        allLocalStorageKeys: Object.keys(localStorage)
+      });
+
+      if (!currentUserId) {
+        console.error("❌ No current user ID found! Cannot set createdBy field.");
+        toast.error("Unable to identify current user. Please try logging in again.");
+        return;
+      }
 
       // Clear input immediately for better UX
       setNewTasks((prev) => ({ ...prev, [status]: "" }));
@@ -1969,6 +2005,13 @@ export default function ProjectBoardPage() {
     const [userAvatars, setUserAvatars] = useState<Record<string, string>>({});
     const hasFetchedUsers = useRef(false);
     const [validAssignee, setValidAssignee] = useState(false);
+    
+    // ✅ Auto-fetch project users on mount to populate assignee data
+    useEffect(() => {
+      if (projectId && !hasFetchedUsers.current) {
+        fetchProjectUsers();
+      }
+    }, [projectId]);
 
     useEffect(() => {
       const hasValidAssigneeId = !!task.assigneeId && task.assigneeId.trim().length > 0;
@@ -2105,16 +2148,54 @@ export default function ProjectBoardPage() {
         const previousAssigneeId = task.assigneeId;
         const isReassignment = previousAssigneeId && previousAssigneeId !== userId;
         
-        await axios.put(`${API_CONFIG.TASKS_SERVICE}/api/tasks/${task.id}`, {
+        const currentUserId = localStorage.getItem("ownerId") || localStorage.getItem("userId") || '';
+        const taskPayload = {
           ...task,
           assigneeId: userId || null,
           assigneeName: isValid ? userName : "Unassigned"
-        }, {
-          headers: {
+        };
+        const headers = {
             'Content-Type': 'application/json',
-            'X-User-Id': localStorage.getItem("ownerId") || localStorage.getItem("userId") || '',
-          },
+          'X-User-Id': currentUserId,
+        };
+        const url = `${API_CONFIG.TASKS_SERVICE}/api/tasks/${task.id}`;
+        
+        // Debug user permissions and localStorage data
+        console.log("🔍 DEBUG LocalStorage Data:", {
+          ownerId: localStorage.getItem("ownerId"),
+          userId: localStorage.getItem("userId"),
+          username: localStorage.getItem("username"),
+          fullname: localStorage.getItem("fullname"),
+          userRole: localStorage.getItem("userRole"),
+          allLocalStorageKeys: Object.keys(localStorage)
         });
+
+        console.log("🔍 DEBUG User Permissions:", {
+          userPermissions,
+          canAssignTasks: userPermissions?.canAssignTasks,
+          canManageAnyTask: userPermissions?.canManageAnyTask
+        });
+
+        console.log("🔍 DEBUG Task Assignment Request:", {
+          url,
+          taskId: task.id,
+          taskTitle: task.title,
+          taskProjectId: task.projectId,
+          taskCreatedBy: task.createdBy,
+          taskAssigneeId: task.assigneeId,
+          currentUserId,
+          currentUserIdFormat: {
+            length: currentUserId.length,
+            isUUID: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(currentUserId)
+          },
+          newAssigneeId: userId,
+          isReassignment,
+          headers,
+          payloadKeys: Object.keys(taskPayload)
+        });
+
+        const response = await axios.put(url, taskPayload, { headers });
+        console.log("✅ Assignment response:", response.data);
         
         if (isValid) {
           toast.success(`Assigned to ${userName}`);
@@ -2199,8 +2280,21 @@ export default function ProjectBoardPage() {
         console.log(`✅ Task assignment updated: ${isReassignment ? 'Reassigned' : 'Assigned'} task "${task.title}" to ${userName} (${userId})`);
         
         await fetchProjectUsers();
-      } catch (err) {
-        toast.error("Failed to assign user");
+      } catch (err: any) {
+        console.error("❌ Task assignment failed:");
+        console.error("Error:", err);
+        console.error("Response:", err?.response?.data);
+        console.error("Status:", err?.response?.status);
+        console.error("Message:", err?.message);
+        console.error("Task Info:", {
+          id: task.id,
+          title: task.title,
+          projectId: task.projectId,
+          assigneeId: task.assigneeId,
+          createdBy: task.createdBy
+        });
+        
+        toast.error(`Failed to assign user: ${err?.response?.data?.message || err?.message || 'Unknown error'}`);
       }
     };
 
@@ -2241,9 +2335,22 @@ export default function ProjectBoardPage() {
     };
 
     // Xác định tên người được gán nhiệm vụ
+    // ✅ PRIORITY: Use task.assigneeName (from enhanced helper) if assignee not found in projectUsers
     const assigneeName = validAssignee 
-      ? (assignee?.username || assignee?.name || task.assigneeName || "Unassigned")
+      ? (assignee?.username || assignee?.name || task.assigneeName || "Unknown User")
       : "Unassigned";
+    
+    // ✅ DEBUG: Log assignee resolution for AI-generated tasks
+    if (task.assigneeId && !assignee && task.assigneeName) {
+      console.log(`🔍 TaskCard Assignee Resolution for "${task.title}":`, {
+        hasAssigneeId: !!task.assigneeId,
+        assigneeId: task.assigneeId,
+        hasAssigneeInProjectUsers: !!assignee,
+        taskAssigneeName: task.assigneeName,
+        finalAssigneeName: assigneeName,
+        validAssignee: validAssignee
+      });
+    }
     
     // Ưu tiên sử dụng URL từ assigneeAvatarUrl đã fetch từ API
     let avatarUrl = assigneeAvatarUrl;
@@ -2255,6 +2362,19 @@ export default function ProjectBoardPage() {
     // Nếu không có avatar URL từ fetch, thử lấy từ assignee object
     else if (!avatarUrl && assignee) {
       avatarUrl = getAvatarUrl(assignee);
+    }
+    // ✅ For AI-generated tasks: If we have assigneeName but no assignee object, fetch avatar by ID
+    else if (!avatarUrl && validAssignee && task.assigneeId && task.assigneeName) {
+      // Try to fetch avatar for AI-assigned tasks that aren't in projectUsers yet
+      fetchUserAvatar(task.assigneeId).then(url => {
+        if (url && url !== DEFAULT_AVATAR_URL) {
+          setAssigneeAvatarUrl(url);
+        }
+      }).catch(() => {
+        // Fallback to default if fetch fails
+        setAssigneeAvatarUrl(DEFAULT_AVATAR_URL);
+      });
+      avatarUrl = DEFAULT_AVATAR_URL; // Use default initially while fetching
     }
     // Nếu vẫn không có và có assigneeId hợp lệ, sử dụng default avatar
     else if (!avatarUrl) {
@@ -2655,6 +2775,72 @@ export default function ProjectBoardPage() {
     });
     return Array.from(labels);
   }, [tasks]);
+
+  // Add to window for debugging
+  useEffect(() => {
+    // @ts-ignore
+    window.debugTaskPermissions = async () => {
+      const currentUserId = localStorage.getItem("ownerId") || localStorage.getItem("userId");
+      
+      console.log("🧪 DEBUGGING TASK PERMISSIONS:");
+      console.log("Current User ID:", currentUserId);
+      console.log("Project ID:", projectId);
+      
+      if (!currentUserId || !projectId) {
+        console.error("❌ Missing user ID or project ID");
+        return;
+      }
+      
+      try {
+        // Test permission API directly
+        const permissionUrl = `${API_CONFIG.PROJECTS_SERVICE}/api/projects/${projectId}/members/${currentUserId}/permissions`;
+        console.log("🔗 Permission URL:", permissionUrl);
+        
+        const response = await axios.get(permissionUrl);
+        console.log("✅ Permission API Response:", response.data);
+        
+        // Test role API 
+        const roleUrl = `${API_CONFIG.PROJECTS_SERVICE}/api/projects/${projectId}/members/${currentUserId}/role`;
+        console.log("🔗 Role URL:", roleUrl);
+        
+        const roleResponse = await axios.get(roleUrl);
+        console.log("✅ Role API Response:", roleResponse.data);
+        
+        // Test if user can update any task
+        const taskId = "a6de20e8-f6cb-4d76-ad28-e05df52b7362"; // The problem task
+        const testUpdateUrl = `${API_CONFIG.TASKS_SERVICE}/api/tasks/${taskId}`;
+        console.log("🔗 Test Task Update URL:", testUpdateUrl);
+        
+        try {
+          // Just get the task first
+          const taskResponse = await axios.get(`${API_CONFIG.TASKS_SERVICE}/api/tasks/get-by-id/${taskId}`, {
+            headers: { "X-User-Id": currentUserId }
+          });
+          console.log("✅ Can access task:", taskResponse.data);
+          
+          const taskData = taskResponse.data.data;
+          console.log("📋 Task details:", {
+            id: taskData.id,
+            title: taskData.title,
+            createdBy: taskData.createdBy,
+            assigneeId: taskData.assigneeId,
+            projectId: taskData.projectId
+          });
+          
+        } catch (taskError: any) {
+          console.error("❌ Cannot access task:", taskError?.response?.data);
+        }
+        
+      } catch (error: any) {
+        console.error("❌ Permission/Role API Error:");
+        console.error("Error:", error);
+        console.error("Response:", error?.response?.data);
+        console.error("Status:", error?.response?.status);
+      }
+    };
+    
+    console.log("💡 Run window.debugTaskPermissions() in console to debug!");
+  }, [projectId]);
 
   return (
     <div className="flex h-screen bg-gray-50">

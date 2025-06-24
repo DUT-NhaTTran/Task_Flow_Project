@@ -15,8 +15,8 @@ import java.time.LocalDateTime;
 public class ProjectDAO extends BaseDAO {
 
     public void addProject(Projects project) throws SQLException {
-        String sql = "INSERT INTO projects (name, description, owner_id, deadline, created_at, key, project_type, access) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO projects (name, description, owner_id, deadline, created_at, key, project_type, access, status) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
         executeUpdate(sql, stmt -> {
             stmt.setString(1, project.getName());
             stmt.setString(2, project.getDescription());
@@ -29,11 +29,12 @@ public class ProjectDAO extends BaseDAO {
             stmt.setString(6, project.getKey());
             stmt.setString(7, project.getProjectType());
             stmt.setString(8, project.getAccess());
+            stmt.setString(9, project.getStatus() != null ? project.getStatus() : "ACTIVE");
         });
     }
 
     public void updateProject(UUID id, Projects project) throws SQLException {
-        String sql = "UPDATE projects SET name = ?, description = ?, owner_id = ?, deadline = ?, key = ?, project_type = ?, access = ? WHERE id = ?";
+        String sql = "UPDATE projects SET name = ?, description = ?, owner_id = ?, deadline = ?, key = ?, project_type = ?, access = ?, status = ? WHERE id = ?";
         executeUpdate(sql, stmt -> {
             stmt.setString(1, project.getName());
             stmt.setString(2, project.getDescription());
@@ -45,7 +46,8 @@ public class ProjectDAO extends BaseDAO {
             stmt.setString(5, project.getKey());
             stmt.setString(6, project.getProjectType());
             stmt.setString(7, project.getAccess());
-            stmt.setObject(8, id);
+            stmt.setString(8, project.getStatus() != null ? project.getStatus() : "ACTIVE");
+            stmt.setObject(9, id);
         });
     }
 
@@ -111,7 +113,7 @@ public class ProjectDAO extends BaseDAO {
     }
 
     public void archiveProject(UUID projectId) throws SQLException {
-        String sql = "UPDATE projects SET is_archived = TRUE WHERE id = ?";
+        String sql = "UPDATE projects SET status = 'ARCHIVED' WHERE id = ?";
         executeUpdate(sql, stmt -> stmt.setObject(1, projectId));
     }
 
@@ -174,6 +176,7 @@ public class ProjectDAO extends BaseDAO {
                 .key(rs.getString("key"))
                 .projectType(rs.getString("project_type"))
                 .access(rs.getString("access"))
+                .status(rs.getString("status"))
                 .deletedAt(rs.getTimestamp("deleted_at") != null ? rs.getTimestamp("deleted_at").toLocalDateTime() : null)
                 .build();
     }
@@ -189,17 +192,21 @@ public class ProjectDAO extends BaseDAO {
         });
     }
     public UUID addProjectReturnId(Projects project) throws SQLException {
-        String sql = "INSERT INTO projects (name, description, owner_id, deadline, created_at, key, project_type, access) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id";
+        String sql = "INSERT INTO projects (name, description, owner_id, deadline, created_at, key, project_type, access, status) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id";
         return executeQuery(sql, stmt -> {
             stmt.setString(1, project.getName());
             stmt.setString(2, project.getDescription());
             stmt.setObject(3, project.getOwnerId());
-            stmt.setTimestamp(4, Timestamp.valueOf(project.getDeadline().atStartOfDay()));
-            stmt.setTimestamp(5, Timestamp.valueOf(project.getCreatedAt()));
+            
+            LocalDateTime now = LocalDateTime.now();
+            stmt.setTimestamp(4, project.getDeadline() != null ? Timestamp.valueOf(project.getDeadline().atStartOfDay()) : Timestamp.valueOf(now));
+            stmt.setTimestamp(5, project.getCreatedAt() != null ? Timestamp.valueOf(project.getCreatedAt()) : Timestamp.valueOf(now));
+            
             stmt.setString(6, project.getKey());
             stmt.setString(7, project.getProjectType());
             stmt.setString(8, project.getAccess());
+            stmt.setString(9, project.getStatus() != null ? project.getStatus() : "ACTIVE");
 
             ResultSet rs = stmt.executeQuery();
             if (rs.next()) {
@@ -232,6 +239,7 @@ public class ProjectDAO extends BaseDAO {
                     project.setKey(rs.getString("key"));
                     project.setProjectType(rs.getString("project_type"));
                     project.setAccess(rs.getString("access"));
+                    project.setStatus(rs.getString("status"));
                     return project;
                 } else {
                     return null;

@@ -331,16 +331,35 @@ class StoryPointEstimator:
                 
             confidence = min(confidence, 0.95)
             
+            # Get detailed text analysis
+            text_analysis = self.preprocessor.calculate_text_features(title, description)
+            
+            # Get TF-IDF features
+            tfidf_features = self.preprocessor.get_tfidf_features(f"{title} {description}")
+            
             # Feature importance for reasoning
             feature_names = self.preprocessor.get_feature_names()
             
             reasoning = f"Estimated {story_points} points based on comprehensive text analysis"
+            top_features_info = []
+            
             if hasattr(self.prediction_model, 'feature_importances_'):
                 top_features = sorted(
                     zip(feature_names[:len(features[0])], self.prediction_model.feature_importances_),
                     key=lambda x: x[1], reverse=True
-                )[:3]
-                reasoning += f". Key factors: {', '.join([f[0] for f in top_features])}"
+                )[:5]
+                top_features_info = [{"name": f[0], "importance": float(f[1])} for f in top_features]
+                reasoning += f". Key factors: {', '.join([f[0] for f in top_features[:3]])}"
+            
+            # Calculate complexity score
+            complexity_score = (
+                text_analysis.get('complexity_high', 0) * 3 +
+                text_analysis.get('complexity_medium', 0) * 2 +
+                text_analysis.get('complexity_low', 0) * 1
+            ) / max(1, text_analysis.get('word_count', 1))
+            
+            # Top TF-IDF terms for this specific task (rare/important words)
+            top_tfidf_terms = self._get_top_tfidf_terms(title, description, top_n=5)
             
             return {
                 "story_points": story_points,
@@ -352,7 +371,48 @@ class StoryPointEstimator:
                     "has_description": bool(description),
                     "has_attachments": bool(attachments_count),
                     "has_priority": bool(priority),
-                    "has_task_type": bool(task_type)
+                    "has_task_type": bool(task_type),
+                    
+                    # Detailed text analysis
+                    "title_length": text_analysis.get('title_length', 0),
+                    "description_length": text_analysis.get('description_length', 0),
+                    "word_count": text_analysis.get('word_count', 0),
+                    "complexity_score": round(complexity_score, 3),
+                    
+                    # Complexity keywords
+                    "complexity_high": text_analysis.get('complexity_high', 0),
+                    "complexity_medium": text_analysis.get('complexity_medium', 0),
+                    "complexity_low": text_analysis.get('complexity_low', 0),
+                    
+                    # Effort keywords
+                    "effort_high": text_analysis.get('effort_high_effort', 0),
+                    "effort_medium": text_analysis.get('effort_medium_effort', 0),
+                    "effort_low": text_analysis.get('effort_low_effort', 0),
+                    
+                    # Technical indicators
+                    "has_ui_words": text_analysis.get('has_ui_words', 0),
+                    "has_backend_words": text_analysis.get('has_backend_words', 0),
+                    "has_integration_words": text_analysis.get('has_integration_words', 0),
+                    "has_testing_words": text_analysis.get('has_testing_words', 0),
+                    
+                    # Readability metrics
+                    "flesch_reading_ease": round(text_analysis.get('flesch_reading_ease', 0), 2),
+                    "flesch_kincaid_grade": round(text_analysis.get('flesch_kincaid_grade', 0), 2),
+                    
+                    # TF-IDF info
+                    "tfidf_feature_count": len(tfidf_features) if len(tfidf_features) > 0 else 0,
+                    "tfidf_max_score": float(np.max(tfidf_features)) if len(tfidf_features) > 0 else 0,
+                    "tfidf_mean_score": float(np.mean(tfidf_features)) if len(tfidf_features) > 0 else 0,
+                    
+                    # Top features
+                    "top_features": top_features_info,
+                    
+                    # Top TF-IDF terms for this specific task (rare/important words)
+                    "top_tfidf_terms": top_tfidf_terms,
+                    
+                    # Metadata
+                    "priority_encoded": self.preprocessor._encode_priority(priority) if priority else 2,
+                    "attachments_count": attachments_count or 0
                 }
             }
             
@@ -403,4 +463,23 @@ class StoryPointEstimator:
         except Exception as e:
             logger.error(f"Load error: {e}")
             self.is_fitted = False 
+
+    def _get_top_tfidf_terms(self, title: str, description: str, top_n: int = 5):
+        """Return top n terms with highest TF-IDF scores for the given text"""
+        try:
+            if self.preprocessor.tfidf_vectorizer is None:
+                return []
+            vector = self.preprocessor.tfidf_vectorizer.transform([f"{title} {description}"])
+            scores = vector.toarray()[0]
+            if scores.sum() == 0:
+                return []
+            feature_names = self.preprocessor.tfidf_vectorizer.get_feature_names_out()
+            top_indices = scores.argsort()[::-1][:top_n]
+            top_terms = [
+                {"term": feature_names[i], "score": float(scores[i])}
+                for i in top_indices if scores[i] > 0
+            ]
+            return top_terms
+        except Exception:
+            return []
             

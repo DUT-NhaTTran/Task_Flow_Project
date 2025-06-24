@@ -272,6 +272,11 @@ export const handlePermissionError = (error: any): string => {
 };
 
 export const canDeleteSprint = (permissions: UserPermissions | null): boolean => {
-  // ✅ ONLY project owners can delete sprints (soft delete)
-  return permissions?.isOwner || false;
+  // ✅ Project Owners and Scrum Masters can delete sprints (match backend logic)
+  return permissions?.isOwner || permissions?.isScrumMaster || false;
+};
+
+export const canCancelSprint = (permissions: UserPermissions | null): boolean => {
+  // ✅ Only Project Owners and users with sprint management permissions can cancel sprints
+  return permissions?.isOwner || permissions?.canManageSprints || false;
 }; 

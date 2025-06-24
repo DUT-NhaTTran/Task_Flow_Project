@@ -118,6 +118,8 @@ public class Tasks {
         this.assigneeId = assigneeId;
     }
 
+
+
     public UUID getCreatedBy() {
         return createdBy;
     }
@@ -252,6 +254,8 @@ public class Tasks {
             this.assigneeId = assigneeId;
             return this;
         }
+
+
 
         public Builder createdBy(UUID createdBy) {
             this.createdBy = createdBy;

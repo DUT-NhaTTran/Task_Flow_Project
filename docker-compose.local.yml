@@ -3,8 +3,7 @@ version: '3.8'
 services:
   postgres:
     image: postgres:15-alpine
-    platform: linux/amd64
-    container_name: taskflow-postgres
+    container_name: taskflow-postgres-local
     environment:
       POSTGRES_DB: taskflow_production
       POSTGRES_USER: taskflow_user
@@ -12,8 +11,8 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_production_data:/var/lib/postgresql/data
-      - ./postgres_backup.sql:/docker-entrypoint-initdb.d/init.sql
+      - postgres_local_data:/var/lib/postgresql/data
+      - ./fresh_backup.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - taskflow-network
     restart: unless-stopped
@@ -25,8 +24,7 @@ services:
 
   accounts-service:
     image: tranminnhatdut/taskflow-backend:accounts-service-latest
-    platform: linux/amd64
-    container_name: taskflow-accounts
+    container_name: taskflow-accounts-local
     ports:
       - "8080:8080"
     environment:
@@ -36,7 +34,6 @@ services:
       - SPRING_DATASOURCE_USERNAME=taskflow_user
       - SPRING_DATASOURCE_PASSWORD=TaskFlow2024@VN
       - SERVER_PORT=8080
-      - NEXT_PUBLIC_ACCOUNTS_API_URL=http://14.225.210.28:8080
     depends_on:
       postgres:
         condition: service_healthy
@@ -45,8 +42,8 @@ services:
     restart: unless-stopped
 
   projects-service:
-    image: tranminnhatdut/taskflow-backend:projects-service-latest
-    container_name: taskflow-projects
+    image: taskflow-projects-local:latest
+    container_name: taskflow-projects-local
     ports:
       - "8083:8083"
     environment:
@@ -56,7 +53,6 @@ services:
       - SPRING_DATASOURCE_USERNAME=taskflow_user
       - SPRING_DATASOURCE_PASSWORD=TaskFlow2024@VN
       - SERVER_PORT=8083
-      - NEXT_PUBLIC_PROJECTS_API_URL=http://14.225.210.28:8083
     depends_on:
       postgres:
         condition: service_healthy
@@ -66,8 +62,7 @@ services:
 
   sprints-service:
     image: tranminnhatdut/taskflow-backend:sprints-service-latest
-    platform: linux/amd64
-    container_name: taskflow-sprints
+    container_name: taskflow-sprints-local
     ports:
       - "8084:8084"
     environment:
@@ -77,7 +72,6 @@ services:
       - SPRING_DATASOURCE_USERNAME=taskflow_user
       - SPRING_DATASOURCE_PASSWORD=TaskFlow2024@VN
       - SERVER_PORT=8084
-      - NEXT_PUBLIC_SPRINTS_API_URL=http://14.225.210.28:8084
     depends_on:
       postgres:
         condition: service_healthy
@@ -87,19 +81,16 @@ services:
 
   tasks-service:
     image: tranminnhatdut/taskflow-backend:tasks-service-latest
-    platform: linux/amd64
-    container_name: taskflow-tasks
+    container_name: taskflow-tasks-local
     ports:
       - "8085:8085"
     environment:
-      - AI_SERVICE_URL=http://ai-service:8088     # hoặc http://14.225.210.28:8088
       - SPRING_PROFILES_ACTIVE=render
       - DATABASE_URL=jdbc:postgresql://postgres:5432/taskflow_production
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/taskflow_production
       - SPRING_DATASOURCE_USERNAME=taskflow_user
       - SPRING_DATASOURCE_PASSWORD=TaskFlow2024@VN
       - SERVER_PORT=8085
-      - NEXT_PUBLIC_TASKS_API_URL=http://14.225.210.28:8085
     depends_on:
       postgres:
         condition: service_healthy
@@ -109,8 +100,7 @@ services:
 
   user-service:
     image: tranminnhatdut/taskflow-backend:user-service-latest
-    platform: linux/amd64
-    container_name: taskflow-users
+    container_name: taskflow-users-local
     ports:
       - "8086:8086"
     environment:
@@ -120,7 +110,6 @@ services:
       - SPRING_DATASOURCE_USERNAME=taskflow_user
       - SPRING_DATASOURCE_PASSWORD=TaskFlow2024@VN
       - SERVER_PORT=8086
-      - NEXT_PUBLIC_USER_API_URL=http://14.225.210.28:8086
     depends_on:
       postgres:
         condition: service_healthy
@@ -130,8 +119,7 @@ services:
 
   file-service:
     image: tranminnhatdut/taskflow-backend:file-service-latest
-    platform: linux/amd64
-    container_name: taskflow-files
+    container_name: taskflow-files-local
     ports:
       - "8087:8087"
     environment:
@@ -141,7 +129,6 @@ services:
       - SPRING_DATASOURCE_USERNAME=taskflow_user
       - SPRING_DATASOURCE_PASSWORD=TaskFlow2024@VN
       - SERVER_PORT=8087
-      - NEXT_PUBLIC_FILE_API_URL=http://14.225.210.28:8087
     depends_on:
       postgres:
         condition: service_healthy
@@ -149,26 +136,23 @@ services:
       - taskflow-network
     restart: unless-stopped
     volumes:
-      - file_uploads:/app/uploads
+      - file_uploads_local:/app/uploads
     user: "0:0"
 
   ai-service:
-    image: tranminnhatdut/taskflow-backend:ai-service-v3
-    platform: linux/amd64
-    container_name: ai-service
+    image: tranminnhatdut/taskflow-backend:ai-service-latest
+    container_name: taskflow-ai-local
     ports:
       - "8088:8088"
     environment:
       - PORT=8088
-      - NEXT_PUBLIC_AI_API_URL=http://14.225.210.28:8088
     networks:
       - taskflow-network
     restart: unless-stopped
 
   notification-service:
     image: tranminnhatdut/taskflow-backend:notification-service-latest
-    platform: linux/amd64
-    container_name: taskflow-notifications
+    container_name: taskflow-notifications-local
     ports:
       - "8089:8089"
     environment:
@@ -178,7 +162,6 @@ services:
       - SPRING_DATASOURCE_USERNAME=taskflow_user
       - SPRING_DATASOURCE_PASSWORD=TaskFlow2024@VN
       - SERVER_PORT=8089
-      - NEXT_PUBLIC_NOTIFICATION_API_URL=http://14.225.210.28:8089
     depends_on:
       postgres:
         condition: service_healthy
@@ -187,9 +170,9 @@ services:
     restart: unless-stopped
 
 volumes:
-  postgres_production_data:
+  postgres_local_data:
     driver: local
-  file_uploads:
+  file_uploads_local:
     driver: local
 
 networks:

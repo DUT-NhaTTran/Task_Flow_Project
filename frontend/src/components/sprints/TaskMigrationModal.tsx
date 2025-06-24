@@ -88,9 +88,31 @@ export function TaskMigrationModal({
       setLoading(true);
       const userId = userData?.account?.id || userData?.profile?.id;
 
+      // ✅ DEBUG: Log user info and permissions
+      console.log('🔍 TaskMigrationModal DEBUG:', {
+        userData: userData,
+        userId: userId,
+        userDataAccount: userData?.account,
+        userDataProfile: userData?.profile,
+        action: action,
+        sprintId: sprintId
+      });
+
       if (!userId) {
         toast.error("User ID not found. Please log in again.");
         return;
+      }
+
+      // ✅ DEBUG: Check user permissions before delete/cancel
+      try {
+        console.log('🔍 Checking user permissions...');
+        const permissionsResponse = await axios.get(
+          `${API_CONFIG.PROJECTS_SERVICE}/api/projects/${projectId}/members/${userId}/permissions`,
+          { headers: { "X-User-Id": userId } }
+        );
+        console.log('🔍 User permissions:', permissionsResponse.data);
+      } catch (permError: any) {
+        console.error('❌ Permission check failed:', permError?.response?.data);
       }
 
       const taskIds = tasks.map(task => task.id);
@@ -117,10 +139,19 @@ export function TaskMigrationModal({
 
       // Step 2: Cancel or delete the sprint
       const endpoint = action === "cancel" ? "cancel" : "soft-delete";
+      
+      // ✅ DEBUG: Log API call details before making the request
+      console.log('🚀 Making API call:', {
+        method: 'PUT',
+        url: `${API_CONFIG.SPRINTS_SERVICE}/api/sprints/${sprintId}/${endpoint}`,
+        headers: { "X-User-Id": userId, "Content-Type": "application/json" },
+        body: {}
+      });
+      
       await axios.put(
         `${API_CONFIG.SPRINTS_SERVICE}/api/sprints/${sprintId}/${endpoint}`,
         {},
-        { headers: { "X-User-Id": userId, "Content-Type": "application/json" } }
+        { headers: { "Content-Type": "application/json" } }
       );
       
       toast.success(`Sprint ${action}${action === "cancel" ? "l" : "d"}ed successfully`);
@@ -128,6 +159,16 @@ export function TaskMigrationModal({
       onClose();
       
     } catch (error: any) {
+      // ✅ DEBUG: Enhanced error logging
+      console.error('❌ TaskMigrationModal Error:', {
+        error: error,
+        status: error?.response?.status,
+        statusText: error?.response?.statusText,
+        data: error?.response?.data,
+        headers: error?.response?.headers,
+        config: error?.config
+      });
+      
       if (error?.response?.status === 403) {
         const message = error?.response?.data?.message || error?.response?.data?.error;
         toast.error(`Access denied: ${message || 'Permission check failed'}`);

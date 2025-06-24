@@ -16,6 +16,7 @@ public class Projects {
     private String projectType;
     private String access;
     private LocalDateTime deletedAt;
+    private String status; // NEW: Project status (ACTIVE, COMPLETED, ARCHIVED)
 
     public String getKey() {
         return key;
@@ -49,6 +50,14 @@ public class Projects {
         this.deletedAt = deletedAt;
     }
 
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
     public Projects() {
     }
 
@@ -63,6 +72,7 @@ public class Projects {
         this.projectType = builder.projectType;
         this.access = builder.access;
         this.deletedAt = builder.deletedAt;
+        this.status = builder.status;
     }
 
     // Getters & Setters
@@ -127,6 +137,7 @@ public class Projects {
         private String projectType;
         private String access;
         private LocalDateTime deletedAt;
+        private String status;
 
         public Builder() {}
 
@@ -177,6 +188,11 @@ public class Projects {
 
         public Builder deletedAt(LocalDateTime deletedAt) {
             this.deletedAt = deletedAt;
+            return this;
+        }
+        
+        public Builder status(String status) {
+            this.status = status;
             return this;
         }
         

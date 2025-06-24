@@ -4,6 +4,7 @@ import com.tmnhat.common.exception.DatabaseException;
 import com.tmnhat.common.exception.ResourceNotFoundException;
 import com.tmnhat.projectsservice.model.ProjectMembers;
 import com.tmnhat.projectsservice.model.Projects;
+import com.tmnhat.projectsservice.model.ProjectStatus;
 import com.tmnhat.projectsservice.model.Users;
 import com.tmnhat.projectsservice.repository.ProjectDAO;
 import com.tmnhat.projectsservice.repository.ProjectMemberDAO;
@@ -39,6 +40,10 @@ public class ProjectServiceImpl implements ProjectService {
     public void addProject(Projects project) {
         try {
             ProjectValidator.validateProject(project);
+            // Set default status if not provided
+            if (project.getStatus() == null || project.getStatus().isEmpty()) {
+                project.setStatus(ProjectStatus.ACTIVE);
+            }
             projectDAO.addProject(project);
         } catch (Exception e) {
             throw new DatabaseException("Error adding project: " + e.getMessage());
@@ -217,6 +222,10 @@ public class ProjectServiceImpl implements ProjectService {
     public UUID addProjectReturnId(Projects project) {
         try {
             ProjectValidator.validateProject(project);
+            // Set default status if not provided
+            if (project.getStatus() == null || project.getStatus().isEmpty()) {
+                project.setStatus(ProjectStatus.ACTIVE);
+            }
             UUID projectId = projectDAO.addProjectReturnId(project);
             return projectId;
         } catch (Exception e) {

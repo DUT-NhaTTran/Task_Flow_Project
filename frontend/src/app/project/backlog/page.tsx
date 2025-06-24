@@ -24,6 +24,8 @@ import {
   canManageAnyTask,
   canEditTask,
   canTrainAI,
+  canCancelSprint,
+  canDeleteSprint,
   UserPermissions,
   getRoleDisplayName,
   canManageProject, 
@@ -34,9 +36,11 @@ import TaskDetailModal, { TaskData } from "@/components/tasks/TaskDetailModal";
 import { useProjectValidation } from "@/hooks/useProjectValidation";
 import { TaskMigrationModal } from "@/components/sprints/TaskMigrationModal";
 import { useProjectTasks } from "@/hooks/useProjectTasks";
-import { checkAndNotifyOverdueSprints, resetSprintOverdueNotification } from "@/utils/taskNotifications";
+// import { checkAndNotifyOverdueSprints, resetSprintOverdueNotification } from "@/utils/taskNotifications"; // TEMPORARILY DISABLED
+import { resetSprintOverdueNotification } from "@/utils/taskNotifications";
 import { useUser } from "@/contexts/UserContext";
 import { API_CONFIG } from "@/lib/config";
+import ConfirmationModal from '@/components/ui/confirmation-modal';
 
 interface SprintOption {
   id: string;
@@ -122,6 +126,14 @@ export default function BacklogPage() {
     action: "cancel" | "delete";
   } | null>(null);
 
+  // ✅ NEW: Task expansion and migration states
+  const [expandedTasks, setExpandedTasks] = useState<string[]>([]);
+  const [showSprintMoveModal, setShowSprintMoveModal] = useState(false);
+  const [taskToMove, setTaskToMove] = useState<TaskData | null>(null);
+  const [subtasks, setSubtasks] = useState<{ [parentTaskId: string]: TaskData[] }>({});
+  const [selectedTaskDetails, setSelectedTaskDetails] = useState<TaskData | null>(null);
+  const [showTaskDetailModal, setShowTaskDetailModal] = useState(false);
+  
   // Filter states
   const [showFilters, setShowFilters] = useState(false);
   const [searchText, setSearchText] = useState("");
@@ -469,66 +481,79 @@ export default function BacklogPage() {
   }, []);
 
   // Fetch tasks and sprints
-  useEffect(() => {
-    if (!projectId) {
-      return;
-    }
+  // ✅ Define fetchData function that can be used elsewhere
+  const fetchData = async () => {
+    if (!projectId) return;
     
-    const fetchData = async () => {
-      setIsLoading(true);
-      try {
-        // Fetch tasks for this project
-        const tasksResponse = await axios.get(`${API_CONFIG.TASKS_SERVICE}/api/tasks/project/${projectId}`);
-        if (tasksResponse.data) {
-          const allTasks = tasksResponse.data || [];
-          setTasks(allTasks);
-          
-          // Filter out tasks that are not assigned to any sprint (backlog tasks) và chỉ hiển thị parent tasks
-          const backlogTasksList = allTasks.filter((task: TaskData) => !task.sprintId && (task.parentTaskId === null || task.parentTaskId === undefined));
-          setBacklogTasks(backlogTasksList);
-        } else {
-          toast.error("Failed to load tasks");
-        }
-
-        // Fetch sprints for this project
-        const sprintsResponse = await axios.get(`${API_CONFIG.SPRINTS_SERVICE}/api/sprints/project/${projectId}`);
+    setIsLoading(true);
+    try {
+      // Fetch tasks for this project
+      const tasksResponse = await axios.get(`${API_CONFIG.TASKS_SERVICE}/api/tasks/project/${projectId}`);
+      if (tasksResponse.data) {
+        const allTasks = tasksResponse.data || [];
+        setTasks(allTasks);
         
-        // Check if the API returns {data: [...]} structure
-        if (sprintsResponse.data && sprintsResponse.data.data) {
-          const sprintsData = Array.isArray(sprintsResponse.data.data) ? sprintsResponse.data.data : [];
-          setSprints(sprintsData);
-          
-          // Expand the first sprint by default if available
-          if (sprintsData.length > 0) {
-            setExpandedSprint(sprintsData[0].id);
-          } else {
-            // If no sprints, expand the backlog by default
-            setExpandedSprint('backlog');
+        // Filter out tasks that are not assigned to any sprint (backlog tasks) và chỉ hiển thị parent tasks
+        const backlogTasksList = allTasks.filter((task: TaskData) => !task.sprintId && (task.parentTaskId === null || task.parentTaskId === undefined));
+        setBacklogTasks(backlogTasksList);
+        
+        // ✅ Auto-populate subtasks map
+        const subtasksMap: { [parentTaskId: string]: TaskData[] } = {};
+        allTasks.forEach((task: TaskData) => {
+          if (task.parentTaskId) {
+            if (!subtasksMap[task.parentTaskId]) {
+              subtasksMap[task.parentTaskId] = [];
+            }
+            subtasksMap[task.parentTaskId].push(task);
           }
-        } else if (sprintsResponse.data) {
-          // If the API returns the array directly in the data property
-          const sprintsData = Array.isArray(sprintsResponse.data) ? sprintsResponse.data : [];
-          setSprints(sprintsData);
-          
-          // Expand the first sprint by default if available
-          if (sprintsData.length > 0) {
-            setExpandedSprint(sprintsData[0].id);
-          } else {
-            // If no sprints, expand the backlog by default
-            setExpandedSprint('backlog');
-          }
-        } else {
-          toast.error("Failed to load sprints");
-          setSprints([]); // Ensure sprints is always an array
-        }
-      } catch (error) {
-        toast.error("Error loading data");
-        setSprints([]); // Ensure sprints is always an array on error
-      } finally {
-        setIsLoading(false);
+        });
+        setSubtasks(subtasksMap);
+      } else {
+        toast.error("Failed to load tasks");
       }
-    };
 
+      // Fetch sprints for this project
+      const sprintsResponse = await axios.get(`${API_CONFIG.SPRINTS_SERVICE}/api/sprints/project/${projectId}`);
+      
+      // Check if the API returns {data: [...]} structure
+      if (sprintsResponse.data && sprintsResponse.data.data) {
+        const sprintsData = Array.isArray(sprintsResponse.data.data) ? sprintsResponse.data.data : [];
+        setSprints(sprintsData);
+        
+        // Expand the first sprint by default if available
+        if (sprintsData.length > 0) {
+          setExpandedSprint(sprintsData[0].id);
+        } else {
+          // If no sprints, expand the backlog by default
+          setExpandedSprint('backlog');
+        }
+      } else if (sprintsResponse.data) {
+        // If the API returns the array directly in the data property
+        const sprintsData = Array.isArray(sprintsResponse.data) ? sprintsResponse.data : [];
+        setSprints(sprintsData);
+        
+        // Expand the first sprint by default if available
+        if (sprintsData.length > 0) {
+          setExpandedSprint(sprintsData[0].id);
+        } else {
+          // If no sprints, expand the backlog by default
+          setExpandedSprint('backlog');
+        }
+      } else {
+        toast.error("Failed to load sprints");
+        setSprints([]); // Ensure sprints is always an array
+      }
+    } catch (error) {
+      toast.error("Error loading data");
+      setSprints([]); // Ensure sprints is always an array on error
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ✅ Load data when project changes
+  useEffect(() => {
+    if (!projectId) return;
     fetchData();
   }, [projectId]);
 
@@ -982,12 +1007,15 @@ export default function BacklogPage() {
   useEffect(() => {
     if (sprints.length > 0) {
       checkSprintEndDates();
-      checkSprintOverdue(); // Add overdue check
+      // checkSprintOverdue(); // TEMPORARILY DISABLED - causing 400 error
     }
   }, [sprints]);
 
   // Check for overdue sprints and notify PO/SM
+  // TEMPORARILY DISABLED - causing 400 error
   const checkSprintOverdue = async () => {
+    return; // DISABLED
+    /*
     try {
       if (!projectId || sprints.length === 0) {
         return;
@@ -1023,6 +1051,7 @@ export default function BacklogPage() {
     } catch (error) {
       // Silent error handling
     }
+    */
   };
 
   // Enhanced Create new sprint with better notifications
@@ -1293,12 +1322,9 @@ export default function BacklogPage() {
     setOpenSprintMenu(null);
   };
 
-  // Calculate total story points for a sprint
+  // Calculate total story points for a sprint (ALL tasks - parents + subtasks)
   const getSprintStoryPoints = (sprintId: string) => {
-    const sprintTasks = tasks.filter(task => 
-      task.sprintId === sprintId && 
-      (task.parentTaskId === null || task.parentTaskId === undefined)
-    );
+    const sprintTasks = tasks.filter(task => task.sprintId === sprintId);
     
     const totalPoints = sprintTasks.reduce((total, task) => {
       return total + (task.storyPoint || 0);
@@ -1307,12 +1333,11 @@ export default function BacklogPage() {
     return totalPoints;
   };
 
-  // Calculate completed story points for a sprint
+  // Calculate completed story points for a sprint (ALL completed tasks)
   const getCompletedSprintStoryPoints = (sprintId: string) => {
     const completedTasks = tasks.filter(task => 
       task.sprintId === sprintId && 
-      task.status === "DONE" &&
-      (task.parentTaskId === null || task.parentTaskId === undefined)
+      task.status === "DONE"
     );
     
     const completedPoints = completedTasks.reduce((total, task) => {
@@ -1368,6 +1393,14 @@ export default function BacklogPage() {
   
   // Handle completing a sprint
   const handleCompleteSprint = async (sprintId: string) => {
+    // ✅ NEW: Check if sprint can be completed (no undone tasks)
+    const completionCheck = canCompleteSprint(sprintId);
+    
+    if (!completionCheck.canComplete) {
+      toast.error(completionCheck.reason);
+      return;
+    }
+
     try {
       const response = await axios.post(`${API_CONFIG.SPRINTS_SERVICE}/api/sprints/${sprintId}/complete`);
       
@@ -1458,6 +1491,290 @@ export default function BacklogPage() {
 
   const isAuditVisible = userPermissions?.isOwner || userPermissions?.isScrumMaster;
 
+  // ✅ NEW: Functions for task expansion and subtask handling
+  const toggleTaskExpansion = (taskId: string) => {
+    if (expandedTasks.includes(taskId)) {
+      setExpandedTasks(expandedTasks.filter(id => id !== taskId));
+    } else {
+      setExpandedTasks([...expandedTasks, taskId]);
+      // No need to fetch subtasks - they're already loaded in fetchData
+    }
+  };
+
+  const fetchSubtasks = async (parentTaskId: string) => {
+    // This function is no longer needed since subtasks are loaded in fetchData
+    // Keeping for backward compatibility but it does nothing
+    return;
+  };
+
+  const handleMoveTaskToSprint = (task: TaskData) => {
+    setTaskToMove(task);
+    setShowSprintMoveModal(true);
+  };
+
+  const handleSprintMove = async (newSprintId: string) => {
+    if (!taskToMove) return;
+
+    try {
+      console.log("🔄 Starting task move:", {
+        taskId: taskToMove.id,
+        taskTitle: taskToMove.title,
+        currentSprintId: taskToMove.sprintId,
+        newSprintId: newSprintId,
+        userData: userData,
+        userId: userData?.account?.id || userData?.profile?.id
+      });
+
+      // Update UI immediately before API call
+      setTasks(prevTasks => 
+        prevTasks.map(task => 
+          task.id === taskToMove.id 
+            ? { ...task, sprintId: newSprintId === 'backlog' ? undefined : newSprintId }
+            : task
+        )
+      );
+
+      // Also update subtasks if the moved task has any
+      if (subtasks[taskToMove.id]) {
+        setSubtasks(prevSubtasks => ({
+          ...prevSubtasks,
+          [taskToMove.id]: prevSubtasks[taskToMove.id].map(subtask => ({
+            ...subtask,
+            sprintId: newSprintId === 'backlog' ? undefined : newSprintId
+          }))
+        }));
+      }
+
+      const userId = userData?.account?.id || userData?.profile?.id || "";
+      const headers = { "X-User-Id": userId };
+      
+      console.log("📤 API Request details:", {
+        userId,
+        headers,
+        isBacklog: newSprintId === 'backlog'
+      });
+
+      // Use Sprint Service API to move tasks
+      if (newSprintId === 'backlog') {
+        const url = `${API_CONFIG.SPRINTS_SERVICE}/api/sprints/move-specific-tasks-to-backlog`;
+        const payload = { taskIds: [taskToMove.id] };
+        
+        console.log("📤 Moving to backlog:", { url, payload, headers });
+        
+        const response = await axios.put(url, payload, { headers });
+        console.log("✅ Backlog move response:", response.data);
+      } else {
+        const url = `${API_CONFIG.SPRINTS_SERVICE}/api/sprints/move-specific-tasks-to-sprint/${newSprintId}`;
+        const payload = { taskIds: [taskToMove.id] };
+        
+        console.log("📤 Moving to sprint:", { url, payload, headers, targetSprintId: newSprintId });
+        
+        const response = await axios.put(url, payload, { headers });
+        console.log("✅ Sprint move response:", response.data);
+      }
+
+      const sprintName = newSprintId === 'backlog' 
+        ? 'Backlog' 
+        : sprints.find(s => s.id === newSprintId)?.name || 'Sprint';
+      
+      toast.success(`Task moved to ${sprintName} successfully!`);
+      setShowSprintMoveModal(false);
+      setTaskToMove(null);
+      
+      // Refresh data to sync with server
+      await fetchData();
+    } catch (error: any) {
+      console.error("❌ Error moving task:", {
+        error: error,
+        message: error?.message,
+        response: error?.response?.data,
+        status: error?.response?.status,
+        statusText: error?.response?.statusText,
+        headers: error?.response?.headers,
+        config: {
+          url: error?.config?.url,
+          method: error?.config?.method,
+          headers: error?.config?.headers,
+          data: error?.config?.data
+        }
+      });
+      
+      toast.error(`Failed to move task: ${error?.response?.data?.message || error?.message || 'Unknown error'}`);
+      
+      // Revert UI changes on error
+      setTasks(prevTasks => 
+        prevTasks.map(task => 
+          task.id === taskToMove.id 
+            ? { ...task, sprintId: taskToMove.sprintId }
+            : task
+        )
+      );
+      
+      // Revert subtasks as well
+      if (subtasks[taskToMove.id]) {
+        setSubtasks(prevSubtasks => ({
+          ...prevSubtasks,
+          [taskToMove.id]: prevSubtasks[taskToMove.id].map(subtask => ({
+            ...subtask,
+            sprintId: taskToMove.sprintId
+          }))
+        }));
+      }
+    }
+  };
+
+  const handleTaskEdit = (task: TaskData) => {
+    setSelectedTaskDetails(task);
+    setShowTaskDetailModal(true);
+  };
+
+  const getTaskSubtasksCount = (taskId: string) => {
+    return tasks.filter(task => task.parentTaskId === taskId).length;
+  };
+
+  const hasSubtasks = (taskId: string) => {
+    return getTaskSubtasksCount(taskId) > 0;
+  };
+
+  // ✅ DEBUG: Add debug function for permissions
+  useEffect(() => {
+    if (userPermissions && !permissionsLoading) {
+      console.log('🔍 Permission Debug Info:', {
+        userId: userData?.account?.id,
+        projectId: projectId,
+        projectOwnerId: "73157059-fc64-4a6b-b7b7-011615f23a4b", // From your data
+        permissions: userPermissions,
+        checks: {
+          canCancelSprint: canCancelSprint(userPermissions),
+          canDeleteSprint: canDeleteSprint(userPermissions),
+          canManageSprints: canManageSprints(userPermissions),
+          isOwner: userPermissions?.isOwner,
+          isUserMatchOwner: userData?.account?.id === "73157059-fc64-4a6b-b7b7-011615f23a4b"
+        }
+      });
+    }
+  }, [userPermissions, permissionsLoading, userData?.account?.id, projectId]);
+
+  // ✅ DEBUG: Force refresh permissions function
+  const debugRefreshPermissions = async () => {
+    if (!userData?.account?.id || !projectId) return;
+    
+    console.log('🔄 Force refreshing permissions...');
+    
+    // Clear cache
+    const { clearPermissionsCache, refreshUserPermissions } = await import('@/utils/permissions');
+    clearPermissionsCache(userData.account.id, projectId);
+    
+    // Fetch fresh permissions
+    const freshPermissions = await refreshUserPermissions(userData.account.id, projectId);
+    console.log('🆕 Fresh permissions:', freshPermissions);
+    
+    setUserPermissions(freshPermissions);
+  };
+
+  // ✅ DEBUG: Add to window for console access
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).debugRefreshPermissions = debugRefreshPermissions;
+      (window as any).debugCurrentPermissions = () => {
+        console.log('Current permissions state:', userPermissions);
+        console.log('Permission checks:', {
+          canCancelSprint: canCancelSprint(userPermissions),
+          canDeleteSprint: canDeleteSprint(userPermissions)
+        });
+      };
+    }
+  }, [userPermissions]);
+
+  // ✅ NEW: Check if project can be archived
+  const canArchiveProject = () => {
+    // Only project owner can archive
+    if (!isProjectOwner(userPermissions)) {
+      return { canArchive: false, reason: "Only project owner can archive projects" };
+    }
+
+    // Check if all sprints are completed
+    const nonCompletedSprints = sprints.filter(sprint => 
+      sprint.status !== "COMPLETED" && sprint.status !== "ARCHIVED"
+    );
+    
+    if (nonCompletedSprints.length > 0) {
+      return { 
+        canArchive: false, 
+        reason: `Cannot archive project. ${nonCompletedSprints.length} sprint(s) are not completed yet.`
+      };
+    }
+
+    return { canArchive: true, reason: "" };
+  };
+
+  // ✅ NEW: Show archive confirmation modal
+  const showArchiveConfirmation = () => {
+    const archiveCheck = canArchiveProject();
+    
+    if (!archiveCheck.canArchive) {
+      toast.error(archiveCheck.reason);
+      return;
+    }
+
+    setShowArchiveModal(true);
+  };
+
+  // ✅ UPDATED: Handle project archiving (remove window.confirm)
+  const handleArchiveProject = async () => {
+    try {
+      setArchiveLoading(true);
+      
+      const currentUserId = userData?.account?.id || userData?.profile?.id;
+      if (!currentUserId) {
+        toast.error("User not authenticated");
+        setShowArchiveModal(false);
+        return;
+      }
+
+      const response = await axios.patch(
+        `${API_CONFIG.PROJECTS_SERVICE}/api/projects/${projectId}/archive`,
+        {},
+        {
+          headers: { "X-User-Id": currentUserId }
+        }
+      );
+
+      if (response.data?.status === "SUCCESS") {
+        toast.success("Project archived successfully");
+        setShowArchiveModal(false);
+        
+        // Redirect to projects list
+        router.push("/project/view_all_projects");
+      } else {
+        toast.error("Failed to archive project");
+      }
+    } catch (error: any) {
+      console.error("Error archiving project:", error);
+      toast.error(error.response?.data?.message || "Failed to archive project");
+    } finally {
+      setArchiveLoading(false);
+    }
+  };
+
+  // ✅ NEW: Check if sprint can be completed (no undone tasks)
+  const canCompleteSprint = (sprintId: string) => {
+    const sprintTasks = tasks.filter(task => task.sprintId === sprintId);
+    const undoneTasks = sprintTasks.filter(task => task.status !== "DONE");
+    
+    return {
+      canComplete: undoneTasks.length === 0,
+      undoneTasksCount: undoneTasks.length,
+      reason: undoneTasks.length > 0 
+        ? `Cannot complete sprint. ${undoneTasks.length} task(s) are not done yet.`
+        : ""
+    };
+  };
+
+  // ✅ NEW: State for archive confirmation modal
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
+  const [archiveLoading, setArchiveLoading] = useState(false);
+
   return (
     <div className="flex h-screen bg-gray-50">
       <Sidebar projectId={projectId || undefined} />
@@ -1523,6 +1840,36 @@ export default function BacklogPage() {
                     Create Sprint
                   </Button>
                 )}
+
+                {/* Archive Project Button - Only for Project Owner when all sprints are completed */}
+                {(() => {
+                  const archiveCheck = canArchiveProject();
+                  if (archiveCheck.canArchive) {
+                    return (
+                      <Button 
+                        onClick={showArchiveConfirmation}
+                        className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white px-6 py-3 rounded-xl font-semibold shadow-lg shadow-green-500/25 hover:shadow-xl hover:shadow-green-500/30 transition-all duration-200 flex items-center gap-2"
+                        title="Archive this project (all sprints must be completed)"
+                      >
+                        <Archive className="h-5 w-5" />
+                        Archive Project
+                      </Button>
+                    );
+                  } else if (isProjectOwner(userPermissions)) {
+                    return (
+                      <Button 
+                        onClick={() => toast.info(archiveCheck.reason)}
+                        disabled
+                        className="bg-gray-400 text-gray-200 px-6 py-3 rounded-xl font-semibold cursor-not-allowed flex items-center gap-2"
+                        title={archiveCheck.reason}
+                      >
+                        <Archive className="h-5 w-5" />
+                        Archive Project
+                      </Button>
+                    );
+                  }
+                  return null;
+                })()}
 
               
               </div>
@@ -1825,16 +2172,27 @@ export default function BacklogPage() {
                             {/* Sprint action buttons */}
                             {canStartEndSprints(userPermissions) && (
                               <div className="flex items-center space-x-2">
-                              {sprint.status === "ACTIVE" ? (
-                                <Button 
-                                  variant="secondary" 
-                                  size="sm"
-                                  onClick={() => handleCompleteSprint(sprint.id)}
-                                    className="bg-gradient-to-r from-orange-100 to-orange-200 text-orange-700 border-orange-300 hover:from-orange-200 hover:to-orange-300 transition-all duration-200 font-medium"
-                                >
-                                  Complete sprint
-                                </Button>
-                              ) : sprint.status === "COMPLETED" ? (
+                              {sprint.status === "ACTIVE" ? (() => {
+                                const completionCheck = canCompleteSprint(sprint.id);
+                                return (
+                                  <Button 
+                                    variant="secondary" 
+                                    size="sm"
+                                    onClick={() => handleCompleteSprint(sprint.id)}
+                                    disabled={!completionCheck.canComplete}
+                                    className={`${completionCheck.canComplete 
+                                      ? 'bg-gradient-to-r from-orange-100 to-orange-200 text-orange-700 border-orange-300 hover:from-orange-200 hover:to-orange-300' 
+                                      : 'bg-gray-100 text-gray-400 border-gray-300 cursor-not-allowed'
+                                    } transition-all duration-200 font-medium`}
+                                    title={completionCheck.canComplete ? "Complete this sprint" : completionCheck.reason}
+                                  >
+                                    Complete sprint
+                                    {!completionCheck.canComplete && (
+                                      <span className="ml-1 text-xs">({completionCheck.undoneTasksCount} undone)</span>
+                                    )}
+                                  </Button>
+                                );
+                              })() : sprint.status === "COMPLETED" ? (
                                 <Button 
                                   variant="secondary" 
                                   size="sm"
@@ -1893,7 +2251,7 @@ export default function BacklogPage() {
                                   </button>
                                   
                                   {/* Show different actions based on sprint status */}
-                                  {sprint.status === "ACTIVE" ? (
+                                  {sprint.status === "ACTIVE" && canCancelSprint(userPermissions) ? (
                                     <button
                                       className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center text-yellow-600"
                                       onClick={() => handleCancelSprint(sprint.id)}
@@ -1901,7 +2259,7 @@ export default function BacklogPage() {
                                       <X className="h-4 w-4 mr-2" />
                                       Cancel Sprint
                                     </button>
-                                  ) : sprint.status === "NOT_STARTED" ? (
+                                  ) : sprint.status === "NOT_STARTED" && canDeleteSprint(userPermissions) ? (
                                     <button
                                       className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center text-red-600"
                                       onClick={() => handleDeleteSprint(sprint.id)}
@@ -1913,7 +2271,7 @@ export default function BacklogPage() {
                                     <div className="px-3 py-2 text-sm text-gray-400 italic">
                                       Cannot modify completed sprint
                                     </div>
-                                  ) : (
+                                  ) : canDeleteSprint(userPermissions) ? (
                                     <button
                                       className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center text-red-600"
                                       onClick={() => handleDeleteSprint(sprint.id)}
@@ -1921,6 +2279,10 @@ export default function BacklogPage() {
                                       <Trash2 className="h-4 w-4 mr-2" />
                                       Delete
                                     </button>
+                                  ) : (
+                                    <div className="px-3 py-2 text-sm text-gray-400 italic">
+                                      Insufficient permissions
+                                    </div>
                                   )}
                                 </div>
                               )}
@@ -1931,7 +2293,7 @@ export default function BacklogPage() {
 
                       {expandedSprint === sprint.id && (
                         <div className="ml-6 mt-2">
-                          {/* Task Items - Sort by priority */}
+                                                        {/* Task Items - Sort by priority */}
                             {sprintTasks.length > 0 ? (
                               sortTasksByPriority(sprintTasks).map(task => (
                               <div className={`border rounded-sm mb-2 ${isTaskDimmed(task.priority) ? 'opacity-50' : ''}`} key={task.id}>
@@ -1950,13 +2312,39 @@ export default function BacklogPage() {
                                     disabled={isTaskDimmed(task.priority)}
                                   />
                                   
+                                  {/* Expansion toggle for tasks with subtasks */}
+                                  {hasSubtasks(task.id) ? (
+                                    <button
+                                      onClick={() => toggleTaskExpansion(task.id)}
+                                      className="mr-2 p-1 hover:bg-gray-100 rounded transition-colors"
+                                    >
+                                      <ChevronRight 
+                                        className={`h-4 w-4 text-gray-600 transition-transform duration-200 ${
+                                          expandedTasks.includes(task.id) ? 'rotate-90' : ''
+                                        }`} 
+                                      />
+                                    </button>
+                                  ) : (
+                                    <div className="w-6 h-6 mr-2"></div>
+                                  )}
+                                  
                                   {/* Priority indicator */}
                                   <div className={`w-6 h-6 rounded text-xs flex items-center justify-center mr-2 border ${getPriorityColorClass(task.priority)}`}>
                                     {getPriorityIcon(task.priority)}
                                   </div>
                                   
                                   <span className={`text-blue-600 font-medium text-sm mr-2 ${isTaskDimmed(task.priority) ? 'text-gray-400' : ''}`}>{task.shortKey || task.id.substring(0, 8)}</span>
-                                    <span className={`text-sm flex-1 ${isTaskDimmed(task.priority) ? 'text-gray-400' : ''}`}>{task.title}</span>
+                                  <span 
+                                    className={`text-sm flex-1 cursor-pointer hover:text-blue-600 transition-colors ${isTaskDimmed(task.priority) ? 'text-gray-400' : ''}`}
+                                    onClick={() => handleTaskEdit(task)}
+                                  >
+                                    {task.title}
+                                    {hasSubtasks(task.id) && (
+                                      <span className="ml-2 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                                        {getTaskSubtasksCount(task.id)} subtasks
+                                      </span>
+                                    )}
+                                  </span>
                                   {isTaskDimmed(task.priority) && (
                                     <span className="ml-2 text-xs text-gray-500 italic">
                                       ({task.priority === 'BLOCK' ? 'Blocked' : 'Rejected'})
@@ -1979,14 +2367,89 @@ export default function BacklogPage() {
                                     })()}
                                     
                                     <div className="ml-auto flex items-center space-x-2">
-                                    <Button size="sm" variant="ghost" className="h-8 w-8">
+                                    <Button 
+                                      size="sm" 
+                                      variant="ghost" 
+                                      className="h-8 w-8"
+                                      onClick={() => handleTaskEdit(task)}
+                                      title="Edit task"
+                                    >
                                       <Edit className="h-4 w-4" />
                                     </Button>
-                                    <Button variant="ghost" size="sm" className="h-8 w-8">
-                                      <MoreHorizontal className="h-4 w-4" />
-                                    </Button>
+                                    <div className="relative">
+                                      <Button 
+                                        variant="ghost" 
+                                        size="sm" 
+                                        className="h-8 w-8"
+                                        onClick={() => handleMoveTaskToSprint(task)}
+                                        title="Move to another sprint"
+                                      >
+                                        <MoreHorizontal className="h-4 w-4" />
+                                      </Button>
+                                    </div>
                                   </div>
                                 </div>
+                                
+                                {/* Subtasks display */}
+                                {expandedTasks.includes(task.id) && subtasks[task.id] && (
+                                  <div className="ml-12 border-t border-gray-100">
+                                    {subtasks[task.id].map(subtask => (
+                                      <div key={subtask.id} className="flex items-center p-2 border-l-2 border-blue-200 bg-gray-50">
+                                        <input 
+                                          type="checkbox" 
+                                          className="mr-3" 
+                                          checked={subtask.status === "DONE"}
+                                          onChange={(e) => {
+                                            if (e.target.checked) {
+                                              handleStatusChange(subtask.id, "DONE");
+                                            } else {
+                                              handleStatusChange(subtask.id, "TODO");
+                                            }
+                                          }} 
+                                          disabled={isTaskDimmed(subtask.priority)}
+                                        />
+                                        
+                                        {/* Subtask priority indicator */}
+                                        <div className={`w-4 h-4 rounded text-xs flex items-center justify-center mr-2 border ${getPriorityColorClass(subtask.priority)}`}>
+                                          {getPriorityIcon(subtask.priority)}
+                                        </div>
+                                        
+                                        <span className="text-blue-500 font-medium text-xs mr-2">{subtask.shortKey || subtask.id.substring(0, 6)}</span>
+                                        <span 
+                                          className="text-sm flex-1 cursor-pointer hover:text-blue-600 transition-colors"
+                                          onClick={() => handleTaskEdit(subtask)}
+                                        >
+                                          {subtask.title}
+                                        </span>
+                                        
+                                        {/* Subtask Assignee */}
+                                        {subtask.assigneeId && (() => {
+                                          const assignee = projectUsers.find(user => user.id === subtask.assigneeId);
+                                          const assigneeName = assignee?.username || assignee?.email || "Unknown";
+                                          return (
+                                            <div className="ml-2 flex items-center gap-2" title={`Assigned to: ${assigneeName}`}>
+                                              <AvatarDisplay 
+                                                avatarUrl={assignee?.avatarUrl}
+                                                displayName={assigneeName}
+                                                size="small"
+                                              />
+                                            </div>
+                                          );
+                                        })()}
+                                        
+                                        <Button 
+                                          size="sm" 
+                                          variant="ghost" 
+                                          className="h-6 w-6 ml-2"
+                                          onClick={() => handleTaskEdit(subtask)}
+                                          title="Edit subtask"
+                                        >
+                                          <Edit className="h-3 w-3" />
+                                        </Button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                             ))
                           ) : (
@@ -2113,13 +2576,39 @@ export default function BacklogPage() {
                                 disabled={isTaskDimmed(task.priority)}
                               />
                               
+                              {/* Expansion toggle for tasks with subtasks */}
+                              {hasSubtasks(task.id) ? (
+                                <button
+                                  onClick={() => toggleTaskExpansion(task.id)}
+                                  className="mr-2 p-1 hover:bg-gray-100 rounded transition-colors"
+                                >
+                                  <ChevronRight 
+                                    className={`h-4 w-4 text-gray-600 transition-transform duration-200 ${
+                                      expandedTasks.includes(task.id) ? 'rotate-90' : ''
+                                    }`} 
+                                  />
+                                </button>
+                              ) : (
+                                <div className="w-6 h-6 mr-2"></div>
+                              )}
+                              
                               {/* Priority indicator */}
                               <div className={`w-6 h-6 rounded text-xs flex items-center justify-center mr-2 border ${getPriorityColorClass(task.priority)}`}>
                                 {getPriorityIcon(task.priority)}
                               </div>
                               
                               <span className={`text-blue-600 font-medium text-sm mr-2 ${isTaskDimmed(task.priority) ? 'text-gray-400' : ''}`}>{task.shortKey || task.id.substring(0, 8)}</span>
-                              <span className={`text-sm flex-1 ${isTaskDimmed(task.priority) ? 'text-gray-400' : ''}`}>{task.title}</span>
+                              <span 
+                                className={`text-sm flex-1 cursor-pointer hover:text-blue-600 transition-colors ${isTaskDimmed(task.priority) ? 'text-gray-400' : ''}`}
+                                onClick={() => handleTaskEdit(task)}
+                              >
+                                {task.title}
+                                {hasSubtasks(task.id) && (
+                                  <span className="ml-2 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                                    {getTaskSubtasksCount(task.id)} subtasks
+                                  </span>
+                                )}
+                              </span>
                               {isTaskDimmed(task.priority) && (
                                 <span className="ml-2 text-xs text-gray-500 italic">
                                   ({task.priority === 'BLOCK' ? 'Blocked' : 'Rejected'})
@@ -2142,14 +2631,89 @@ export default function BacklogPage() {
                               })()}
                               
                               <div className="ml-auto flex items-center space-x-2">
-                                <Button size="sm" variant="ghost" className="h-8 w-8">
+                                <Button 
+                                  size="sm" 
+                                  variant="ghost" 
+                                  className="h-8 w-8"
+                                  onClick={() => handleTaskEdit(task)}
+                                  title="Edit task"
+                                >
                                   <Edit className="h-4 w-4" />
                                 </Button>
-                                <Button variant="ghost" size="sm" className="h-8 w-8">
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
+                                <div className="relative">
+                                  <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    className="h-8 w-8"
+                                    onClick={() => handleMoveTaskToSprint(task)}
+                                    title="Move to sprint"
+                                  >
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </div>
                               </div>
                             </div>
+                            
+                            {/* Subtasks display for backlog */}
+                            {expandedTasks.includes(task.id) && subtasks[task.id] && (
+                              <div className="ml-12 border-t border-gray-100">
+                                {subtasks[task.id].map(subtask => (
+                                  <div key={subtask.id} className="flex items-center p-2 border-l-2 border-blue-200 bg-gray-50">
+                                    <input 
+                                      type="checkbox" 
+                                      className="mr-3" 
+                                      checked={subtask.status === "DONE"}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          handleStatusChange(subtask.id, "DONE");
+                                        } else {
+                                          handleStatusChange(subtask.id, "TODO");
+                                        }
+                                      }} 
+                                      disabled={isTaskDimmed(subtask.priority)}
+                                    />
+                                    
+                                    {/* Subtask priority indicator */}
+                                    <div className={`w-4 h-4 rounded text-xs flex items-center justify-center mr-2 border ${getPriorityColorClass(subtask.priority)}`}>
+                                      {getPriorityIcon(subtask.priority)}
+                                    </div>
+                                    
+                                    <span className="text-blue-500 font-medium text-xs mr-2">{subtask.shortKey || subtask.id.substring(0, 6)}</span>
+                                    <span 
+                                      className="text-sm flex-1 cursor-pointer hover:text-blue-600 transition-colors"
+                                      onClick={() => handleTaskEdit(subtask)}
+                                    >
+                                      {subtask.title}
+                                    </span>
+                                    
+                                    {/* Subtask Assignee */}
+                                    {subtask.assigneeId && (() => {
+                                      const assignee = projectUsers.find(user => user.id === subtask.assigneeId);
+                                      const assigneeName = assignee?.username || assignee?.email || "Unknown";
+                                      return (
+                                        <div className="ml-2 flex items-center gap-2" title={`Assigned to: ${assigneeName}`}>
+                                          <AvatarDisplay 
+                                            avatarUrl={assignee?.avatarUrl}
+                                            displayName={assigneeName}
+                                            size="small"
+                                          />
+                                        </div>
+                                      );
+                                    })()}
+                                    
+                                    <Button 
+                                      size="sm" 
+                                      variant="ghost" 
+                                      className="h-6 w-6 ml-2"
+                                      onClick={() => handleTaskEdit(subtask)}
+                                      title="Edit subtask"
+                                    >
+                                      <Edit className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         ))
                       ) : (
@@ -2195,6 +2759,89 @@ export default function BacklogPage() {
           </div>
         </div>
       </div>
+
+      {/* Task Detail Modal */}
+      {showTaskDetailModal && selectedTaskDetails && (
+        <TaskDetailModal
+          task={selectedTaskDetails}
+          onClose={() => {
+            setShowTaskDetailModal(false);
+            setSelectedTaskDetails(null);
+          }}
+          onUpdate={(updatedTask: TaskData) => {
+            // Update local task state
+            setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
+            setBacklogTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
+            setShowTaskDetailModal(false);
+            setSelectedTaskDetails(null);
+            // Refresh data to get latest updates
+            fetchData();
+          }}
+          sprints={sprints}
+        />
+      )}
+
+      {/* Sprint Move Modal */}
+      {showSprintMoveModal && taskToMove && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-96 max-w-full mx-4 shadow-xl">
+            <h3 className="text-lg font-semibold mb-4">Move Task to Sprint</h3>
+            <p className="text-gray-600 mb-4">
+              Move "{taskToMove.title}" to a different sprint:
+            </p>
+            
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {/* Backlog option */}
+              <button
+                onClick={() => handleSprintMove('backlog')}
+                className="w-full text-left p-3 rounded-lg border hover:bg-gray-50 transition-colors"
+              >
+                <div className="font-medium">Backlog</div>
+                <div className="text-sm text-gray-500">Move to project backlog</div>
+              </button>
+              
+              {/* Sprint options */}
+              {sprints.map(sprint => (
+                <button
+                  key={sprint.id}
+                  onClick={() => handleSprintMove(sprint.id)}
+                  className="w-full text-left p-3 rounded-lg border hover:bg-gray-50 transition-colors"
+                  disabled={sprint.id === taskToMove.sprintId}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="font-medium">{sprint.name}</div>
+                    {sprint.id === taskToMove.sprintId && (
+                      <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded-full">
+                        Current
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-sm text-gray-500">
+                    {sprint.startDate && sprint.endDate ? (
+                      `${formatDate(sprint.startDate)} - ${formatDate(sprint.endDate)}`
+                    ) : (
+                      'No dates set'
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+            
+            <div className="flex gap-2 mt-6">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowSprintMoveModal(false);
+                  setTaskToMove(null);
+                }}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Sprint Edit Modal */}
       {showSprintModal && currentSprint && (
@@ -2283,6 +2930,22 @@ export default function BacklogPage() {
           action={sprintToDelete.action}
         />
       )}
+
+      {/* Archive Confirmation Modal */}
+      {showArchiveModal && (
+        <ConfirmationModal
+          isOpen={showArchiveModal}
+          onClose={() => setShowArchiveModal(false)}
+          onConfirm={handleArchiveProject}
+          loading={archiveLoading}
+          title="Archive Project"
+          message="Are you sure you want to archive this project? This action cannot be undone. The project will be moved to archived projects."
+          confirmText="Archive Project"
+          cancelText="Cancel"
+          type="warning"
+        />
+      )}
+      
     </div>
   );
 }

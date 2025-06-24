@@ -16,6 +16,7 @@ import {
 import { useUserStorage } from "@/hooks/useUserStorage";
 import { useNavigation } from "@/contexts/NavigationContext";
 import { API_CONFIG } from "@/lib/config";
+import AIEstimationModal from "./AIEstimationModal";
 
 // Import TipTap editor component dynamically to avoid SSR issues
 const TiptapEditor = dynamic(() => import("@/components/ui/tiptap-editor"), {
@@ -148,36 +149,54 @@ export default function TaskDetailModal({
 
   // Update local state when task prop changes
   useEffect(() => {
-    setEditedTask({ ...task });
+    const enhanceTaskAndSetState = async () => {
+      // ✅ Enhance task with assignee name if needed
+      let enhancedTask = { ...task };
+      
+      // If task has assigneeId but no assigneeName, enhance it
+      if (task.assigneeId && !task.assigneeName) {
+        try {
+          const { enhanceTaskWithAssigneeName } = await import('@/utils/taskHelpers');
+          enhancedTask = await enhanceTaskWithAssigneeName(task);
+          console.log(`✅ TaskDetailModal: Enhanced task "${task.title}" with assignee name:`, enhancedTask.assigneeName);
+        } catch (enhanceError) {
+          console.warn('Failed to enhance task with assignee name:', enhanceError);
+        }
+      }
+      
+      setEditedTask(enhancedTask);
+      
+      // Only fetch data if task has a valid ID (not temporary or missing)
+      // Relaxed validation - only block obvious temporary/invalid tasks
+      if (task?.id && 
+          !task.id.startsWith('temp-') && 
+          !task.id.includes('undefined') &&
+          task.id !== 'new' &&
+          task.id !== '' &&
+          task.id.length > 5) {  // Relaxed from 10 to 5 characters
+        
+        console.log('✅ MODAL: Fetching data for valid task ID:', task.id);
+        
+        // Add small delay to ensure task is fully created in backend
+        setTimeout(() => {
+          fetchAttachments(task.id);
+          fetchChildWorkItems(task.id);
+          fetchWebLinks(task.id);
+          fetchLinkedWorkItems(task.id);
+          fetchComments(task.id);
+        }, 500);
+      } else {
+        
+        // Clear related data for temporary tasks
+        updateField("attachments", []);
+        setChildWorkItems([]);
+        setWebLinks([]);
+        setLinkedWorkItems([]);
+        setComments([]);
+      }
+    };
     
-    // Only fetch data if task has a valid ID (not temporary or missing)
-    // Relaxed validation - only block obvious temporary/invalid tasks
-    if (task?.id && 
-        !task.id.startsWith('temp-') && 
-        !task.id.includes('undefined') &&
-        task.id !== 'new' &&
-        task.id !== '' &&
-        task.id.length > 5) {  // Relaxed from 10 to 5 characters
-      
-      console.log('✅ MODAL: Fetching data for valid task ID:', task.id);
-      
-      // Add small delay to ensure task is fully created in backend
-      setTimeout(() => {
-        fetchAttachments(task.id);
-        fetchChildWorkItems(task.id);
-        fetchWebLinks(task.id);
-        fetchLinkedWorkItems(task.id);
-        fetchComments(task.id);
-      }, 500);
-    } else {
-      
-      // Clear related data for temporary tasks
-      updateField("attachments", []);
-      setChildWorkItems([]);
-      setWebLinks([]);
-      setLinkedWorkItems([]);
-      setComments([]);
-    }
+    enhanceTaskAndSetState();
   }, [task]);
 
   // Fetch user permissions
@@ -232,7 +251,7 @@ export default function TaskDetailModal({
     reasoning: string;
     features_used?: any;
   } | null>(null);
-  const [showEstimationDetails, setShowEstimationDetails] = useState(false);
+  const [showAIEstimationModal, setShowAIEstimationModal] = useState(false);
 
   // State for UI interaction
   const [activeTab, setActiveTab] = useState<
@@ -1017,12 +1036,7 @@ export default function TaskDetailModal({
                   response => response.status === 200 || response.status === 201
                 ).length;
 
-                if (successCount > 0) {
-                  toast.success('Status changed from "${getStatusDisplayName(originalStatus)}" to "${getStatusDisplayName(newStatus)}" - ${successCount} notifications sent');
-                } else {
-                  console.warn('⚠️ FRONTEND: No status change notifications were sent successfully');
-                  toast.warning(`Status changed but notifications failed`);
-                }
+                
               } else {
                 toast.success(`Status changed from "${getStatusDisplayName(originalStatus)}" to "${getStatusDisplayName(newStatus)}"`);
               }
@@ -2440,8 +2454,8 @@ export default function TaskDetailModal({
       "🟡 Medium": "MEDIUM",
       "🟠 High": "HIGH",
       "🔴 Highest": "HIGHEST",
-      "🚨 Blocker": "BLOCKER",
-      "🚫 Block": "BLOCK",
+      "🚫 Blocker": "BLOCKER",
+      "🛑 Block": "BLOCK"
     };
 
     const priority = priorityMap[displayValue];
@@ -2492,14 +2506,22 @@ export default function TaskDetailModal({
         const aiResult = response.data.data.data;
         console.log("AI estimation result:", aiResult);
 
-        setEstimationResult(aiResult);
-        setShowEstimationDetails(true);
+        // Map the response to match our interface
+        const mappedResult = {
+          estimated_story_points: aiResult.estimated_story_points,
+          confidence: aiResult.confidence,
+          reasoning: aiResult.reasoning,
+          features_used: aiResult.features_used || aiResult.features
+        };
+
+        setEstimationResult(mappedResult);
+        setShowAIEstimationModal(true);
 
         // Show success notification with estimation result
         toast.success(
-          `AI estimated ${aiResult.estimated_story_points} story points (${Math.round(aiResult.confidence * 100)}% confidence)`,
+          `AI estimation complete! Review the detailed analysis.`,
           {
-            duration: 5000,
+            duration: 3000,
           }
         );
       } else {
@@ -2516,18 +2538,17 @@ export default function TaskDetailModal({
   };
 
   // Accept AI estimation result
-  const acceptEstimation = () => {
-    if (estimationResult) {
-      updateField("storyPoint", estimationResult.estimated_story_points);
-      toast.success("Story point updated with AI estimation");
-      setShowEstimationDetails(false);
-    }
+  const acceptEstimation = (storyPoints: number) => {
+    updateField("storyPoint", storyPoints);
+    toast.success(`Story point updated to ${storyPoints} based on AI recommendation`);
+    setEstimationResult(null);
+    setShowAIEstimationModal(false);
   };
 
   // Reject AI estimation result
   const rejectEstimation = () => {
     setEstimationResult(null);
-    setShowEstimationDetails(false);
+    setShowAIEstimationModal(false);
     toast.info("AI estimation rejected");
   };
 
@@ -2539,8 +2560,8 @@ export default function TaskDetailModal({
       "MEDIUM": "🟡 Medium", 
       "HIGH": "🟠 High",
       "HIGHEST": "🔴 Highest",
-      "BLOCKER": "🚨 Blocker",
-      "BLOCK": "🚫 Block"
+      "BLOCKER": "🚫 Blocker",
+      "BLOCK": "🛑 Block"
     };
     
     return priorityMap[priority || "MEDIUM"] || "🟡 Medium";
@@ -3389,13 +3410,15 @@ export default function TaskDetailModal({
                     </div>
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-2 overflow-visible">
                     {childWorkItems
                       .filter((item) => item && item.id)
-                      .map((item) => (
+                      .map((item, index) => (
                         <div
                           key={item.id}
-                          className="bg-white border rounded p-3 hover:bg-gray-50 transition-colors"
+                          className={`bg-white border rounded p-3 hover:bg-gray-50 transition-colors ${
+                            index >= childWorkItems.length - 2 ? 'relative z-10' : ''
+                          }`}
                         >
                           <div className="flex items-center justify-between">
                             {/* Left side - Task info (clickable) */}
@@ -3459,7 +3482,7 @@ export default function TaskDetailModal({
                               onClick={(e) => e.stopPropagation()}
                             >
                               {/* Status dropdown */}
-                              <div className="w-32">
+                              <div className={`w-32 ${index >= childWorkItems.length - 2 ? 'dropdown-force-up' : ''}`}>
                                 <Dropdown
                                   options={[
                                     "To Do",
@@ -4351,10 +4374,7 @@ export default function TaskDetailModal({
                     "🟠 High", 
                     "🟡 Medium",
                     "🟢 Low",
-                    "🔵 Lowest",
-                    "🚨 Blocker",
-                    "🚫 Block",
-                    "❌ Reject"
+                    "🔵 Lowest"
                   ]}
                   onSelect={handlePriorityChange}
                   defaultValue={getPriorityDisplayValue(editedTask.priority)}
@@ -4429,80 +4449,7 @@ export default function TaskDetailModal({
                   />
                 </div>
 
-                {/* AI Estimation Results */}
-                {showEstimationDetails && estimationResult && (
-                  <div className="mt-3 p-3 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-200">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-purple-700">
-                          🤖 AI Suggestion
-                        </span>
-                        <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
-                          {estimationResult.estimated_story_points} points
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <span className="text-xs text-gray-600">
-                          {Math.round(estimationResult.confidence * 100)}% confidence
-                        </span>
-                        <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full transition-all duration-300 ${
-                              estimationResult.confidence >= 0.8
-                                ? "bg-green-500"
-                                : estimationResult.confidence >= 0.6
-                                ? "bg-yellow-500"
-                                : "bg-red-500"
-                            }`}
-                            style={{
-                              width: `${estimationResult.confidence * 100}%`,
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </div>
 
-                    {/* AI Reasoning */}
-                    <div className="mb-3">
-                      <p className="text-xs text-gray-700 leading-relaxed">
-                        <span className="font-medium">Reasoning:</span>{" "}
-                        {estimationResult.reasoning}
-                      </p>
-                    </div>
-
-                    {/* Action buttons */}
-                    <div className="flex gap-2">
-                      <button
-                        onClick={acceptEstimation}
-                        className="flex-1 px-3 py-1.5 bg-purple-600 text-white text-xs font-medium rounded-md hover:bg-purple-700 transition-colors"
-                      >
-                        ✓ Accept
-                      </button>
-                      <button
-                        onClick={rejectEstimation}
-                        className="flex-1 px-3 py-1.5 bg-gray-200 text-gray-700 text-xs font-medium rounded-md hover:bg-gray-300 transition-colors"
-                      >
-                        ✗ Reject
-                      </button>
-                    </div>
-
-                    {/* Technical details (collapsible) */}
-                    {estimationResult.features_used && (
-                      <details className="mt-2">
-                        <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700">
-                          Technical Details
-                        </summary>
-                        <div className="mt-1 p-2 bg-gray-50 rounded text-xs text-gray-600">
-                          <div>Title length: {estimationResult.features_used.title_length}</div>
-                          <div>Description length: {estimationResult.features_used.description_length}</div>
-                          {estimationResult.features_used.predicted_raw && (
-                            <div>Raw prediction: {estimationResult.features_used.predicted_raw.toFixed(2)}</div>
-                          )}
-                        </div>
-                      </details>
-                    )}
-                  </div>
-                )}
               </div>
             </div>
           </div>
@@ -4562,6 +4509,19 @@ export default function TaskDetailModal({
             </div>
           </div>
         </div>
+      )}
+
+      {/* AI Estimation Modal */}
+      {showAIEstimationModal && estimationResult && (
+        <AIEstimationModal
+          isOpen={showAIEstimationModal}
+          onClose={() => setShowAIEstimationModal(false)}
+          onAccept={acceptEstimation}
+          onReject={rejectEstimation}
+          estimationData={estimationResult}
+          taskTitle={editedTask.title}
+          currentEstimate={editedTask.storyPoint}
+        />
       )}
     </div>
   );

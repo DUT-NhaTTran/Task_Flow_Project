@@ -176,7 +176,16 @@ export default function AllWorkPage() {
       }
       
       console.log('📋 Total tasks fetched:', allTasks.length);
-      setTasks(allTasks);
+      // ✅ Enhance tasks with assignee names
+      try {
+        const { enhanceTasksWithAssigneeNames } = await import('@/utils/taskHelpers');
+        const enhancedTasks = await enhanceTasksWithAssigneeNames(allTasks as any);
+        setTasks(enhancedTasks as Task[]);
+        console.log(`✅ Enhanced ${enhancedTasks.filter(t => t.assigneeId).length} tasks with assignee names in work page`);
+      } catch (enhanceError) {
+        console.warn('Failed to enhance tasks with assignee names:', enhanceError);
+        setTasks(allTasks);
+      }
     } catch (err) {
       console.error("Error fetching data:", err);
       toast.error("Failed to load data");
